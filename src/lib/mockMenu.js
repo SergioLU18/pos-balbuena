@@ -60,25 +60,27 @@ export const MENU = [
     permiteNota: true,
   },
   {
-    id: 'tacos-maiz',
-    nombre: 'Tacos Dorados (Tortilla de Maíz)',
+    id: 'tacos-dorados',
+    nombre: 'Tacos Dorados',
     categoria: 'Tacos Dorados',
-    base: 'Tres tacos dorados de tortilla de maíz, con lechuga, crema y queso',
-    tiers: [
-      { ingredientes: 1, nombre: '1 Ingrediente', precio: 150 },
-      { ingredientes: 2, nombre: '2 Ingredientes', precio: 175 },
-    ],
-    permiteMitades: true,
-    permiteNota: true,
-  },
-  {
-    id: 'tacos-harina',
-    nombre: 'Tacos Dorados (Tortilla de Harina)',
-    categoria: 'Tacos Dorados',
-    base: 'Tres tacos dorados de tortilla de harina, con lechuga, crema y queso',
-    tiers: [
-      { ingredientes: 1, nombre: '1 Ingrediente', precio: 175 },
-      { ingredientes: 2, nombre: '2 Ingredientes', precio: 200 },
+    base: 'Tres tacos dorados, con lechuga, crema y queso',
+    tortillas: [
+      {
+        id: 'maiz',
+        nombre: 'Tortilla de Maíz',
+        tiers: [
+          { ingredientes: 1, nombre: '1 Ingrediente', precio: 150 },
+          { ingredientes: 2, nombre: '2 Ingredientes', precio: 175 },
+        ],
+      },
+      {
+        id: 'harina',
+        nombre: 'Tortilla de Harina',
+        tiers: [
+          { ingredientes: 1, nombre: '1 Ingrediente', precio: 175 },
+          { ingredientes: 2, nombre: '2 Ingredientes', precio: 200 },
+        ],
+      },
     ],
     permiteMitades: true,
     permiteNota: true,

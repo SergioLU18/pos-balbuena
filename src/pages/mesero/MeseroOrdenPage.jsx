@@ -24,6 +24,17 @@ export default function MeseroOrdenPage() {
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
 
+  // La mayoría de las categorías tienen un único platillo: en ese caso no tiene
+  // sentido mostrar el paso intermedio de la grilla, se abre el pop up directo.
+  function seleccionarCategoria(categoria) {
+    const platillos = menu.filter((p) => p.categoria === categoria)
+    if (platillos.length === 1) {
+      setPlatilloEnConfig(platillos[0])
+      return
+    }
+    setCategoriaActiva(categoria)
+  }
+
   function confirmarPlatillo(item) {
     agregarItemConstruido(item)
     setPlatilloEnConfig(null)
@@ -74,7 +85,7 @@ export default function MeseroOrdenPage() {
             <CategoriaGrid
               categorias={categorias}
               activa={categoriaActiva}
-              onSelect={setCategoriaActiva}
+              onSelect={seleccionarCategoria}
               compact={categoriaActiva !== null}
             />
           </div>

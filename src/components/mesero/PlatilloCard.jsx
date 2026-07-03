@@ -1,8 +1,10 @@
 import { f } from '../../lib/utils'
 
 export function PlatilloCard({ platillo, onClick }) {
-  const min = platillo.tiers[0].precio
-  const max = platillo.tiers[platillo.tiers.length - 1].precio
+  const tiers = platillo.tortillas ? platillo.tortillas.flatMap((t) => t.tiers) : platillo.tiers
+  const precios = tiers.map((t) => t.precio)
+  const min = Math.min(...precios)
+  const max = Math.max(...precios)
 
   return (
     <button

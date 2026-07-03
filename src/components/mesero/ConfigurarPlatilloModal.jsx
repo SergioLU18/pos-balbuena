@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { f } from '../../lib/utils'
 import { Button } from '../ui/Button'
+import { Chip } from '../ui/Chip'
 import { TierPicker } from './TierPicker'
 import { MitadSwitch } from './MitadSwitch'
 import { IngredienteChecklist } from './IngredienteChecklist'
@@ -13,10 +14,17 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   const [item, setItem] = useState(() => buildDraftItem(platillo, 0))
 
   function cambiarTier(tierIndex) {
-    let next = buildDraftItem(platillo, tierIndex)
+    let next = buildDraftItem(platillo, tierIndex, item.tortillaId)
     if (item.dividido) next = toggleDividido(next)
     // conserva modificadores elegidos (no dependen del tier); los ingredientes se reinician
     // porque el máximo permitido puede cambiar con el nuevo nivel.
+    next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
+    setItem({ ...next, cantidad: item.cantidad, nota: item.nota })
+  }
+
+  function cambiarTortilla(tortillaId) {
+    let next = buildDraftItem(platillo, item.tierIndex, tortillaId)
+    if (item.dividido) next = toggleDividido(next)
     next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
     setItem({ ...next, cantidad: item.cantidad, nota: item.nota })
   }
@@ -61,7 +69,21 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
         </div>
 
         <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22 }}>
-          <TierPicker tiers={platillo.tiers} selectedIndex={item.tierIndex} onSelect={cambiarTier} />
+          {platillo.tortillas && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {platillo.tortillas.map((t) => (
+                <Chip key={t.id} active={item.tortillaId === t.id} onClick={() => cambiarTortilla(t.id)}>
+                  {t.nombre}
+                </Chip>
+              ))}
+            </div>
+          )}
+
+          <TierPicker
+            tiers={platillo.tortillas ? platillo.tortillas.find((t) => t.id === item.tortillaId).tiers : platillo.tiers}
+            selectedIndex={item.tierIndex}
+            onSelect={cambiarTier}
+          />
 
           {platillo.permiteMitades && <MitadSwitch dividido={item.dividido} onToggle={toggleMitades} />}
 

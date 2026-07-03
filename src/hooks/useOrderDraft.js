@@ -11,13 +11,19 @@ const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === n
 // porque el snapshot nunca es referencialmente igual al anterior.
 const EMPTY_ITEMS = []
 
-/** Crea una línea de orden nueva a partir de un platillo y el índice de su tier elegido. */
-export function buildDraftItem(platillo, tierIndex) {
-  const tier = platillo.tiers[tierIndex]
+/** Crea una línea de orden nueva a partir de un platillo y el índice de su tier elegido.
+ *  Si el platillo tiene variantes de tortilla (p. ej. Tacos Dorados), `tortillaId` elige
+ *  cuál define los tiers; por defecto se usa la primera variante. */
+export function buildDraftItem(platillo, tierIndex, tortillaId) {
+  const tortilla = platillo.tortillas
+    ? (platillo.tortillas.find((t) => t.id === tortillaId) ?? platillo.tortillas[0])
+    : null
+  const tier = (tortilla ? tortilla.tiers : platillo.tiers)[tierIndex]
   return {
     id: uid('item'),
     platilloId: platillo.id,
-    platilloNombre: platillo.nombre,
+    platilloNombre: tortilla ? `${platillo.nombre} (${tortilla.nombre})` : platillo.nombre,
+    tortillaId: tortilla?.id,
     categoria: platillo.categoria,
     permiteMitades: platillo.permiteMitades,
     permiteNota: platillo.permiteNota,
