@@ -1,0 +1,158 @@
+import { INGREDIENTES } from '../lib/mockMenu'
+import { MESAS } from '../lib/mockMesas'
+import { MESEROS } from '../lib/mockMeseros'
+import { uid } from '../lib/utils'
+import { useMeseroStore, useOrderStore, usePedidosStore } from '../store/appStore'
+
+const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
+
+// Referencia estable para el fallback: si el selector devolviera un array literal
+// nuevo (`?? []`) en cada llamada, useSyncExternalStore entra en loop infinito
+// porque el snapshot nunca es referencialmente igual al anterior.
+const EMPTY_ITEMS = []
+
+/** Crea una línea de orden nueva a partir de un platillo y el índice de su tier elegido. */
+export function buildDraftItem(platillo, tierIndex) {
+  const tier = platillo.tiers[tierIndex]
+  return {
+    id: uid('item'),
+    platilloId: platillo.id,
+    platilloNombre: platillo.nombre,
+    categoria: platillo.categoria,
+    permiteMitades: platillo.permiteMitades,
+    permiteNota: platillo.permiteNota,
+    tierIndex,
+    tier,
+    dividido: false,
+    mitades: [{ lado: 'completo', ingredientes: [], modificadores: [] }],
+    cantidad: 1,
+    nota: '',
+  }
+}
+
+/** Activa/desactiva la división en mitades, preservando lo ya elegido en la primera mitad. */
+export function toggleDividido(item) {
+  if (item.dividido) {
+    return { ...item, dividido: false, mitades: [{ ...item.mitades[0], lado: 'completo' }] }
+  }
+  const primera = item.mitades[0] ?? { ingredientes: [], modificadores: [] }
+  return {
+    ...item,
+    dividido: true,
+    mitades: [
+      { lado: 'izquierda', ingredientes: primera.ingredientes ?? [], modificadores: primera.modificadores ?? [] },
+      { lado: 'derecha', ingredientes: [], modificadores: [] },
+    ],
+  }
+}
+
+export function setMitadField(item, lado, field, value) {
+  return { ...item, mitades: item.mitades.map((m) => (m.lado === lado ? { ...m, [field]: value } : m)) }
+}
+
+/** Precio unitario del renglón: precio del tier + recargos de todos los ingredientes elegidos (ambas mitades). */
+export function calcItemPrecio(item) {
+  const recargos = item.mitades.reduce(
+    (sum, m) => sum + m.ingredientes.reduce((s, ing) => s + extraCost(ing), 0),
+    0,
+  )
+  return item.tier.precio + recargos
+}
+
+export function calcSubtotal(items) {
+  return items.reduce((s, it) => s + calcItemPrecio(it) * it.cantidad, 0)
+}
+
+/** Hook de feature: expone el draft de una mesa y las operaciones de negocio sobre él. */
+export function useOrderDraft(mesaId) {
+  const draft = useOrderStore((s) => s.drafts[mesaId] ?? EMPTY_ITEMS)
+  const cuenta = useOrderStore((s) => s.cuentas[mesaId] ?? null)
+  const addDraftItem = useOrderStore((s) => s.addDraftItem)
+  const updateDraftItem = useOrderStore((s) => s.updateDraftItem)
+  const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
+  const enviarOrden = useOrderStore((s) => s.enviarOrden)
+  const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
+  const agregarPedido = usePedidosStore((s) => s.agregarPedido)
+  const cerrarCuenta = useOrderStore((s) => s.cerrarCuenta)
+  const eliminarPedidosDeMesa = usePedidosStore((s) => s.eliminarPedidosDeMesa)
+
+  function agregarPlatillo(platillo, tierIndex) {
+    addDraftItem(mesaId, buildDraftItem(platillo, tierIndex))
+  }
+
+  /** Agrega un renglón ya construido (p. ej. armado por ConfigurarPlatilloModal, con
+   *  tier/mitades/ingredientes/modificadores/cantidad/nota ya elegidos por el mesero). */
+  function agregarItemConstruido(item) {
+    addDraftItem(mesaId, item)
+  }
+
+  function cambiarCantidad(itemId, delta) {
+    const item = draft.find((i) => i.id === itemId)
+    if (!item) return
+    const cantidad = Math.max(1, item.cantidad + delta)
+    updateDraftItem(mesaId, itemId, { cantidad })
+  }
+
+  function cambiarDividido(itemId) {
+    const item = draft.find((i) => i.id === itemId)
+    if (!item) return
+    updateDraftItem(mesaId, itemId, toggleDividido(item))
+  }
+
+  function cambiarMitad(itemId, lado, field, value) {
+    const item = draft.find((i) => i.id === itemId)
+    if (!item) return
+    updateDraftItem(mesaId, itemId, setMitadField(item, lado, field, value))
+  }
+
+  function cambiarNota(itemId, nota) {
+    updateDraftItem(mesaId, itemId, { nota })
+  }
+
+  function quitarItem(itemId) {
+    removeDraftItem(mesaId, itemId)
+  }
+
+  function enviarACocina() {
+    if (draft.length === 0) return
+    const mesa = MESAS.find((m) => m.id === mesaId)
+    const mesero = MESEROS.find((m) => m.id === currentMeseroId)
+    agregarPedido({
+      id: uid('pedido'),
+      mesaId,
+      mesaNumero: mesa?.numero ?? '—',
+      meseroNombre: mesero?.nombre ?? '—',
+      items: draft,
+      enviadoAt: new Date().toISOString(),
+      estado: 'pendiente',
+    })
+    enviarOrden(mesaId)
+  }
+
+  // TEMPORAL: en la integración real, la cuenta se cierra desde la app de pagos
+  // (cuando se liquida por completo). Mientras no exista esa conexión, esto le da
+  // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
+  function cerrarMesa() {
+    cerrarCuenta(mesaId)
+    eliminarPedidosDeMesa(mesaId)
+  }
+
+  const subtotalDraft = calcSubtotal(draft)
+  const subtotalCuenta = calcSubtotal(cuenta?.items ?? [])
+
+  return {
+    draft,
+    cuenta,
+    subtotalDraft,
+    subtotalCuenta,
+    agregarPlatillo,
+    agregarItemConstruido,
+    cambiarCantidad,
+    cambiarDividido,
+    cambiarMitad,
+    cambiarNota,
+    quitarItem,
+    enviarACocina,
+    cerrarMesa,
+  }
+}

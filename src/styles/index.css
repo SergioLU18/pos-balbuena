@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/fonts/InterTight-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('/fonts/InterTight-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JB Script';
+  src: url('/fonts/Caveat-VariableFont_wght.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+  Identidad de Jardín Balbuena — extraída del sitio real (balbuena.app):
+  rosa/magenta dominante del logo (#EA478A), azulejo de flores blanco,
+  wordmark manuscrito. Paleta cálida (cream), no fría/azul.
+*/
+:root {
+  --jb-pink:        #EA478A;
+  --jb-pink-dark:   #C22E6C;
+  --jb-pink-light:  #FCE4EE;
+  --jb-pink-tint:   #FFF0F6;
+  --jb-cream:       #FDF6EF;
+  --jb-ink:         #33222A;
+  --jb-ink-soft:    #6E5A63;
+  --jb-gray:        #A6919A;
+  --jb-line:        #F0DCE5;
+  --jb-white:       #FFFFFF;
+  --jb-ok:          #3FA66B;
+  --jb-ok-bg:       #E8F7EF;
+  --jb-warn:        #E2A93B;
+  --jb-warn-bg:     #FCF2DF;
+  --jb-shadow:      rgba(194, 46, 108, 0.14);
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter Tight', sans-serif;
+  background: var(--jb-cream);
+  color: var(--jb-ink);
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+.jb-script {
+  font-family: 'JB Script', cursive;
+  font-weight: 700;
+}
+
+@keyframes jb-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.jb-fade-up { animation: jb-fade-up 0.22s ease both; }
+
+@keyframes jb-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .35; }
+}
+.jb-pulse { animation: jb-pulse 1.4s ease infinite; }
+
+@keyframes jb-pop {
+  from { transform: scale(0.9); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.jb-pop { animation: jb-pop 0.16s cubic-bezier(0.34,1.4,0.64,1) both; }
+
+/* Paso 1 (categorías) -> paso 2 (platillos) del flujo de orden del mesero */
+@keyframes jb-slide-in {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.jb-slide-in { animation: jb-slide-in 0.22s cubic-bezier(0.32,0.72,0,1) both; }
