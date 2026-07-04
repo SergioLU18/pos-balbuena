@@ -24,6 +24,21 @@ export const useMeseroStore = create((set) => ({
   toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
 }))
 
+// posiciones: mesaId -> { x, y } en fracción (0–1) del área de piso disponible,
+// para que el mesero pueda acomodar el mapa como el salón real y no como una
+// lista. Persistido para que sobreviva recargas y se comparta entre dispositivos
+// igual que las órdenes.
+export const useMesaLayoutStore = create(
+  persist(
+    (set) => ({
+      posiciones: {},
+      setPosicion: (mesaId, x, y) =>
+        set((s) => ({ posiciones: { ...s.posiciones, [mesaId]: { x, y } } })),
+    }),
+    { name: 'pos-balbuena-mesa-layout', storage: safeStorage },
+  ),
+)
+
 const EMPTY_ITEMS = []
 
 // drafts: mesaId -> item[] (orden en construcción, aún no enviada a cocina)

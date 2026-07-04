@@ -1,6 +1,12 @@
 import { f } from '../../lib/utils'
 import { JbFlor } from '../ui/JbFlor'
 
+// Dimensión fija: todas las mesas se ven igual de grandes sin importar su
+// estado, y el mapa del piso (MeseroFloorPage) reusa estas mismas medidas
+// para calcular posiciones.
+export const MESA_CARD_W = 180
+export const MESA_CARD_H = 140
+
 const THEME = {
   libre:      { bg: '#fff',            border: 'var(--jb-line)', label: null,               labelColor: 'var(--jb-gray)' },
   preparando: { bg: 'var(--jb-warn-bg)', border: 'var(--jb-warn)', label: 'Preparando orden', labelColor: '#9A6B12' },
@@ -26,7 +32,8 @@ export function MesaCard({ mesa, onClick }) {
         cursor: 'pointer',
         textAlign: 'left',
         fontFamily: "'Inter Tight', sans-serif",
-        minHeight: 132,
+        width: MESA_CARD_W,
+        height: MESA_CARD_H,
         transition: 'transform 0.1s ease',
       }}
       onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.97)')}

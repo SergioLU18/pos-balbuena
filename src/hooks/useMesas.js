@@ -4,10 +4,12 @@ import { useMeseroStore, useOrderStore, usePedidosStore } from '../store/appStor
 import { calcSubtotal } from './useOrderDraft'
 
 /** Mesas visibles para el mesero actual, con su estado derivado (libre / preparando / abierta)
- *  y si la cocina ya dejó algún pedido "listo" para que el mesero lo recoja. */
-export function useMesas() {
+ *  y si la cocina ya dejó algún pedido "listo" para que el mesero lo recoja.
+ *  `ignorarFiltro` fuerza a mostrar todas las mesas aunque "solo mis mesas" esté
+ *  activo (se usa mientras se edita el mapa del piso, que es una vista global). */
+export function useMesas({ ignorarFiltro = false } = {}) {
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
-  const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
+  const soloMisMesas = useMeseroStore((s) => s.soloMisMesas) && !ignorarFiltro
   const cuentas = useOrderStore((s) => s.cuentas)
   const drafts = useOrderStore((s) => s.drafts)
   const pedidos = usePedidosStore((s) => s.pedidos)
