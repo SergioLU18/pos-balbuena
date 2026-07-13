@@ -1,6 +1,4 @@
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
-import { useMeseroStore, useOrderStore, usePedidosStore } from '../store/appStore'
+import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { calcSubtotal } from './useOrderDraft'
 
 /** Mesas visibles para el mesero actual, con su estado derivado (libre / preparando / abierta)
@@ -13,6 +11,8 @@ export function useMesas({ ignorarFiltro = false } = {}) {
   const cuentas = useOrderStore((s) => s.cuentas)
   const drafts = useOrderStore((s) => s.drafts)
   const pedidos = usePedidosStore((s) => s.pedidos)
+  const MESAS = usePosStore((s) => s.mesas)
+  const MESEROS = usePosStore((s) => s.meseros)
 
   const mesero = MESEROS.find((m) => m.id === currentMeseroId) ?? null
 

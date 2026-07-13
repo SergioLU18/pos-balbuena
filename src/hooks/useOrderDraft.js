@@ -1,8 +1,8 @@
 import { INGREDIENTES } from '../lib/mockMenu'
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
 import { uid } from '../lib/utils'
-import { useMeseroStore, useOrderStore, usePedidosStore } from '../store/appStore'
+import { sb } from '../lib/supabase'
+import { IS_MOCK } from '../lib/config'
+import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 
 const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
 
@@ -77,10 +77,13 @@ export function useOrderDraft(mesaId) {
   const updateDraftItem = useOrderStore((s) => s.updateDraftItem)
   const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
   const enviarOrden = useOrderStore((s) => s.enviarOrden)
+  const clearDraft = useOrderStore((s) => s.clearDraft)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const agregarPedido = usePedidosStore((s) => s.agregarPedido)
   const cerrarCuenta = useOrderStore((s) => s.cerrarCuenta)
   const eliminarPedidosDeMesa = usePedidosStore((s) => s.eliminarPedidosDeMesa)
+  const mesas = usePosStore((s) => s.mesas)
+  const meseros = usePosStore((s) => s.meseros)
 
   function agregarPlatillo(platillo, tierIndex) {
     addDraftItem(mesaId, buildDraftItem(platillo, tierIndex))
@@ -121,8 +124,23 @@ export function useOrderDraft(mesaId) {
 
   function enviarACocina() {
     if (draft.length === 0) return
-    const mesa = MESAS.find((m) => m.id === mesaId)
-    const mesero = MESEROS.find((m) => m.id === currentMeseroId)
+    const mesero = meseros.find((m) => m.id === currentMeseroId)
+
+    if (!IS_MOCK) {
+      // Backend: una sola RPC abre la cuenta si hace falta, agrega los renglones y crea
+      // el pedido de cocina de forma atómica. Realtime refresca mesas/cuentas/pedidos.
+      sb.rpc('pos_enviar_orden', {
+        p_mesa_id: mesaId,
+        p_mesero_nombre: mesero?.nombre ?? '—',
+        p_items: draft,
+      }).then(({ error }) => {
+        if (error) console.error('[orden] enviarACocina falló:', error)
+        else clearDraft(mesaId)
+      })
+      return
+    }
+
+    const mesa = mesas.find((m) => m.id === mesaId)
     agregarPedido({
       id: uid('pedido'),
       mesaId,
@@ -139,6 +157,11 @@ export function useOrderDraft(mesaId) {
   // (cuando se liquida por completo). Mientras no exista esa conexión, esto le da
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
   function cerrarMesa() {
+    if (!IS_MOCK) {
+      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
+        .then(({ error }) => { if (error) console.error('[orden] cerrarMesa falló:', error) })
+      return
+    }
     cerrarCuenta(mesaId)
     eliminarPedidosDeMesa(mesaId)
   }

@@ -9,7 +9,10 @@ function CategoriaGridGrande({ categorias, onSelect }) {
         overflowY: 'auto',
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-        gridAutoRows: 'minmax(140px, 1fr)',
+        // Altura fija por fila y filas ancladas arriba: sin el `1fr`, dos filas de
+        // categorías se estiraban para llenar toda la pantalla y quedaban gigantes.
+        gridAutoRows: 168,
+        alignContent: 'start',
         gap: 18,
       }}
     >
