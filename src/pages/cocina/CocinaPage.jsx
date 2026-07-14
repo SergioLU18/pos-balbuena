@@ -1,4 +1,3 @@
-import { JbFlor } from '../../components/ui/JbFlor'
 import { PedidoColumn } from '../../components/cocina/PedidoColumn'
 import { usePedidos } from '../../hooks/usePedidos'
 import { useClock } from '../../hooks/useClock'
@@ -13,10 +12,7 @@ export default function CocinaPage() {
         className="flex items-center justify-between flex-shrink-0"
         style={{ padding: '14px 28px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)' }}
       >
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <JbFlor size={34} />
-          <span className="jb-script" style={{ fontSize: 30, color: '#fff', lineHeight: 1 }}>Jardín Balbuena</span>
-        </div>
+        <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
         <div className="flex items-center" style={{ gap: 14 }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: '#fff', background: 'rgba(255,255,255,0.18)', padding: '8px 16px', borderRadius: 12 }}>
             Cocina

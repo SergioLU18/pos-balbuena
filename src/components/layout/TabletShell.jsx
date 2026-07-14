@@ -1,4 +1,3 @@
-import { JbFlor } from '../ui/JbFlor'
 import { MESEROS } from '../../lib/mockMeseros'
 import { useMeseroStore } from '../../store/appStore'
 
@@ -20,12 +19,7 @@ export function TabletShell({ children }) {
           boxShadow: '0 2px 12px var(--jb-shadow)',
         }}
       >
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <JbFlor size={34} />
-          <span className="jb-script" style={{ fontSize: 30, color: '#fff', lineHeight: 1 }}>
-            Jardín Balbuena
-          </span>
-        </div>
+        <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
         <select
           value={currentMeseroId}
           onChange={(e) => setMesero(e.target.value)}
