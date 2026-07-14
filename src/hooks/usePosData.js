@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
+import { IS_MOCK, RESTAURANTE_NOMBRE } from '../lib/config'
 import {
   usePosStore,
   useOrderStore,
@@ -8,15 +8,18 @@ import {
   useMeseroStore,
 } from '../store/appStore'
 
-// Convierte las filas de Supabase a la forma que ya consumen los componentes.
-// cuentas: mesaId -> { cuentaId, items[], createdAt } — items es el objeto JSON tal cual.
+// Ordena números como texto ('2' antes que '10') para el mapa del piso.
+const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
+
+// Cuentas de tali → mapa mesaId -> { cuentaId, items[], createdAt }.
+// cuenta_items es PLANO (nombre, precio_unitario, cantidad): así lo modela tali y
+// así lo consume el POS para el total y la comanda.
 function mapCuentas(cuentas) {
   const map = {}
   for (const c of cuentas ?? []) {
-    const items = (c.pos_cuenta_items ?? [])
+    const items = (c.cuenta_items ?? [])
       .slice()
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .map((ci) => ci.data)
     map[c.mesa_id] = { cuentaId: c.id, items, createdAt: c.created_at }
   }
   return map
@@ -35,23 +38,21 @@ function mapPedidos(pedidos) {
   }))
 }
 
-async function cargarTodo() {
+async function cargarTodo(rid) {
   const [mesasRes, meserosRes, cuentasRes, pedidosRes] = await Promise.all([
-    sb.from('pos_mesas').select('*').eq('activo', true).order('numero'),
-    sb.from('pos_meseros').select('*').eq('activo', true).order('nombre'),
-    sb.from('pos_cuentas').select('*, pos_cuenta_items(*)').eq('activa', true),
-    sb.from('pos_pedidos').select('*'),
+    sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
+    sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
+    sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
+    sb.from('pedidos').select('*').eq('restaurante_id', rid),
   ])
 
   const { setMesas, setMeseros } = usePosStore.getState()
-  // numero puede venir como '2' y '10'; orden numérico para el mapa del piso.
-  const mesas = (mesasRes.data ?? []).slice().sort((a, b) => Number(a.numero) - Number(b.numero))
-  setMesas(mesas)
+  setMesas((mesasRes.data ?? []).slice().sort(porNumero))
 
   const meseros = meserosRes.data ?? []
   setMeseros(meseros)
 
-  // Si el mesero seleccionado ya no existe (ids reales de la base ≠ ids mock), cae al primero.
+  // Si el mesero seleccionado ya no existe (ids reales ≠ ids mock), cae al primero.
   const meseroState = useMeseroStore.getState()
   if (meseros.length && !meseros.some((m) => m.id === meseroState.currentMeseroId)) {
     meseroState.setMesero(meseros[0].id)
@@ -62,30 +63,47 @@ async function cargarTodo() {
 }
 
 // Carga inicial + suscripción en tiempo real. Se monta una sola vez en la raíz de la app
-// (ver App.jsx) para que tanto la vista de mesero como la de cocina compartan el estado.
+// (App.jsx) para que la vista de mesero y la de cocina compartan estado.
 // En modo mock no hace nada: los stores ya arrancan con los datos estáticos.
 export function usePosData() {
   useEffect(() => {
     if (IS_MOCK) return
 
     let vivo = true
-    cargarTodo().catch((e) => console.error('[pos-data] carga inicial falló:', e))
+    let channel = null
 
-    // Cualquier cambio en las tablas compartidas dispara una recarga completa. A la
-    // escala de un restaurante (decenas de filas) es simple y suficiente, y es el mismo
-    // patrón de "refrescar todo ante un cambio" que usa la app hermana (tali).
-    const recargar = () => { if (vivo) cargarTodo().catch(() => {}) }
-    const channel = sb
-      .channel('pos-balbuena-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_mesas' }, recargar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_cuentas' }, recargar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_cuenta_items' }, recargar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_pedidos' }, recargar)
-      .subscribe()
+    async function init() {
+      const { data: rest, error } = await sb
+        .from('restaurantes').select('id').eq('nombre', RESTAURANTE_NOMBRE).maybeSingle()
+      if (error) { console.error('[pos-data] no se pudo leer el restaurante:', error); return }
+      const rid = rest?.id
+      if (!rid) {
+        console.error(`[pos-data] no existe el restaurante "${RESTAURANTE_NOMBRE}". Corre supabase/seed.sql.`)
+        return
+      }
+      if (!vivo) return
+      usePosStore.getState().setRestauranteId(rid)
+
+      await cargarTodo(rid).catch((e) => console.error('[pos-data] carga inicial falló:', e))
+
+      // Cualquier cambio en las tablas compartidas dispara una recarga completa (misma
+      // estrategia que tali). Filtramos por restaurante donde la tabla lo permite, para
+      // no recargar por actividad de otros restaurantes del proyecto compartido.
+      const recargar = () => { if (vivo) cargarTodo(rid).catch(() => {}) }
+      channel = sb
+        .channel('pos-balbuena-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cuenta_items' }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .subscribe()
+    }
+
+    init()
 
     return () => {
       vivo = false
-      sb.removeChannel(channel)
+      if (channel) sb.removeChannel(channel)
     }
   }, [])
 }

@@ -2,6 +2,7 @@ import { INGREDIENTES } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
+import { describirMitades } from '../lib/describirItem'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 
 const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
@@ -69,6 +70,25 @@ export function calcSubtotal(items) {
   return items.reduce((s, it) => s + calcItemPrecio(it) * it.cantidad, 0)
 }
 
+// Nombre facturable de un renglón para cuenta_items de tali (plano). Incluye el tier y,
+// si hay personalización real, un resumen entre paréntesis para distinguir renglones.
+export function nombreItem(item) {
+  const base = `${item.platilloNombre} · ${item.tier.nombre}`
+  const partes = describirMitades(item)
+    .map((d) => `${d.prefijo}${d.texto}`)
+    .filter((t) => t && !/Sin personalizar$/.test(t))
+  return partes.length ? `${base} (${partes.join(' / ')})` : base
+}
+
+// Total de una cuenta ya enviada. Soporta ambas formas de renglón: los planos del
+// backend (precio_unitario · cantidad) y los ricos del modo mock (calcItemPrecio).
+export function sumaCuenta(items) {
+  return (items ?? []).reduce((s, it) => {
+    const precio = it.precio_unitario != null ? Number(it.precio_unitario) : calcItemPrecio(it)
+    return s + precio * it.cantidad
+  }, 0)
+}
+
 /** Hook de feature: expone el draft de una mesa y las operaciones de negocio sobre él. */
 export function useOrderDraft(mesaId) {
   const draft = useOrderStore((s) => s.drafts[mesaId] ?? EMPTY_ITEMS)
@@ -127,12 +147,19 @@ export function useOrderDraft(mesaId) {
     const mesero = meseros.find((m) => m.id === currentMeseroId)
 
     if (!IS_MOCK) {
-      // Backend: una sola RPC abre la cuenta si hace falta, agrega los renglones y crea
-      // el pedido de cocina de forma atómica. Realtime refresca mesas/cuentas/pedidos.
+      // Backend: cada renglón lleva nombre + precio_unitario (para cuenta_items de tali)
+      // y además su estructura rica completa (para la comanda de cocina en pedidos.items).
+      // La RPC abre la cuenta si hace falta, agrega los renglones con las funciones de
+      // tali, recalcula el subtotal y crea el pedido — todo atómico. Realtime refresca.
+      const payload = draft.map((it) => ({
+        ...it,
+        nombre: nombreItem(it),
+        precio_unitario: calcItemPrecio(it),
+      }))
       sb.rpc('pos_enviar_orden', {
         p_mesa_id: mesaId,
         p_mesero_nombre: mesero?.nombre ?? '—',
-        p_items: draft,
+        p_items: payload,
       }).then(({ error }) => {
         if (error) console.error('[orden] enviarACocina falló:', error)
         else clearDraft(mesaId)
@@ -167,7 +194,7 @@ export function useOrderDraft(mesaId) {
   }
 
   const subtotalDraft = calcSubtotal(draft)
-  const subtotalCuenta = calcSubtotal(cuenta?.items ?? [])
+  const subtotalCuenta = sumaCuenta(cuenta?.items ?? [])
 
   return {
     draft,

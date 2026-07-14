@@ -32,8 +32,10 @@ export const useMeseroStore = create((set) => ({
 export const usePosStore = create((set) => ({
   mesas: IS_MOCK ? MESAS : [],
   meseros: IS_MOCK ? MESEROS : [],
+  restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
   setMesas: (mesas) => set({ mesas }),
   setMeseros: (meseros) => set({ meseros }),
+  setRestauranteId: (restauranteId) => set({ restauranteId }),
 }))
 
 // posiciones: mesaId -> { x, y } en fracción (0–1) del área de piso disponible,

@@ -23,7 +23,7 @@ export function usePedidos() {
   // Realtime propague el cambio a todas las pantallas (mesero y cocina).
   function avanzarEstado(pedidoId, estado) {
     if (IS_MOCK) return avanzarEstadoLocal(pedidoId, estado)
-    sb.from('pos_pedidos')
+    sb.from('pedidos')
       .update({ estado, estado_actualizado_at: new Date().toISOString() })
       .eq('id', pedidoId)
       .then(({ error }) => { if (error) console.error('[pedidos] avanzarEstado falló:', error) })

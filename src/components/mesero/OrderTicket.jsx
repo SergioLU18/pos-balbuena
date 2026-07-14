@@ -40,15 +40,19 @@ function DraftRow({ item, onQty, onRemove }) {
 }
 
 function EnviadoRow({ item }) {
-  const precio = calcItemPrecio(item)
+  // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
+  // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
+  const esRico = item.tier != null && item.mitades != null
+  const precio = esRico ? calcItemPrecio(item) : Number(item.precio_unitario)
+  const nombre = esRico ? `${item.platilloNombre} · ${item.tier.nombre}` : item.nombre
   return (
     <div style={{ padding: '10px 0', borderBottom: '1.5px solid var(--jb-line)', opacity: 0.75 }}>
       <div className="flex items-start justify-between" style={{ gap: 10 }}>
         <div>
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
-            {item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.platilloNombre} · {item.tier.nombre}
+            {item.cantidad > 1 ? `${item.cantidad}× ` : ''}{nombre}
           </span>
-          <DescripcionItem item={item} />
+          {esRico && <DescripcionItem item={item} />}
         </div>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{f(precio * item.cantidad)}</span>
       </div>

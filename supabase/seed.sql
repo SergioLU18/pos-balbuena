@@ -1,25 +1,35 @@
 -- ============================================================================
--- pos-balbuena · datos iniciales (mesas y meseros)
+-- pos-balbuena · datos iniciales sobre el backend de tali
 -- Correr después de schema.sql. Idempotente: se puede volver a correr sin duplicar.
--- Refleja los datos que antes vivían en src/lib/mockMesas.js y src/lib/mockMeseros.js.
+-- Crea el restaurante del POS y sus mesas/meseros usando las tablas de tali.
 -- ============================================================================
 
--- 15 mesas (números "1".."15")
-insert into pos_mesas (numero)
-select generate_series(1, 15)::text
-on conflict (numero) do nothing;
+-- Restaurante del POS (si tu proyecto ya tiene una fila para Jardín Balbuena,
+-- este insert no hace nada y todo lo demás la reutiliza por nombre).
+insert into restaurantes (nombre, activo)
+select 'Jardín Balbuena', true
+where not exists (select 1 from restaurantes where nombre = 'Jardín Balbuena');
 
--- 3 meseros con sus mesas asignadas y PIN de 4 dígitos (idempotente por nombre)
-insert into pos_meseros (nombre, mesas, pin)
-select v.nombre, v.mesas, v.pin
-from (values
+-- 15 mesas para ese restaurante (esquema real de tali: numero, restaurante_id, activo)
+insert into mesas (numero, restaurante_id, activo)
+select g::text, r.id, true
+from restaurantes r
+cross join generate_series(1, 15) g
+where r.nombre = 'Jardín Balbuena'
+  and not exists (
+    select 1 from mesas m where m.restaurante_id = r.id and m.numero = g::text
+  );
+
+-- 3 meseros con sus mesas asignadas y PIN de 4 dígitos
+insert into meseros (restaurante_id, nombre, mesas, pin)
+select r.id, v.nombre, v.mesas, v.pin
+from restaurantes r
+cross join (values
   ('Doña Rosa', array['1','2','3','4','5'],      '1111'),
   ('Don Beto',  array['6','7','8','9','10'],     '2222'),
   ('Lupita',    array['11','12','13','14','15'], '3333')
 ) as v(nombre, mesas, pin)
-where not exists (select 1 from pos_meseros m where m.nombre = v.nombre);
-
--- Backfill del PIN para filas ya existentes que aún no lo tengan.
-update pos_meseros set pin = '1111' where nombre = 'Doña Rosa' and pin is null;
-update pos_meseros set pin = '2222' where nombre = 'Don Beto'  and pin is null;
-update pos_meseros set pin = '3333' where nombre = 'Lupita'    and pin is null;
+where r.nombre = 'Jardín Balbuena'
+  and not exists (
+    select 1 from meseros m where m.restaurante_id = r.id and m.nombre = v.nombre
+  );
