@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
-import { useMeseroStore, useMesaLayoutStore } from '../../store/appStore'
+import { useMesaLayout } from '../../hooks/useMesaLayout'
+import { useMeseroStore } from '../../store/appStore'
 import { MesaCard, MESA_CARD_W, MESA_CARD_H } from '../../components/mesero/MesaCard'
 
 const GAP = 18
@@ -23,8 +24,7 @@ export default function MeseroFloorPage() {
   const { mesas, mesero } = useMesas({ ignorarFiltro: moviendo })
   const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
   const toggleSoloMisMesas = useMeseroStore((s) => s.toggleSoloMisMesas)
-  const posiciones = useMesaLayoutStore((s) => s.posiciones)
-  const setPosicion = useMesaLayoutStore((s) => s.setPosicion)
+  const { posiciones, setPosicion } = useMesaLayout()
 
   const containerRef = useRef(null)
   const dragRef = useRef(null)

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { IS_MOCK } from '../lib/config'
 import { MESEROS } from '../lib/mockMeseros'
+import { MESAS } from '../lib/mockMesas'
 
 // Envoltura defensiva: en un navegador real localStorage siempre funciona, pero en
 // algunos entornos (Safari en modo privado, o el runtime de pruebas) puede no existir
@@ -22,6 +24,16 @@ export const useMeseroStore = create((set) => ({
   soloMisMesas: false,
   setMesero: (id) => set({ currentMeseroId: id }),
   toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
+}))
+
+// Catálogo de mesas y meseros. En modo mock arranca con los datos estáticos (así los
+// tests y el modo demo funcionan sin cargar nada); en modo backend `usePosData` lo
+// rellena desde Supabase. Los componentes leen siempre de aquí, sin importar el modo.
+export const usePosStore = create((set) => ({
+  mesas: IS_MOCK ? MESAS : [],
+  meseros: IS_MOCK ? MESEROS : [],
+  setMesas: (mesas) => set({ mesas }),
+  setMeseros: (meseros) => set({ meseros }),
 }))
 
 // posiciones: mesaId -> { x, y } en fracción (0–1) del área de piso disponible,
@@ -55,6 +67,10 @@ export const useOrderStore = create(
 
       getDraft: (mesaId) => get().drafts[mesaId] ?? EMPTY_ITEMS,
       getCuenta: (mesaId) => get().cuentas[mesaId] ?? null,
+
+      // Reemplaza el mapa completo de cuentas. Lo usa usePosData al cargar/refrescar
+      // desde Supabase (en modo backend la fuente de verdad es la base, no localStorage).
+      setCuentas: (cuentas) => set({ cuentas }),
 
       addDraftItem: (mesaId, item) =>
         set((s) => ({ drafts: { ...s.drafts, [mesaId]: [...(s.drafts[mesaId] ?? []), item] } })),
@@ -109,6 +125,9 @@ export const usePedidosStore = create(
     (set) => ({
       pedidos: [], // { id, mesaId, mesaNumero, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt }
 
+      // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
+      setPedidos: (pedidos) => set({ pedidos }),
+
       agregarPedido: (pedido) => set((s) => ({ pedidos: [...s.pedidos, pedido] })),
 
       avanzarEstado: (pedidoId, estado) =>
@@ -125,9 +144,11 @@ export const usePedidosStore = create(
   ),
 )
 
-// zustand/persist no sincroniza entre pestañas por sí solo: cuando otra pestaña
-// escribe en localStorage, esta rehidrata para reflejar el cambio (mesero -> cocina).
-if (typeof window !== 'undefined') {
+// Solo en modo mock el "backend" es localStorage compartido entre pestañas: cuando otra
+// pestaña escribe, esta rehidrata para reflejar el cambio (mesero -> cocina). En modo
+// backend la sincronización la hace Supabase Realtime (usePosData), así que rehidratar
+// desde localStorage aquí solo pisaría el estado fresco con datos viejos.
+if (IS_MOCK && typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key === 'pos-balbuena-orders') useOrderStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-pedidos') usePedidosStore.persist.rehydrate()

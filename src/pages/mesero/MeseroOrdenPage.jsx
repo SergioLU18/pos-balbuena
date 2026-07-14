@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MESAS } from '../../lib/mockMesas'
+import { usePosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
@@ -11,7 +11,7 @@ import { OrderTicket } from '../../components/mesero/OrderTicket'
 export default function MeseroOrdenPage() {
   const { mesaId } = useParams()
   const navigate = useNavigate()
-  const mesa = MESAS.find((m) => m.id === mesaId)
+  const mesa = usePosStore((s) => s.mesas).find((m) => m.id === mesaId)
   const { menu, categorias, ingredientes, modificadores } = useMenu()
   // null = paso 1 (categorías a pantalla completa); string = paso 2 (platillos de esa categoría)
   const [categoriaActiva, setCategoriaActiva] = useState(null)
