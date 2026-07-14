@@ -1,4 +1,3 @@
-import { JbFlor } from '../ui/JbFlor'
 import { MeseroSwitcher } from './MeseroSwitcher'
 
 /** Contenedor pensado para iPad en horizontal: header de marca + selector de mesero + contenido. */
@@ -16,12 +15,7 @@ export function TabletShell({ children }) {
           boxShadow: '0 2px 12px var(--jb-shadow)',
         }}
       >
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <JbFlor size={34} />
-          <span className="jb-script" style={{ fontSize: 30, color: '#fff', lineHeight: 1 }}>
-            Jardín Balbuena
-          </span>
-        </div>
+        <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
         <MeseroSwitcher />
       </header>
       <main className="flex-1 min-h-0">{children}</main>
