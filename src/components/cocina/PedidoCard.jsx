@@ -1,5 +1,5 @@
 import { useClock } from '../../hooks/useClock'
-import { minutosTranscurridos } from '../../lib/utils'
+import { cronometro } from '../../lib/utils'
 import { describirMitades } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 
@@ -21,7 +21,7 @@ function inicioColumna(pedido) {
 
 function urgencia(inicioAt) {
   const min = Math.floor((Date.now() - new Date(inicioAt).getTime()) / 60000)
-  if (min >= 10) return { border: '#C24A4A', bg: '#FCEAEA', text: '#A83232' }
+  if (min >= 10) return { border: '#DC2626', bg: '#FCE4E4', text: '#991B1B' }
   if (min >= 5) return { border: 'var(--jb-warn)', bg: 'var(--jb-warn-bg)', text: '#9A6B12' }
   return { border: 'var(--jb-line)', bg: '#fff', text: 'var(--jb-gray)' }
 }
@@ -45,7 +45,7 @@ export function ItemLine({ item }) {
 }
 
 export function PedidoCard({ pedido, onAvanzar }) {
-  useClock() // fuerza el re-render periódico para refrescar el tiempo transcurrido
+  useClock(1000) // re-render cada segundo para que el cronómetro MIN:SEG se vea avanzar
   const inicio = inicioColumna(pedido)
   const u = urgencia(inicio)
   const accion = SIGUIENTE[pedido.estado]
@@ -70,7 +70,7 @@ export function PedidoCard({ pedido, onAvanzar }) {
             border: `1.5px solid ${u.border}`, borderRadius: 20, padding: '4px 12px', flexShrink: 0,
           }}
         >
-          {minutosTranscurridos(inicio)}
+          {cronometro(inicio)}
         </span>
       </div>
 

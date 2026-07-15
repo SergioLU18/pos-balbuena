@@ -28,6 +28,16 @@ export function minutosTranscurridos(iso) {
   return min < 1 ? 'ahora' : `${min} min`
 }
 
+/** Cronómetro en vivo desde una fecha ISO, en formato MIN:SEG ("00:00", "05:12") —
+ *  para las tarjetas de cocina, que necesitan ver los segundos avanzar. */
+export function cronometro(iso) {
+  if (!iso) return '00:00'
+  const totalSeg = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  const min = Math.floor(totalSeg / 60)
+  const seg = totalSeg % 60
+  return `${String(min).padStart(2, '0')}:${String(seg).padStart(2, '0')}`
+}
+
 /** Duración congelada entre dos fechas ISO (a diferencia de minutosTranscurridos,
  *  no depende de "ahora" — sirve para guardar/mostrar cuánto tardó una etapa ya
  *  cerrada, p. ej. cuánto esperó un pedido "listo" antes de que lo recogieran). */

@@ -1,8 +1,20 @@
-import { minutosTranscurridos, duracionMin } from '../../lib/utils'
+import { duracionMin } from '../../lib/utils'
 import { ItemLine } from './PedidoCard'
 
+function TiempoTag({ label, valor }) {
+  if (!valor) return null
+  return (
+    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>
+      {label} <strong style={{ color: 'var(--jb-teal)' }}>{valor}</strong>
+    </span>
+  )
+}
+
 /** Backlog de comandas ya recogidas por el mesero (estado 'entregado'), de más
- *  reciente a más antigua. Es solo consulta — no hay acción que tomar aquí. */
+ *  reciente a más antigua. Es solo consulta — no hay acción que tomar aquí.
+ *  Los tiempos que se muestran son duraciones FIJAS (ya cerradas), no "hace cuánto"
+ *  respecto a ahora: cuánto tardó cada etapa y el total de cocina→entrega, para que
+ *  sirvan de reporte sin cambiar cada vez que se vuelve a abrir el pop-up. */
 export function EntregadosModal({ pedidos, onClose }) {
   return (
     <div
@@ -48,18 +60,18 @@ export function EntregadosModal({ pedidos, onClose }) {
                     <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {p.mesaNumero}</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{p.meseroNombre}</span>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--jb-gray)' }}>
-                    Recogido {minutosTranscurridos(p.estadoActualizadoAt)}
+                  <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--jb-ink)' }}>
+                    Total: {duracionMin(p.enviadoAt, p.entregadoAt)}
                   </span>
                 </div>
                 <div>
                   {p.items.map((item) => <ItemLine key={item.id} item={item} />)}
                 </div>
-                {p.listoAt && p.entregadoAt && (
-                  <p style={{ margin: '6px 0 0', fontSize: 12, fontWeight: 700, color: 'var(--jb-teal)' }}>
-                    Esperó {duracionMin(p.listoAt, p.entregadoAt)} en "Listos" antes de que lo recogieran
-                  </p>
-                )}
+                <div className="flex items-center flex-wrap" style={{ gap: 14, marginTop: 8, paddingTop: 8, borderTop: '1.5px dashed var(--jb-line)' }}>
+                  <TiempoTag label="En espera:" valor={duracionMin(p.enviadoAt, p.preparandoAt)} />
+                  <TiempoTag label="Cocinando:" valor={duracionMin(p.preparandoAt, p.listoAt)} />
+                  <TiempoTag label="Esperó mesero:" valor={duracionMin(p.listoAt, p.entregadoAt)} />
+                </div>
               </div>
             ))
           )}
