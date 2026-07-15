@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
 import { useMesaLayout } from '../../hooks/useMesaLayout'
+import { useMesaAdmin } from '../../hooks/useMesaAdmin'
 import { useMeseroStore } from '../../store/appStore'
 import { MesaCard, MESA_CARD_W, MESA_CARD_H } from '../../components/mesero/MesaCard'
+import { CrearMesaModal } from '../../components/mesero/CrearMesaModal'
 
 const GAP = 18
 
@@ -21,10 +23,12 @@ export default function MeseroFloorPage() {
   const navigate = useNavigate()
   const [moviendo, setMoviendo] = useState(false)
   const [dragId, setDragId] = useState(null)
-  const { mesas, mesero } = useMesas({ ignorarFiltro: moviendo })
+  const { mesas, mesero, meseros } = useMesas({ ignorarFiltro: moviendo })
   const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
   const toggleSoloMisMesas = useMeseroStore((s) => s.toggleSoloMisMesas)
   const { posiciones, setPosicion } = useMesaLayout()
+  const { crearMesa, borrarMesa } = useMesaAdmin()
+  const [creandoMesa, setCreandoMesa] = useState(false)
 
   const containerRef = useRef(null)
   const dragRef = useRef(null)
@@ -84,6 +88,16 @@ export default function MeseroFloorPage() {
     setDragId(null)
   }
 
+  async function handleBorrarMesa(mesa) {
+    if (mesa.estado === 'abierta') {
+      window.alert(`La Mesa ${mesa.numero} tiene una cuenta abierta — no se puede borrar.`)
+      return
+    }
+    if (!window.confirm(`¿Borrar la Mesa ${mesa.numero}? Esta acción no se puede deshacer.`)) return
+    const { error } = await borrarMesa(mesa.id)
+    if (error) window.alert(error)
+  }
+
   return (
     <div className="h-full flex flex-col" style={{ padding: '24px 32px' }}>
       <div className="flex items-center justify-between flex-shrink-0" style={{ marginBottom: 20 }}>
@@ -108,6 +122,18 @@ export default function MeseroFloorPage() {
               }}
             >
               {soloMisMesas ? '✓ Mostrando solo mis mesas' : 'Mostrar solo mis mesas'}
+            </button>
+          )}
+          {moviendo && (
+            <button
+              onClick={() => setCreandoMesa(true)}
+              style={{
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 16, fontWeight: 800,
+                padding: '14px 22px', borderRadius: 16, cursor: 'pointer',
+                border: '2.5px solid var(--jb-line)', background: '#fff', color: 'var(--jb-ink)',
+              }}
+            >
+              + Agregar mesa
             </button>
           )}
           <button
@@ -169,22 +195,46 @@ export default function MeseroFloorPage() {
             >
               <MesaCard mesa={mesa} onClick={moviendo ? undefined : () => navigate(`/mesero/orden/${mesa.id}`)} />
               {moviendo && (
-                <span
-                  style={{
-                    position: 'absolute', top: -8, right: -8, width: 32, height: 32,
-                    borderRadius: '50%', background: 'var(--jb-pink)', color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16, fontWeight: 900, boxShadow: '0 2px 8px rgba(51,34,42,0.25)',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  ⠿
-                </span>
+                <>
+                  <span
+                    style={{
+                      position: 'absolute', top: -8, right: -8, width: 32, height: 32,
+                      borderRadius: '50%', background: 'var(--jb-pink)', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 16, fontWeight: 900, boxShadow: '0 2px 8px rgba(51,34,42,0.25)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    ⠿
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleBorrarMesa(mesa) }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    title={`Borrar Mesa ${mesa.numero}`}
+                    style={{
+                      position: 'absolute', top: -8, left: -8, width: 32, height: 32,
+                      borderRadius: '50%', background: '#C24A4A', color: '#fff', border: 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 16, fontWeight: 900, boxShadow: '0 2px 8px rgba(51,34,42,0.25)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✕
+                  </button>
+                </>
               )}
             </div>
           )
         })}
       </div>
+
+      {creandoMesa && (
+        <CrearMesaModal
+          meseros={meseros}
+          onConfirm={crearMesa}
+          onClose={() => setCreandoMesa(false)}
+        />
+      )}
     </div>
   )
 }

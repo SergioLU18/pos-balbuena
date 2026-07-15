@@ -27,3 +27,12 @@ export function minutosTranscurridos(iso) {
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
   return min < 1 ? 'ahora' : `${min} min`
 }
+
+/** Duración congelada entre dos fechas ISO (a diferencia de minutosTranscurridos,
+ *  no depende de "ahora" — sirve para guardar/mostrar cuánto tardó una etapa ya
+ *  cerrada, p. ej. cuánto esperó un pedido "listo" antes de que lo recogieran). */
+export function duracionMin(inicioIso, finIso) {
+  if (!inicioIso || !finIso) return ''
+  const min = Math.floor((new Date(finIso).getTime() - new Date(inicioIso).getTime()) / 60000)
+  return min < 1 ? '<1 min' : `${min} min`
+}

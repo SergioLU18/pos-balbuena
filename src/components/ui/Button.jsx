@@ -16,6 +16,7 @@ const VARIANTS = {
   secondary: { background: '#fff', color: 'var(--jb-pink-dark)', border: '2px solid var(--jb-pink-light)' },
   ghost: { background: 'transparent', color: 'var(--jb-ink-soft)' },
   ok: { background: 'var(--jb-ok)', color: '#fff' },
+  teal: { background: 'var(--jb-teal)', color: '#fff' },
 }
 
 const SIZES = {

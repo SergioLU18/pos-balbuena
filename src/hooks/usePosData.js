@@ -35,6 +35,9 @@ function mapPedidos(pedidos) {
     enviadoAt: p.enviado_at,
     estado: p.estado,
     estadoActualizadoAt: p.estado_actualizado_at,
+    preparandoAt: p.preparando_at,
+    listoAt: p.listo_at,
+    entregadoAt: p.entregado_at,
   }))
 }
 

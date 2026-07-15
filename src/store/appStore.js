@@ -28,15 +28,29 @@ export const useMeseroStore = create((set) => ({
 
 // Catálogo de mesas y meseros. En modo mock arranca con los datos estáticos (así los
 // tests y el modo demo funcionan sin cargar nada); en modo backend `usePosData` lo
-// rellena desde Supabase. Los componentes leen siempre de aquí, sin importar el modo.
-export const usePosStore = create((set) => ({
-  mesas: IS_MOCK ? MESAS : [],
-  meseros: IS_MOCK ? MESEROS : [],
-  restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
-  setMesas: (mesas) => set({ mesas }),
-  setMeseros: (meseros) => set({ meseros }),
-  setRestauranteId: (restauranteId) => set({ restauranteId }),
-}))
+// rellena desde Supabase y pisa cualquier valor persistido. Los componentes leen
+// siempre de aquí, sin importar el modo.
+//
+// Persistido (mesas/meseros): en modo mock, crear/borrar una mesa desde el mapa del
+// piso solo vive en este store — sin persistir, un refresh de página (o un HMR de
+// Vite) lo regresaba a las 15 mesas originales del mock, borrando el cambio.
+export const usePosStore = create(
+  persist(
+    (set) => ({
+      mesas: IS_MOCK ? MESAS : [],
+      meseros: IS_MOCK ? MESEROS : [],
+      restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
+      setMesas: (mesas) => set({ mesas }),
+      setMeseros: (meseros) => set({ meseros }),
+      setRestauranteId: (restauranteId) => set({ restauranteId }),
+    }),
+    {
+      name: 'pos-balbuena-catalogo',
+      storage: safeStorage,
+      partialize: (s) => ({ mesas: s.mesas, meseros: s.meseros }),
+    },
+  ),
+)
 
 // posiciones: mesaId -> { x, y } en fracción (0–1) del área de piso disponible,
 // para que el mesero pueda acomodar el mapa como el salón real y no como una
@@ -120,12 +134,17 @@ export const useOrderStore = create(
   ),
 )
 
+// Columna de tiempo propia de cada etapa (además de estadoActualizadoAt): así el
+// cronómetro de la tarjeta se puede reiniciar por columna, y el tiempo en "listo"
+// queda congelado en el pedido al llegar a "entregado" (útil para reportes después).
+const COLUMNA_TIEMPO = { preparando: 'preparandoAt', listo: 'listoAt', entregado: 'entregadoAt' }
+
 // pedidos: uno por cada "enviar a cocina" (un ticket completo), no por platillo suelto —
 // así la cocina agrupa por pedido realizado tal como se pidió.
 export const usePedidosStore = create(
   persist(
     (set) => ({
-      pedidos: [], // { id, mesaId, mesaNumero, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt }
+      pedidos: [], // { id, mesaId, mesaNumero, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
 
       // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
       setPedidos: (pedidos) => set({ pedidos }),
@@ -133,11 +152,17 @@ export const usePedidosStore = create(
       agregarPedido: (pedido) => set((s) => ({ pedidos: [...s.pedidos, pedido] })),
 
       avanzarEstado: (pedidoId, estado) =>
-        set((s) => ({
-          pedidos: s.pedidos.map((p) =>
-            p.id === pedidoId ? { ...p, estado, estadoActualizadoAt: new Date().toISOString() } : p,
-          ),
-        })),
+        set((s) => {
+          const ahora = new Date().toISOString()
+          const columna = COLUMNA_TIEMPO[estado]
+          return {
+            pedidos: s.pedidos.map((p) =>
+              p.id === pedidoId
+                ? { ...p, estado, estadoActualizadoAt: ahora, ...(columna ? { [columna]: ahora } : {}) }
+                : p,
+            ),
+          }
+        }),
 
       eliminarPedidosDeMesa: (mesaId) =>
         set((s) => ({ pedidos: s.pedidos.filter((p) => p.mesaId !== mesaId) })),
@@ -154,5 +179,6 @@ if (IS_MOCK && typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key === 'pos-balbuena-orders') useOrderStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-pedidos') usePedidosStore.persist.rehydrate()
+    if (e.key === 'pos-balbuena-catalogo') usePosStore.persist.rehydrate()
   })
 }

@@ -41,6 +41,12 @@
   --jb-ok-bg:       #E8F7EF;
   --jb-warn:        #E2A93B;
   --jb-warn-bg:     #FCF2DF;
+  --jb-teal:        #2E8B95;
+  --jb-teal-bg:     #E5F2F3;
+  --jb-info:        #3E7CB1;
+  --jb-info-bg:     #E9F2F9;
+  --jb-queued:      #D97757;
+  --jb-queued-bg:   #FBEAE3;
   --jb-shadow:      rgba(194, 46, 108, 0.14);
 }
 

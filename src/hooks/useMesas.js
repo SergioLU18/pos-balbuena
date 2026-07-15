@@ -1,8 +1,9 @@
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
 
-/** Mesas visibles para el mesero actual, con su estado derivado (libre / preparando / abierta)
- *  y si la cocina ya dejó algún pedido "listo" para que el mesero lo recoja.
+/** Mesas visibles para el mesero actual, con su estado derivado (libre / preparando / abierta),
+ *  si cocina ya está cocinando algún pedido de la mesa, y si ya dejó alguno "listo" para
+ *  que el mesero lo recoja.
  *  `ignorarFiltro` fuerza a mostrar todas las mesas aunque "solo mis mesas" esté
  *  activo (se usa mientras se edita el mapa del piso, que es una vista global). */
 export function useMesas({ ignorarFiltro = false } = {}) {
@@ -21,11 +22,15 @@ export function useMesas({ ignorarFiltro = false } = {}) {
     const draft = drafts[m.id] ?? []
     const total = sumaCuenta(cuenta?.items ?? [])
     const tienePedidoListo = pedidos.some((p) => p.mesaId === m.id && p.estado === 'listo')
+    const tieneEnPreparacion = pedidos.some((p) => p.mesaId === m.id && p.estado === 'preparando')
+    const tienePedidoPendiente = pedidos.some((p) => p.mesaId === m.id && p.estado === 'pendiente')
     const estado = cuenta ? 'abierta' : draft.length > 0 ? 'preparando' : 'libre'
     return {
       ...m,
       estado,
       tienePedidoListo,
+      tieneEnPreparacion,
+      tienePedidoPendiente,
       total,
       itemCount: cuenta?.items?.length ?? 0,
       createdAt: cuenta?.createdAt ?? null,

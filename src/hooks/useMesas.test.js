@@ -37,4 +37,38 @@ describe('useMesas — indicador de pedido listo', () => {
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
     expect(mesa.tienePedidoListo).toBe(true)
   })
+
+  it('deja de marcar tienePedidoListo una vez que el mesero lo recoge ("entregado"), y la mesa vuelve a verse como cuenta abierta', () => {
+    useOrderStore.setState({
+      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, 1)], createdAt: new Date().toISOString() } },
+    })
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'entregado' }],
+    })
+    const { result } = renderHook(() => useMesas())
+    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+    expect(mesa.tienePedidoListo).toBe(false)
+    expect(mesa.estado).toBe('abierta')
+  })
+
+  it('marca tieneEnPreparacion cuando cocina ya empezó a cocinar el pedido de la mesa', () => {
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'preparando' }],
+    })
+    const { result } = renderHook(() => useMesas())
+    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+    expect(mesa.tieneEnPreparacion).toBe(true)
+    expect(mesa.tienePedidoListo).toBe(false)
+  })
+
+  it('marca tienePedidoPendiente cuando el pedido ya se envió pero cocina aún no lo empieza', () => {
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'pendiente' }],
+    })
+    const { result } = renderHook(() => useMesas())
+    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+    expect(mesa.tienePedidoPendiente).toBe(true)
+    expect(mesa.tieneEnPreparacion).toBe(false)
+    expect(mesa.tienePedidoListo).toBe(false)
+  })
 })

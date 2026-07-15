@@ -38,12 +38,28 @@ create table if not exists pedidos (
   mesero_nombre         text,
   items                 jsonb not null default '[]',
   estado                text not null default 'pendiente'
-                        check (estado in ('pendiente','preparando','listo')),
+                        check (estado in ('pendiente','preparando','listo','entregado')),
   enviado_at            timestamptz not null default now(),
   estado_actualizado_at timestamptz
 );
 create index if not exists pedidos_mesa_idx   on pedidos (mesa_id);
 create index if not exists pedidos_estado_idx on pedidos (estado);
+
+-- 'entregado' (recogido por el mesero) se agregó después del lanzamiento inicial;
+-- este ALTER hace que reaplicar schema.sql sobre una base ya existente lo sume
+-- al check constraint sin tronar por la tabla ya creada.
+alter table pedidos drop constraint if exists pedidos_estado_check;
+alter table pedidos add constraint pedidos_estado_check
+  check (estado in ('pendiente','preparando','listo','entregado'));
+
+-- Marca de tiempo de cuándo entró cada pedido a cada columna del tablero de cocina.
+-- Con esto el cronómetro de cada tarjeta se puede reiniciar por columna (en vez de
+-- mostrar siempre el tiempo total desde que se envió), y al llegar a "entregado" el
+-- tiempo que pasó en "listo" queda congelado en la fila para poder sacar reportes
+-- de tiempos de cocina más adelante.
+alter table pedidos add column if not exists preparando_at timestamptz;
+alter table pedidos add column if not exists listo_at      timestamptz;
+alter table pedidos add column if not exists entregado_at  timestamptz;
 
 -- ============================================================================
 -- RPC: enviar orden. Abre la cuenta de la mesa si no hay una activa, agrega los
@@ -119,6 +135,64 @@ end;
 $$;
 
 -- ============================================================================
+-- RPC: crear mesa. Se usa desde el modo "Mover mesas" del mapa del piso. Si se
+-- indica un mesero, se le asigna la mesa (se agrega su número a meseros.mesas).
+-- ============================================================================
+create or replace function pos_crear_mesa(
+  p_restaurante_id uuid,
+  p_numero         text,
+  p_mesero_id      uuid default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_mesa uuid;
+begin
+  insert into mesas (numero, restaurante_id, activo)
+  values (p_numero, p_restaurante_id, true)
+  returning id into v_mesa;
+
+  if p_mesero_id is not null then
+    update meseros set mesas = array_append(mesas, p_numero)
+    where id = p_mesero_id and not (p_numero = any(mesas));
+  end if;
+
+  return v_mesa;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: borrar mesa (baja lógica: activo=false, no se pierde el historial de
+-- pedidos/cuentas que ya la referencian). Bloqueada si la mesa tiene una cuenta
+-- abierta — borrarla a medio servicio dejaría la cuenta huérfana.
+-- ============================================================================
+create or replace function pos_borrar_mesa(p_mesa_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_numero        text;
+  v_tiene_cuenta  boolean;
+begin
+  select exists(select 1 from cuentas where mesa_id = p_mesa_id and activa) into v_tiene_cuenta;
+  if v_tiene_cuenta then
+    raise exception 'No se puede borrar una mesa con cuenta abierta.';
+  end if;
+
+  select numero into v_numero from mesas where id = p_mesa_id;
+
+  update mesas set activo = false where id = p_mesa_id;
+
+  update meseros set mesas = array_remove(mesas, v_numero)
+  where v_numero = any(mesas);
+end;
+$$;
+
+-- ============================================================================
 -- RLS · solo en las tablas nuevas del POS. Las tablas de tali conservan SUS
 -- políticas: el POS lee cuentas/cuenta_items/mesas con la anon key (como ya hace
 -- tali) y escribe mediante las RPCs SECURITY DEFINER de arriba.
@@ -134,6 +208,8 @@ create policy "pos pedidos total" on pedidos for all to anon, authenticated usin
 
 grant execute on function pos_enviar_orden(uuid, text, jsonb) to anon, authenticated;
 grant execute on function pos_cerrar_mesa(uuid)               to anon, authenticated;
+grant execute on function pos_crear_mesa(uuid, text, uuid)    to anon, authenticated;
+grant execute on function pos_borrar_mesa(uuid)               to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

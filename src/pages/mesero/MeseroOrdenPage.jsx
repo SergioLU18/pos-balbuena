@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { usePosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
@@ -38,6 +38,17 @@ export default function MeseroOrdenPage() {
   function confirmarPlatillo(item) {
     agregarItemConstruido(item)
     setPlatilloEnConfig(null)
+  }
+
+  // Enviar a cocina cierra el paso de armar la orden. Espera 1.5s antes de volver al
+  // mapa de mesas para que el mesero alcance a ver el ticket confirmando el envío,
+  // en vez de que la pantalla cambie de golpe.
+  const navigateTimeoutRef = useRef(null)
+  useEffect(() => () => clearTimeout(navigateTimeoutRef.current), [])
+
+  function handleEnviarACocina() {
+    enviarACocina()
+    navigateTimeoutRef.current = setTimeout(() => navigate('/mesero'), 1500)
   }
 
   // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
@@ -113,7 +124,7 @@ export default function MeseroOrdenPage() {
           subtotalCuenta={subtotalCuenta}
           onQty={cambiarCantidad}
           onRemove={quitarItem}
-          onEnviar={enviarACocina}
+          onEnviar={handleEnviarACocina}
         />
       </div>
 

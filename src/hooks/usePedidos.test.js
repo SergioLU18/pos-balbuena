@@ -113,4 +113,51 @@ describe('usePedidos', () => {
     act(() => result.current.avanzarEstado('p1', 'listo'))
     expect(usePedidosStore.getState().pedidos[0].estadoActualizadoAt).toBeTruthy()
   })
+
+  it('al recoger un pedido listo (mesero), sale de "listos" y no aparece en ninguna columna', () => {
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: 'mesa-1', mesaNumero: '1', meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'listo' }],
+    })
+    const { result } = renderHook(() => usePedidos())
+    act(() => result.current.avanzarEstado('p1', 'entregado'))
+    expect(usePedidosStore.getState().pedidos[0].estado).toBe('entregado')
+    expect(result.current.listos).toEqual([])
+    expect(result.current.nuevos).toEqual([])
+    expect(result.current.preparando).toEqual([])
+  })
+
+  it('avanzarEstado guarda la marca de tiempo propia de cada columna (para reiniciar el cronómetro por columna)', () => {
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: 'mesa-1', mesaNumero: '1', meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'pendiente' }],
+    })
+    const { result } = renderHook(() => usePedidos())
+
+    act(() => result.current.avanzarEstado('p1', 'preparando'))
+    expect(usePedidosStore.getState().pedidos[0].preparandoAt).toBeTruthy()
+
+    act(() => result.current.avanzarEstado('p1', 'listo'))
+    expect(usePedidosStore.getState().pedidos[0].listoAt).toBeTruthy()
+  })
+
+  it('al recoger el pedido, congela listoAt y guarda entregadoAt (para calcular después cuánto esperó en "listo")', () => {
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: 'mesa-1', mesaNumero: '1', meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'listo', listoAt: '2026-01-01T10:00:00Z' }],
+    })
+    const { result } = renderHook(() => usePedidos())
+    act(() => result.current.avanzarEstado('p1', 'entregado'))
+    const pedido = usePedidosStore.getState().pedidos[0]
+    expect(pedido.listoAt).toBe('2026-01-01T10:00:00Z') // no se toca: es el inicio congelado del tramo "listo"
+    expect(pedido.entregadoAt).toBeTruthy()
+  })
+
+  it('en "entregados" (backlog) muestra el recogido más reciente arriba', () => {
+    usePedidosStore.setState({
+      pedidos: [
+        { id: 'p1', mesaId: 'mesa-1', mesaNumero: '1', meseroNombre: 'Ana', items: [], enviadoAt: '2026-01-01T10:00:00Z', estado: 'entregado', estadoActualizadoAt: '2026-01-01T10:20:00Z' },
+        { id: 'p2', mesaId: 'mesa-2', mesaNumero: '2', meseroNombre: 'Ana', items: [], enviadoAt: '2026-01-01T10:05:00Z', estado: 'entregado', estadoActualizadoAt: '2026-01-01T10:30:00Z' },
+      ],
+    })
+    const { result } = renderHook(() => usePedidos())
+    expect(result.current.entregados.map((p) => p.id)).toEqual(['p2', 'p1'])
+  })
 })
