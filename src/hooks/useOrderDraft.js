@@ -4,6 +4,7 @@ import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { describirMitades } from '../lib/describirItem'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
+import { cargarTodo } from './usePosData'
 
 const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
 
@@ -185,6 +186,19 @@ export function useOrderDraft(mesaId) {
     enviarOrden(mesaId)
   }
 
+  // El renglón de cuenta_items que corresponde a un renglón de un pedido: ambos comparten
+  // `nombre` (cuenta_items es plano y se agrega por nombre), no el id. Devuelve la fila
+  // actual de la cuenta para poder ajustarla de forma optimista antes de que confirme la RPC.
+  const cuentaItemDePedidoItem = (pedidoItem) => {
+    const cuentaActual = useOrderStore.getState().cuentas[mesaId]
+    return cuentaActual?.items.find((c) => (c.nombre ?? c.id) === (pedidoItem.nombre ?? pedidoItem.id)) ?? null
+  }
+
+  // Recarga autoritativa desde Supabase: deshace una actualización optimista cuando la
+  // RPC del backend termina fallando (p. ej. la cocina empezó el pedido entre el render
+  // y el clic, y el guard server-side rechaza la edición).
+  const recargarDesdeBackend = () => cargarTodo(usePosStore.getState().restauranteId).catch(() => {})
+
   // Edición de un renglón ya enviado a cocina. Solo tiene efecto mientras su pedido
   // sigue en 'pendiente' (Nuevo) — en backend lo valida el RPC del lado del servidor;
   // en mock, actualizarCantidadItemPedido/quitarItemPedido son no-op fuera de ese estado.
@@ -196,8 +210,19 @@ export function useOrderDraft(mesaId) {
       const item = pedido?.items.find((it) => it.id === itemId)
       if (!item) return
       const cantidad = Math.max(1, item.cantidad + delta)
+      const aplicado = cantidad - item.cantidad
+      if (aplicado === 0) return // ya estaba en el mínimo; no hay nada que cambiar
+
+      // Optimista: reflejamos el cambio en el estado local de inmediato para que el ticket
+      // no se quede "colgado" el ~medio segundo que tarda la RPC + la recarga por realtime.
+      const ci = cuentaItemDePedidoItem(item)
+      if (ci) actualizarCantidadItemCuenta(mesaId, ci.id, ci.cantidad + aplicado)
+      actualizarCantidadItemPedido(pedidoId, itemId, cantidad)
+
       sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad })
-        .then(({ error }) => { if (error) console.error('[orden] cambiarCantidadEnviado falló:', error) })
+        .then(({ error }) => {
+          if (error) { console.error('[orden] cambiarCantidadEnviado falló:', error); recargarDesdeBackend() }
+        })
       return
     }
 
@@ -209,10 +234,37 @@ export function useOrderDraft(mesaId) {
     actualizarCantidadItemCuenta(mesaId, itemId, cantidad)
   }
 
+  // Fija una cantidad ABSOLUTA sobre un renglón ya enviado. Lo usa OrderTicket al pulsar
+  // "Enviar a cocina": los ajustes con −/+ se acumulan localmente (en preview) y solo se
+  // confirman aquí, todos juntos, en vez de disparar una RPC por cada toque.
+  function fijarCantidadEnviado(pedidoId, itemId, nuevaCantidad) {
+    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (!item) return
+    cambiarCantidadEnviado(pedidoId, itemId, nuevaCantidad - item.cantidad)
+  }
+
   function quitarItemEnviado(pedidoId, itemId) {
     if (!IS_MOCK) {
+      // Optimista: quitamos el renglón del estado local en el acto (bajando o eliminando
+      // su fila de cuenta_items según la cantidad) y luego confirmamos con la RPC. Si falla,
+      // recargamos para restaurar el estado real.
+      const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+      const item = pedido?.items.find((it) => it.id === itemId)
+      if (item) {
+        const ci = cuentaItemDePedidoItem(item)
+        if (ci) {
+          const restante = ci.cantidad - item.cantidad
+          if (restante > 0) actualizarCantidadItemCuenta(mesaId, ci.id, restante)
+          else quitarItemCuenta(mesaId, ci.id)
+        }
+        quitarItemPedido(pedidoId, itemId)
+      }
+
       sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
-        .then(({ error }) => { if (error) console.error('[orden] quitarItemEnviado falló:', error) })
+        .then(({ error }) => {
+          if (error) { console.error('[orden] quitarItemEnviado falló:', error); recargarDesdeBackend() }
+        })
       return
     }
 
@@ -252,6 +304,7 @@ export function useOrderDraft(mesaId) {
     quitarItem,
     enviarACocina,
     cambiarCantidadEnviado,
+    fijarCantidadEnviado,
     quitarItemEnviado,
     cerrarMesa,
   }

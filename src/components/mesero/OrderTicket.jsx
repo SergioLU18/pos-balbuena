@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { f } from '../../lib/utils'
 import { describirMitades } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
+import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
 
 function DescripcionItem({ item }) {
@@ -15,6 +17,10 @@ function DescripcionItem({ item }) {
 // texto que usa MesaCard.jsx para el estado de cocina, para que se lea igual desde
 // las dos pantallas del mesero.
 const ESTADO_LABEL = {
+  // 'pendiente' = ya enviado a cocina pero todavía en la columna "Nuevo" (cocina no lo
+  // empezó): sigue editable, pero necesita su propia etiqueta para no confundirse con un
+  // renglón del draft que aún no se ha mandado.
+  pendiente: { texto: 'Enviado a cocina ✓', color: 'var(--jb-ok)' },
   preparando: { texto: 'En preparación', color: '#2C5F86' },
   listo: { texto: '¡Listo para servir!', color: '#1B5E66' },
   entregado: { texto: 'Entregado', color: 'var(--jb-gray)' },
@@ -59,7 +65,7 @@ function DraftRow({ item, onQty, onRemove }) {
   )
 }
 
-function EnviadoRow({ item, pedido, onQty, onRemove }) {
+function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onRemove }) {
   // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
   // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
@@ -69,11 +75,18 @@ function EnviadoRow({ item, pedido, onQty, onRemove }) {
   // (caso legado, o cuenta_items sin pedido asociado), se trata como no editable.
   const editable = pedido?.estado === 'pendiente'
   const estadoLabel = pedido ? ESTADO_LABEL[pedido.estado] : null
+  const [confirmando, setConfirmando] = useState(false)
 
-  function quitar() {
-    if (window.confirm(`¿Quitar "${nombre}" de la comanda? Cocina ya la puede estar viendo.`)) {
-      onRemove(pedido.id, item.id)
-    }
+  // Los −/+ NO mandan nada a cocina: solo ajustan una cantidad en preview (`staged`) que
+  // se confirma al pulsar "Enviar a cocina". Mientras `staged` difiera de lo ya enviado,
+  // el renglón muestra un aviso de "cambio sin enviar" y un botón para descartarlo.
+  const enviada = item.cantidad
+  const cantidad = editable && staged != null ? staged : enviada
+  const editado = editable && staged != null && staged !== enviada
+
+  function confirmarQuitar() {
+    onRemove(pedido.id, pedidoItemId)
+    setConfirmando(false)
   }
 
   return (
@@ -81,33 +94,104 @@ function EnviadoRow({ item, pedido, onQty, onRemove }) {
       <div className="flex items-start justify-between" style={{ gap: 10 }}>
         <div>
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
-            {item.cantidad > 1 ? `${item.cantidad}× ` : ''}{nombre}
+            {cantidad > 1 ? `${cantidad}× ` : ''}{nombre}
           </span>
           {esRico && <DescripcionItem item={item} />}
         </div>
-        <span style={{ fontSize: 15, fontWeight: 700 }}>{f(precio * item.cantidad)}</span>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{f(precio * cantidad)}</span>
       </div>
-      {editable ? (
+      <span style={{ display: 'block', marginTop: 4, fontSize: 11, fontWeight: 700, color: estadoLabel?.color ?? 'var(--jb-ok)' }}>
+        {estadoLabel?.texto ?? 'Enviado a cocina ✓'}
+        {editado && (
+          <span style={{ color: 'var(--jb-pink-dark)' }}> · cambio sin enviar (antes {enviada})</span>
+        )}
+      </span>
+      {editable && (
         <CantidadControles
-          cantidad={item.cantidad}
-          onDec={() => onQty(pedido.id, item.id, -1)}
-          onInc={() => onQty(pedido.id, item.id, 1)}
-          onRemove={quitar}
+          cantidad={cantidad}
+          onDec={() => onStage(pedidoItemId, cantidad - 1)}
+          onInc={() => onStage(pedidoItemId, cantidad + 1)}
+          onRemove={() => setConfirmando(true)}
         />
-      ) : (
-        <span style={{ fontSize: 11, fontWeight: 700, color: estadoLabel?.color ?? 'var(--jb-ok)' }}>
-          {estadoLabel?.texto ?? 'Enviado a cocina ✓'}
-        </span>
+      )}
+      {editado && (
+        <button
+          onClick={() => onRevert(pedidoItemId)}
+          style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, color: 'var(--jb-ink-soft)', fontSize: 12, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
+        >
+          Deshacer cambio
+        </button>
+      )}
+
+      {confirmando && (
+        <ConfirmModal
+          titulo="¿Quitar platillo?"
+          mensaje={`Se quitará "${nombre}" de la comanda. Ya está enviado a cocina, así que también desaparecerá de su tablero.`}
+          confirmarLabel="Sí, quitar"
+          cancelarLabel="Conservar"
+          danger
+          onConfirm={confirmarQuitar}
+          onClose={() => setConfirmando(false)}
+        />
       )}
     </div>
   )
 }
 
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, onQty, onRemove, onQtyEnviado, onRemoveEnviado, onEnviar }) {
-  const totalGeneral = subtotalDraft + subtotalCuenta
-  // Mapa itemId -> pedido de origen, para saber si un renglón ya enviado sigue editable
-  // (su pedido en 'pendiente'/Nuevo) o ya lo tomó cocina.
-  const pedidoPorItemId = new Map((pedidos ?? []).flatMap((p) => p.items.map((it) => [it.id, p])))
+// Clave para casar un renglón de la cuenta (cuenta_items) con el renglón que lo
+// originó dentro de un pedido (pedidos.items). En backend ambos comparten `nombre`
+// (cuenta_items es plano y se agrega por nombre), pero NO el id: cuenta_items trae su
+// propio id de fila. En mock los objetos son los mismos y sí comparten id, y no tienen
+// `nombre`. `nombre ?? id` sirve para los dos casos.
+const claveRenglon = (it) => it.nombre ?? it.id
+
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, onQty, onRemove, onFijarEnviado, onRemoveEnviado, onEnviar }) {
+  // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
+  // si un renglón ya enviado sigue editable (su pedido en 'pendiente'/Nuevo) o ya lo tomó
+  // cocina, y para pasarle a la RPC el item id del pedido (no el de cuenta_items). Se
+  // prefiere un pedido en 'pendiente' cuando el mismo nombre aparece en varias comandas.
+  const origenPorClave = new Map()
+  for (const p of pedidos ?? []) {
+    for (const it of p.items) {
+      const clave = claveRenglon(it)
+      const prev = origenPorClave.get(clave)
+      if (!prev || (p.estado === 'pendiente' && prev.pedido.estado !== 'pendiente')) {
+        origenPorClave.set(clave, { pedido: p, itemId: it.id })
+      }
+    }
+  }
+
+  // Ajustes de cantidad en preview sobre renglones ya enviados, por id de renglón del
+  // pedido. No tocan cocina hasta pulsar "Enviar a cocina" (que los confirma en bloque).
+  const [edits, setEdits] = useState({})
+  const stageQty = (pedidoItemId, next) => setEdits((e) => ({ ...e, [pedidoItemId]: Math.max(1, next) }))
+  const revertQty = (pedidoItemId) => setEdits((e) => { const { [pedidoItemId]: _omit, ...rest } = e; return rest })
+  // Al quitar un renglón se descarta también cualquier ajuste pendiente suyo.
+  const quitarEnviado = (pedidoId, pedidoItemId) => { revertQty(pedidoItemId); onRemoveEnviado(pedidoId, pedidoItemId) }
+
+  // Ajustes pendientes reales (staged distinto de lo enviado) + su efecto en el total,
+  // para habilitar el botón y mostrar el total ya con los cambios reflejados.
+  const editsPendientes = []
+  let editDelta = 0
+  for (const item of cuenta?.items ?? []) {
+    const origen = origenPorClave.get(claveRenglon(item))
+    if (!origen) continue
+    const staged = edits[origen.itemId]
+    if (staged == null || staged === item.cantidad) continue
+    editsPendientes.push({ pedidoId: origen.pedido.id, itemId: origen.itemId, cantidad: staged })
+    const precio = item.precio_unitario != null ? Number(item.precio_unitario) : calcItemPrecio(item)
+    editDelta += precio * (staged - item.cantidad)
+  }
+
+  const hayEdits = editsPendientes.length > 0
+  const totalGeneral = subtotalDraft + subtotalCuenta + editDelta
+  const puedeEnviar = draft.length > 0 || hayEdits
+
+  function enviarTodo() {
+    editsPendientes.forEach((e) => onFijarEnviado(e.pedidoId, e.itemId, e.cantidad))
+    if (draft.length > 0) onEnviar()
+    setEdits({})
+  }
 
   return (
     <div
@@ -119,15 +203,21 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
       </div>
 
       <div className="flex-1 no-scrollbar" style={{ overflowY: 'auto', padding: '4px 22px' }}>
-        {cuenta?.items?.length > 0 && cuenta.items.map((item) => (
-          <EnviadoRow
-            key={item.id}
-            item={item}
-            pedido={pedidoPorItemId.get(item.id)}
-            onQty={onQtyEnviado}
-            onRemove={onRemoveEnviado}
-          />
-        ))}
+        {cuenta?.items?.length > 0 && cuenta.items.map((item) => {
+          const origen = origenPorClave.get(claveRenglon(item))
+          return (
+            <EnviadoRow
+              key={item.id}
+              item={item}
+              pedido={origen?.pedido}
+              pedidoItemId={origen?.itemId}
+              staged={origen ? edits[origen.itemId] : undefined}
+              onStage={stageQty}
+              onRevert={revertQty}
+              onRemove={quitarEnviado}
+            />
+          )
+        })}
 
         {draft.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--jb-gray)', fontSize: 14, padding: '32px 0' }}>
@@ -143,8 +233,10 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>Total</span>
           <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{f(totalGeneral)}</span>
         </div>
-        <Button onClick={onEnviar} disabled={draft.length === 0} style={{ width: '100%' }}>
-          Enviar {draft.length > 0 ? `${draft.length} platillo${draft.length > 1 ? 's' : ''} ` : ''}a cocina
+        <Button onClick={enviarTodo} disabled={!puedeEnviar} style={{ width: '100%' }}>
+          {draft.length > 0
+            ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
+            : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}
         </Button>
       </div>
     </div>

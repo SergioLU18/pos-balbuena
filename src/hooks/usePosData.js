@@ -41,7 +41,7 @@ function mapPedidos(pedidos) {
   }))
 }
 
-async function cargarTodo(rid) {
+export async function cargarTodo(rid) {
   const [mesasRes, meserosRes, cuentasRes, pedidosRes] = await Promise.all([
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
@@ -74,6 +74,7 @@ export function usePosData() {
 
     let vivo = true
     let channel = null
+    let recargarTimer = null
 
     async function init() {
       const { data: rest, error } = await sb
@@ -92,7 +93,16 @@ export function usePosData() {
       // Cualquier cambio en las tablas compartidas dispara una recarga completa (misma
       // estrategia que tali). Filtramos por restaurante donde la tabla lo permite, para
       // no recargar por actividad de otros restaurantes del proyecto compartido.
-      const recargar = () => { if (vivo) cargarTodo(rid).catch(() => {}) }
+      // Un solo "enviar a cocina" produce una ráfaga de eventos (cuentas + una fila de
+      // cuenta_items por platillo + pedidos); sin debounce cada uno lanzaría un cargarTodo
+      // que corre en paralelo con los demás y se pisan, provocando el parpadeo del ticket
+      // (los renglones desaparecen y reaparecen). El debounce colapsa la ráfaga en una
+      // sola recarga ~200 ms después del último evento, ya con todo comiteado.
+      const recargar = () => {
+        if (!vivo) return
+        clearTimeout(recargarTimer)
+        recargarTimer = setTimeout(() => { if (vivo) cargarTodo(rid).catch(() => {}) }, 200)
+      }
       channel = sb
         .channel('pos-balbuena-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas', filter: `restaurante_id=eq.${rid}` }, recargar)
@@ -106,6 +116,7 @@ export function usePosData() {
 
     return () => {
       vivo = false
+      clearTimeout(recargarTimer)
       if (channel) sb.removeChannel(channel)
     }
   }, [])
