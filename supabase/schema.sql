@@ -117,6 +117,133 @@ end;
 $$;
 
 -- ============================================================================
+-- RPC: editar cantidad de un renglón ya enviado. Solo permitido mientras el
+-- pedido sigue en 'pendiente' (cocina aún no lo ha visto/empezado) — la
+-- validación es server-side (no solo ocultar el botón en el cliente), igual
+-- que el resto de las funciones de este archivo. Sincroniza pedidos.items
+-- (jsonb, para cocina) y la fila correspondiente de cuenta_items (para el
+-- total de tali), ubicada por (cuenta_id, nombre) — la misma clave que usa
+-- add_or_update_cuenta_item para crearla en pos_enviar_orden.
+-- ============================================================================
+create or replace function pos_editar_item_pedido(
+  p_pedido_id uuid,
+  p_item_id   text,
+  p_cantidad  integer
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pedido      pedidos%rowtype;
+  v_idx         int;
+  v_item        jsonb;
+  v_delta       integer;
+begin
+  if p_cantidad is null or p_cantidad < 1 then
+    raise exception 'La cantidad debe ser al menos 1.';
+  end if;
+
+  select * into v_pedido from pedidos where id = p_pedido_id for update;
+  if not found then
+    raise exception 'Pedido % no existe.', p_pedido_id;
+  end if;
+  if v_pedido.estado <> 'pendiente' then
+    raise exception 'El pedido ya no está en Nuevo (estado actual: %) — no se puede editar.', v_pedido.estado;
+  end if;
+
+  select ord - 1, value into v_idx, v_item
+  from jsonb_array_elements(v_pedido.items) with ordinality as t(value, ord)
+  where value->>'id' = p_item_id;
+
+  if v_idx is null then
+    raise exception 'Renglón % no existe en el pedido.', p_item_id;
+  end if;
+
+  v_delta := p_cantidad - (v_item->>'cantidad')::integer;
+
+  update pedidos
+  set items = jsonb_set(items, array[v_idx::text, 'cantidad'], to_jsonb(p_cantidad))
+  where id = p_pedido_id;
+
+  if v_pedido.cuenta_id is not null then
+    update cuenta_items
+    set cantidad = cantidad + v_delta
+    where cuenta_id = v_pedido.cuenta_id
+      and nombre = v_item->>'nombre';
+
+    delete from cuenta_items
+    where cuenta_id = v_pedido.cuenta_id
+      and nombre = v_item->>'nombre'
+      and cantidad <= 0;
+
+    perform recalculate_subtotal(v_pedido.cuenta_id);
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: eliminar un renglón ya enviado. Mismo guard de estado = 'pendiente'
+-- que pos_editar_item_pedido. Si el renglón eliminado era el último del
+-- pedido, se borra el pedido completo (una comanda sin platillos no debe
+-- seguir apareciendo en el tablero de cocina).
+-- ============================================================================
+create or replace function pos_eliminar_item_pedido(
+  p_pedido_id uuid,
+  p_item_id   text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pedido      pedidos%rowtype;
+  v_item        jsonb;
+  v_items_nuevo jsonb;
+begin
+  select * into v_pedido from pedidos where id = p_pedido_id for update;
+  if not found then
+    raise exception 'Pedido % no existe.', p_pedido_id;
+  end if;
+  if v_pedido.estado <> 'pendiente' then
+    raise exception 'El pedido ya no está en Nuevo (estado actual: %) — no se puede eliminar.', v_pedido.estado;
+  end if;
+
+  select value into v_item
+  from jsonb_array_elements(v_pedido.items) as value
+  where value->>'id' = p_item_id;
+
+  if v_item is null then
+    raise exception 'Renglón % no existe en el pedido.', p_item_id;
+  end if;
+
+  select coalesce(jsonb_agg(value), '[]'::jsonb) into v_items_nuevo
+  from jsonb_array_elements(v_pedido.items) as value
+  where value->>'id' <> p_item_id;
+
+  if v_pedido.cuenta_id is not null then
+    update cuenta_items
+    set cantidad = cantidad - (v_item->>'cantidad')::integer
+    where cuenta_id = v_pedido.cuenta_id
+      and nombre = v_item->>'nombre';
+
+    delete from cuenta_items
+    where cuenta_id = v_pedido.cuenta_id
+      and nombre = v_item->>'nombre'
+      and cantidad <= 0;
+
+    perform recalculate_subtotal(v_pedido.cuenta_id);
+  end if;
+
+  if jsonb_array_length(v_items_nuevo) = 0 then
+    delete from pedidos where id = p_pedido_id;
+  else
+    update pedidos set items = v_items_nuevo where id = p_pedido_id;
+  end if;
+end;
+$$;
+
+-- ============================================================================
 -- RPC: cerrar mesa (temporal, mientras el cierre real lo hará la app de pagos).
 -- Marca la cuenta activa como cerrada — igual que tali (activa=false,
 -- estado='cerrada', closed_at=now()) — y borra los pedidos de cocina de la mesa.
@@ -206,10 +333,12 @@ create policy "pos meseros total" on meseros for all to anon, authenticated usin
 drop policy if exists "pos pedidos total" on pedidos;
 create policy "pos pedidos total" on pedidos for all to anon, authenticated using (true) with check (true);
 
-grant execute on function pos_enviar_orden(uuid, text, jsonb) to anon, authenticated;
-grant execute on function pos_cerrar_mesa(uuid)               to anon, authenticated;
-grant execute on function pos_crear_mesa(uuid, text, uuid)    to anon, authenticated;
-grant execute on function pos_borrar_mesa(uuid)               to anon, authenticated;
+grant execute on function pos_enviar_orden(uuid, text, jsonb)         to anon, authenticated;
+grant execute on function pos_editar_item_pedido(uuid, text, integer) to anon, authenticated;
+grant execute on function pos_eliminar_item_pedido(uuid, text)        to anon, authenticated;
+grant execute on function pos_cerrar_mesa(uuid)                       to anon, authenticated;
+grant execute on function pos_crear_mesa(uuid, text, uuid)            to anon, authenticated;
+grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

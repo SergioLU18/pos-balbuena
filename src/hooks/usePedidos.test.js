@@ -68,6 +68,77 @@ describe('cerrarMesa (temporal, mientras no exista el cierre real desde la app d
   })
 })
 
+describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya enviado', () => {
+  it('mientras el pedido sigue en Nuevo (pendiente), permite subir la cantidad y lo refleja en la cuenta', () => {
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))
+    act(() => result.current.enviarACocina())
+    const pedidoId = usePedidosStore.getState().pedidos[0].id
+    const itemId = usePedidosStore.getState().pedidos[0].items[0].id
+
+    act(() => result.current.cambiarCantidadEnviado(pedidoId, itemId, 1))
+
+    expect(usePedidosStore.getState().pedidos[0].items[0].cantidad).toBe(2)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items[0].cantidad).toBe(2)
+  })
+
+  it('la cantidad nunca baja de 1 con el stepper (para eso está "Quitar")', () => {
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))
+    act(() => result.current.enviarACocina())
+    const pedidoId = usePedidosStore.getState().pedidos[0].id
+    const itemId = usePedidosStore.getState().pedidos[0].items[0].id
+
+    act(() => result.current.cambiarCantidadEnviado(pedidoId, itemId, -1))
+
+    expect(usePedidosStore.getState().pedidos[0].items[0].cantidad).toBe(1)
+  })
+
+  it('quitar el único renglón de un pedido pendiente borra el pedido completo y el renglón de la cuenta', () => {
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))
+    act(() => result.current.enviarACocina())
+    const pedidoId = usePedidosStore.getState().pedidos[0].id
+    const itemId = usePedidosStore.getState().pedidos[0].items[0].id
+
+    act(() => result.current.quitarItemEnviado(pedidoId, itemId))
+
+    expect(usePedidosStore.getState().pedidos).toHaveLength(0)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items).toHaveLength(0)
+  })
+
+  it('quitar un renglón deja el resto del pedido intacto', () => {
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 1)))
+    act(() => result.current.enviarACocina())
+    const pedidoId = usePedidosStore.getState().pedidos[0].id
+    const [item1, item2] = usePedidosStore.getState().pedidos[0].items
+
+    act(() => result.current.quitarItemEnviado(pedidoId, item1.id))
+
+    expect(usePedidosStore.getState().pedidos).toHaveLength(1)
+    expect(usePedidosStore.getState().pedidos[0].items.map((it) => it.id)).toEqual([item2.id])
+  })
+
+  it('una vez que cocina avanzó el pedido a "preparando", editar o quitar un renglón ya no tiene efecto', () => {
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))
+    act(() => result.current.enviarACocina())
+    const pedidoId = usePedidosStore.getState().pedidos[0].id
+    const itemId = usePedidosStore.getState().pedidos[0].items[0].id
+    act(() => usePedidosStore.getState().avanzarEstado(pedidoId, 'preparando'))
+
+    act(() => result.current.cambiarCantidadEnviado(pedidoId, itemId, 1))
+    expect(usePedidosStore.getState().pedidos[0].items[0].cantidad).toBe(1)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items[0].cantidad).toBe(1)
+
+    act(() => result.current.quitarItemEnviado(pedidoId, itemId))
+    expect(usePedidosStore.getState().pedidos[0].items).toHaveLength(1)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items).toHaveLength(1)
+  })
+})
+
 describe('usePedidos', () => {
   it('agrupa los pedidos por estado y los ordena del más antiguo al más nuevo', () => {
     usePedidosStore.setState({

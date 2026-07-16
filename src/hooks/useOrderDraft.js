@@ -98,10 +98,15 @@ export function useOrderDraft(mesaId) {
   const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
   const enviarOrden = useOrderStore((s) => s.enviarOrden)
   const clearDraft = useOrderStore((s) => s.clearDraft)
+  const actualizarCantidadItemCuenta = useOrderStore((s) => s.actualizarCantidadItemCuenta)
+  const quitarItemCuenta = useOrderStore((s) => s.quitarItemCuenta)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const agregarPedido = usePedidosStore((s) => s.agregarPedido)
   const cerrarCuenta = useOrderStore((s) => s.cerrarCuenta)
   const eliminarPedidosDeMesa = usePedidosStore((s) => s.eliminarPedidosDeMesa)
+  const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
+  const actualizarCantidadItemPedido = usePedidosStore((s) => s.actualizarCantidadItemPedido)
+  const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
 
@@ -180,6 +185,43 @@ export function useOrderDraft(mesaId) {
     enviarOrden(mesaId)
   }
 
+  // Edición de un renglón ya enviado a cocina. Solo tiene efecto mientras su pedido
+  // sigue en 'pendiente' (Nuevo) — en backend lo valida el RPC del lado del servidor;
+  // en mock, actualizarCantidadItemPedido/quitarItemPedido son no-op fuera de ese estado.
+  // La UI (OrderTicket) ya solo muestra estos controles para pedidos 'pendiente', así
+  // que en el flujo normal esa condición no llega a activarse.
+  function cambiarCantidadEnviado(pedidoId, itemId, delta) {
+    if (!IS_MOCK) {
+      const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+      const item = pedido?.items.find((it) => it.id === itemId)
+      if (!item) return
+      const cantidad = Math.max(1, item.cantidad + delta)
+      sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad })
+        .then(({ error }) => { if (error) console.error('[orden] cambiarCantidadEnviado falló:', error) })
+      return
+    }
+
+    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (!item || pedido.estado !== 'pendiente') return
+    const cantidad = Math.max(1, item.cantidad + delta)
+    actualizarCantidadItemPedido(pedidoId, itemId, cantidad)
+    actualizarCantidadItemCuenta(mesaId, itemId, cantidad)
+  }
+
+  function quitarItemEnviado(pedidoId, itemId) {
+    if (!IS_MOCK) {
+      sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
+        .then(({ error }) => { if (error) console.error('[orden] quitarItemEnviado falló:', error) })
+      return
+    }
+
+    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+    if (!pedido || pedido.estado !== 'pendiente') return
+    quitarItemPedido(pedidoId, itemId)
+    quitarItemCuenta(mesaId, itemId)
+  }
+
   // TEMPORAL: en la integración real, la cuenta se cierra desde la app de pagos
   // (cuando se liquida por completo). Mientras no exista esa conexión, esto le da
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
@@ -209,6 +251,8 @@ export function useOrderDraft(mesaId) {
     cambiarNota,
     quitarItem,
     enviarACocina,
+    cambiarCantidadEnviado,
+    quitarItemEnviado,
     cerrarMesa,
   }
 }

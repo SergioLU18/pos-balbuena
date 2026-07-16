@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { usePosStore } from '../../store/appStore'
+import { usePosStore, usePedidosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
@@ -12,6 +12,7 @@ export default function MeseroOrdenPage() {
   const { mesaId } = useParams()
   const navigate = useNavigate()
   const mesa = usePosStore((s) => s.mesas).find((m) => m.id === mesaId)
+  const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
   const { menu, categorias, ingredientes, modificadores } = useMenu()
   // null = paso 1 (categorías a pantalla completa); string = paso 2 (platillos de esa categoría)
   const [categoriaActiva, setCategoriaActiva] = useState(null)
@@ -19,7 +20,8 @@ export default function MeseroOrdenPage() {
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
-    agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina, cerrarMesa,
+    agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina,
+    cambiarCantidadEnviado, quitarItemEnviado, cerrarMesa,
   } = useOrderDraft(mesaId)
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
@@ -120,10 +122,13 @@ export default function MeseroOrdenPage() {
         <OrderTicket
           draft={draft}
           cuenta={cuenta}
+          pedidos={pedidosMesa}
           subtotalDraft={subtotalDraft}
           subtotalCuenta={subtotalCuenta}
           onQty={cambiarCantidad}
           onRemove={quitarItem}
+          onQtyEnviado={cambiarCantidadEnviado}
+          onRemoveEnviado={quitarItemEnviado}
           onEnviar={handleEnviarACocina}
         />
       </div>

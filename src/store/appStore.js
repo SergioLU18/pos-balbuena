@@ -107,6 +107,29 @@ export const useOrderStore = create(
       clearDraft: (mesaId) =>
         set((s) => ({ drafts: { ...s.drafts, [mesaId]: [] } })),
 
+      // Espejo de updateDraftItem/removeDraftItem pero sobre un renglón ya enviado
+      // (cuentas[mesaId].items), para que el total del ticket refleje la edición.
+      actualizarCantidadItemCuenta: (mesaId, itemId, cantidad) =>
+        set((s) => {
+          const cuenta = s.cuentas[mesaId]
+          if (!cuenta) return s
+          return {
+            cuentas: {
+              ...s.cuentas,
+              [mesaId]: { ...cuenta, items: cuenta.items.map((it) => (it.id === itemId ? { ...it, cantidad } : it)) },
+            },
+          }
+        }),
+
+      quitarItemCuenta: (mesaId, itemId) =>
+        set((s) => {
+          const cuenta = s.cuentas[mesaId]
+          if (!cuenta) return s
+          return {
+            cuentas: { ...s.cuentas, [mesaId]: { ...cuenta, items: cuenta.items.filter((it) => it.id !== itemId) } },
+          }
+        }),
+
       enviarOrden: (mesaId) =>
         set((s) => {
           const items = s.drafts[mesaId] ?? []
@@ -166,6 +189,26 @@ export const usePedidosStore = create(
 
       eliminarPedidosDeMesa: (mesaId) =>
         set((s) => ({ pedidos: s.pedidos.filter((p) => p.mesaId !== mesaId) })),
+
+      // Solo mutan un pedido que sigue 'pendiente' (Nuevo) — mismo guard que el RPC
+      // pos_editar_item_pedido/pos_eliminar_item_pedido del modo backend. Fuera de esa
+      // condición son no-op, para que el modo mock se comporte igual que el real aunque
+      // la UI ya debería evitar llamar esto en ese caso.
+      actualizarCantidadItemPedido: (pedidoId, itemId, cantidad) =>
+        set((s) => ({
+          pedidos: s.pedidos.map((p) =>
+            p.id === pedidoId && p.estado === 'pendiente'
+              ? { ...p, items: p.items.map((it) => (it.id === itemId ? { ...it, cantidad } : it)) }
+              : p,
+          ),
+        })),
+
+      quitarItemPedido: (pedidoId, itemId) =>
+        set((s) => ({
+          pedidos: s.pedidos
+            .map((p) => (p.id === pedidoId && p.estado === 'pendiente' ? { ...p, items: p.items.filter((it) => it.id !== itemId) } : p))
+            .filter((p) => p.id !== pedidoId || p.items.length > 0),
+        })),
     }),
     { name: 'pos-balbuena-pedidos', storage: safeStorage },
   ),
