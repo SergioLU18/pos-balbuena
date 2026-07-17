@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback: React Router maneja el ruteo del lado del cliente, así que
+# cualquier ruta (p. ej. /admin) debe servir index.html en vez de dar 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
