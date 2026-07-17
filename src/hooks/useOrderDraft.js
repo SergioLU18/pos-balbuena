@@ -1,12 +1,14 @@
-import { INGREDIENTES } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
-import { describirMitades } from '../lib/describirItem'
+import { describirMitades, extrasTexto } from '../lib/describirItem'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { cargarTodo } from './usePosData'
 
-const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
+// Recargo de un ingrediente: se lee del catálogo vivo (store), no de una lista estática,
+// para que un cambio del admin al cargo de un ingrediente se refleje en el precio.
+const extraCost = (nombreIngrediente) =>
+  usePosStore.getState().ingredientes.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
 
 // Referencia estable para el fallback: si el selector devolviera un array literal
 // nuevo (`?? []`) en cada llamada, useSyncExternalStore entra en loop infinito
@@ -33,6 +35,10 @@ export function buildDraftItem(platillo, tierIndex, tortillaId) {
     tier,
     dividido: false,
     mitades: [{ lado: 'completo', ingredientes: [], modificadores: [] }],
+    // extras: agregados de pago a nivel platillo (no por mitad), como [{ nombre, precio }].
+    // El precio se guarda en el propio renglón para que calcItemPrecio no dependa de un
+    // catálogo externo (y para que un renglón ya enviado conserve el precio de su extra).
+    extras: [],
     cantidad: 1,
     nota: '',
   }
@@ -58,13 +64,15 @@ export function setMitadField(item, lado, field, value) {
   return { ...item, mitades: item.mitades.map((m) => (m.lado === lado ? { ...m, [field]: value } : m)) }
 }
 
-/** Precio unitario del renglón: precio del tier + recargos de todos los ingredientes elegidos (ambas mitades). */
+/** Precio unitario del renglón: precio del tier + recargos de los ingredientes elegidos
+ *  (ambas mitades) + los extras de pago del platillo. */
 export function calcItemPrecio(item) {
   const recargos = item.mitades.reduce(
     (sum, m) => sum + m.ingredientes.reduce((s, ing) => s + extraCost(ing), 0),
     0,
   )
-  return item.tier.precio + recargos
+  const extras = (item.extras ?? []).reduce((s, e) => s + (e.precio ?? 0), 0)
+  return item.tier.precio + recargos + extras
 }
 
 export function calcSubtotal(items) {
@@ -78,6 +86,8 @@ export function nombreItem(item) {
   const partes = describirMitades(item)
     .map((d) => `${d.prefijo}${d.texto}`)
     .filter((t) => t && !/Sin personalizar$/.test(t))
+  const extras = extrasTexto(item)
+  if (extras) partes.push(extras)
   return partes.length ? `${base} (${partes.join(' / ')})` : base
 }
 

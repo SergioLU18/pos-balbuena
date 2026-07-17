@@ -3,6 +3,18 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { IS_MOCK } from '../lib/config'
 import { MESEROS } from '../lib/mockMeseros'
 import { MESAS } from '../lib/mockMesas'
+import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
+
+// Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
+// (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
+// guardan como objetos con id/activo/orden — así el editor de menú (admin) los puede
+// crear/editar/borrar igual en mock que en backend. El flujo de orden los recibe
+// aplanados por useMenu (ingredientes {nombre, extra}, modificadores string[],
+// extras {nombre, precio}).
+const MOCK_PLATILLOS = MENU.map((p) => ({ activo: true, ...p }))
+const MOCK_INGREDIENTES = INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x }))
+const MOCK_MODIFICADORES = MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i }))
+const MOCK_EXTRAS = EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x }))
 
 // Envoltura defensiva: en un navegador real localStorage siempre funciona, pero en
 // algunos entornos (Safari en modo privado, o el runtime de pruebas) puede no existir
@@ -22,7 +34,12 @@ const safeStorage = createJSONStorage(() => ({
 export const useMeseroStore = create((set) => ({
   currentMeseroId: MESEROS[0].id,
   soloMisMesas: false,
-  setMesero: (id) => set({ currentMeseroId: id }),
+  // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. No se
+  // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
+  // al cambiar de mesero (ver setMesero).
+  adminUnlocked: false,
+  setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false }),
+  setAdminUnlocked: (v) => set({ adminUnlocked: v }),
   toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
 }))
 
@@ -39,15 +56,48 @@ export const usePosStore = create(
     (set) => ({
       mesas: IS_MOCK ? MESAS : [],
       meseros: IS_MOCK ? MESEROS : [],
+      // Menú: en mock arranca del catálogo estático; en backend lo rellena usePosData
+      // desde Supabase (tabla compartida `platillos` + pos_ingredientes/pos_modificadores).
+      platillos: IS_MOCK ? MOCK_PLATILLOS : [],
+      ingredientes: IS_MOCK ? MOCK_INGREDIENTES : [],
+      modificadores: IS_MOCK ? MOCK_MODIFICADORES : [],
+      extras: IS_MOCK ? MOCK_EXTRAS : [],
       restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
+      setPlatillos: (platillos) => set({ platillos }),
+      setIngredientes: (ingredientes) => set({ ingredientes }),
+      setModificadores: (modificadores) => set({ modificadores }),
+      setExtras: (extras) => set({ extras }),
       setRestauranteId: (restauranteId) => set({ restauranteId }),
     }),
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      partialize: (s) => ({ mesas: s.mesas, meseros: s.meseros }),
+      version: 2,
+      // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
+      // v2 corrige el catálogo contra el menú real de Av. Líbano (ingredientes, extras,
+      // tier "con Chorizo"). En ambos saltos se re-siembran meseros y menú del mock,
+      // conservando las mesas que el usuario creó. En backend no importa: usePosData
+      // pisa todo esto al cargar.
+      migrate: (persisted, version) => {
+        if (version < 2 && IS_MOCK) {
+          return {
+            ...persisted,
+            meseros: MESEROS,
+            platillos: MOCK_PLATILLOS,
+            ingredientes: MOCK_INGREDIENTES,
+            modificadores: MOCK_MODIFICADORES,
+            extras: MOCK_EXTRAS,
+          }
+        }
+        return persisted
+      },
+      partialize: (s) => ({
+        mesas: s.mesas, meseros: s.meseros,
+        platillos: s.platillos, ingredientes: s.ingredientes,
+        modificadores: s.modificadores, extras: s.extras,
+      }),
     },
   ),
 )

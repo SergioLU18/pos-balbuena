@@ -7,7 +7,8 @@ import { MENU } from '../lib/mockMenu'
 import { MESAS } from '../lib/mockMesas'
 import { MESEROS } from '../lib/mockMeseros'
 
-const sope = MENU.find((p) => p.id === 'sope') // 2 Ingredientes -> 165
+const sope = MENU.find((p) => p.id === 'sope')
+const I_2ING = sope.tiers.findIndex((t) => t.nombre === '2 Ingredientes') // -> 165
 const mesa1 = MESAS[0]
 
 beforeEach(() => {
@@ -19,7 +20,7 @@ beforeEach(() => {
 describe('useMesas — total de una mesa con cuenta abierta', () => {
   it('suma el precio real de los renglones (tier + recargos), no un campo inexistente', () => {
     useOrderStore.setState({
-      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, 2)], createdAt: new Date().toISOString() } },
+      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, I_2ING)], createdAt: new Date().toISOString() } },
     })
     const { result } = renderHook(() => useMesas())
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)

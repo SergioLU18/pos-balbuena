@@ -1,16 +1,22 @@
 import { useState } from 'react'
 import { f } from '../../lib/utils'
-import { describirMitades } from '../../lib/describirItem'
+import { describirMitades, extrasTexto } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
 
 function DescripcionItem({ item }) {
-  return describirMitades(item).map(({ lado, prefijo, texto }) => (
-    <p key={lado} style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--jb-ink-soft)' }}>
-      {prefijo}{texto}
-    </p>
-  ))
+  const extras = extrasTexto(item)
+  return (
+    <>
+      {describirMitades(item).map(({ lado, prefijo, texto }) => (
+        <p key={lado} style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--jb-ink-soft)' }}>
+          {prefijo}{texto}
+        </p>
+      ))}
+      {extras && <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--jb-ink-soft)' }}>{extras}</p>}
+    </>
+  )
 }
 
 // Etiqueta de solo lectura para un renglón cuyo pedido ya no está en Nuevo — mismo

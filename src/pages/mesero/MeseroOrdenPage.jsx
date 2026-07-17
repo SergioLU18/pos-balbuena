@@ -13,7 +13,7 @@ export default function MeseroOrdenPage() {
   const navigate = useNavigate()
   const mesa = usePosStore((s) => s.mesas).find((m) => m.id === mesaId)
   const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
-  const { menu, categorias, ingredientes, modificadores } = useMenu()
+  const { menu, categorias, ingredientes, modificadores, extras } = useMenu()
   // null = paso 1 (categorías a pantalla completa); string = paso 2 (platillos de esa categoría)
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
@@ -134,6 +134,7 @@ export default function MeseroOrdenPage() {
           platillo={platilloEnConfig}
           ingredientes={ingredientes}
           modificadores={modificadores}
+          extras={extras}
           onConfirm={confirmarPlatillo}
           onClose={() => setPlatilloEnConfig(null)}
         />

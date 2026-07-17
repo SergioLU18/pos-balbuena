@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/sergio/Documents/ChichenIT; ls -la; echo \"---\"; ls -d */ | grep -i tali)",
+      "Read(//Users/sergio/Documents/ChichenIT/**)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali; echo \"===ROOT===\"; ls -la | head -40; echo \"===SQL FILES===\"; find . -path ./node_modules -prune -o -name '*.sql' -print 2>/dev/null | head -40)",
+      "Read(//Users/sergio/Documents/ChichenIT/tali/**)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && ls -la && echo \"---PACKAGE---\" && cat package.json 2>/dev/null | head -60)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && find . -name \"*.sql\" -not -path \"*/node_modules/*\" 2>/dev/null && echo \"---SUPABASE DIR---\" && find . -path \"*/supabase/*\" -not -path \"*/node_modules/*\" -type f 2>/dev/null | head -80)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali; echo \"===ALL SQL===\"; find supabase -name '*.sql' | sort; echo; echo \"===grep menu/producto/platillo across sql===\"; grep -ilE 'menu|producto|platillo|catalog' supabase/*.sql 2>/dev/null; echo \"---in src---\"; grep -rilE 'menu|producto|platillo' src --include=*.js --include=*.jsx 2>/dev/null | head -20)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && wc -l supabase/migrations.sql && echo \"===GREP MENU TERMS IN SQL===\" && grep -rniE \"menu|platillo|producto|categoria|ingrediente|modificador|precio|tier|variante|opcion|catalog|dish\" supabase/*.sql | head -80)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali; echo \"===migrations.sql===\"; cat supabase/migrations.sql; echo \"===grep -n menu in the two files===\"; grep -niE 'menu|producto|platillo' supabase/add_or_update_cuenta_item.sql supabase/registrar_pago.sql)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -niE \"CREATE TABLE|CREATE OR REPLACE FUNCTION|CREATE VIEW|CREATE POLICY\" supabase/migrations.sql)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali; echo \"===grep platillos in src===\"; grep -rniE \"from\\\\\\(['\\\\\"]platillos|platillos|categoria|menu\" src 2>/dev/null | grep -iE \"platillo|menu|categoria\" | head -40)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rniE \"platillo|menu|producto|categoria\" supabase/ --include=*.sql -l && echo \"===ALL CREATE TABLE ACROSS SQL===\" && grep -rniE \"CREATE TABLE|ALTER TABLE|REFERENCES\" supabase/*.sql)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && ls -R src | head -60 && echo \"===SRC MENU GREP===\" && grep -rniE \"platillo|menu|producto|categoria|from\\\\\\(['\\\\\"]\" src --include=*.js --include=*.jsx --include=*.ts --include=*.tsx -l | head -40)",
+      "Read(//Users/sergio/Documents/ChichenIT/tali/src/pages/restaurante/**)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rniE \"CREATE TABLE|ALTER TABLE|REFERENCES\" supabase/ 2>/dev/null | grep -vi node_modules && echo \"===FULL SRC TREE===\" && find src -type f | sort)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rniE \"platillos|productos|categorias|menu\" --include=*.js --include=*.jsx --include=*.ts --include=*.tsx --include=*.sql . 2>/dev/null | grep -v node_modules | grep -v package-lock | head -60)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && cat supabase/add_or_update_cuenta_item.sql && echo \"=====ENV=====\" && cat .env.local.example)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rniE \"platillos|productos|categorias|\\\\.from\\\\\\(\" src 2>/dev/null | head -60)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rniE \"\\\\.from\\\\\\(|\\\\.rpc\\\\\\(\" src 2>/dev/null | sed 's/^/  /' | head -80)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && echo \"===ALL CREATE TABLE in repo \\(excl node_modules\\)===\" && grep -rniE \"CREATE TABLE\" . 2>/dev/null | grep -v node_modules | grep -v package-lock | grep -v dist/ && echo \"===platillos definition anywhere?===\" && grep -rniE \"platillos *\\\\\\(|CREATE TABLE.*platillo|table platillos\" . 2>/dev/null | grep -v node_modules | grep -v package-lock && echo \"===README===\" && cat README.md)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -niE \"platillos|from\\\\\\('platillos'\\\\\\)|insert|update|delete|upsert|xlsx|categoria|precio|descripcion|activo\" src/pages/restaurante/RestauranteCanvasPage.jsx | grep -iE \"platillo|xlsx\" )",
+      "Bash(npx eslint *)",
+      "Bash(echo \"exit: $?\")",
+      "WebFetch(domain:balbuena.app)",
+      "Bash(curl -s -A \"Mozilla/5.0\" \"https://balbuena.app/libano/\" -o balb.html)",
+      "Bash(python3 -)"
+    ]
+  }
+}

@@ -3,6 +3,7 @@ import { TabletShell } from './components/layout/TabletShell'
 import MeseroFloorPage from './pages/mesero/MeseroFloorPage'
 import MeseroOrdenPage from './pages/mesero/MeseroOrdenPage'
 import CocinaPage from './pages/cocina/CocinaPage'
+import AdminApp from './pages/admin/AdminApp'
 import { usePosData } from './hooks/usePosData'
 
 function MeseroApp() {
@@ -26,7 +27,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/mesero" replace />} />
         <Route path="/mesero/*" element={<MeseroApp />} />
         <Route path="/cocina" element={<CocinaPage />} />
-        {/* /admin/* se agrega en una fase futura */}
+        <Route path="/admin/*" element={<AdminApp />} />
         <Route path="*" element={<Navigate to="/mesero" replace />} />
       </Routes>
     </BrowserRouter>

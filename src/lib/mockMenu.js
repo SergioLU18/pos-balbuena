@@ -3,31 +3,47 @@
 // (grupo "Ingredientes" con máximo = nivel del platillo, y modificadores de
 // remoción "Sin X" sobre los componentes base). Precios en MXN.
 
+// Ingredientes (guisos) elegibles, tomados 1:1 del sistema real de la sucursal
+// Av. Líbano (balbuena.app/libano, modal de cada platillo). El tope de cuántos
+// se pueden elegir lo marca el nivel del platillo. La mayoría no tiene cargo;
+// tres cuestan +$15.
 export const INGREDIENTES = [
-  { nombre: 'Cochinita Pibil', extra: 0 },
-  { nombre: 'Pollo Deshebrado', extra: 0 },
-  { nombre: 'Chicharrón Prensado', extra: 0 },
+  { nombre: 'Aguacate', extra: 0 },
   { nombre: 'Asado', extra: 0 },
   { nombre: 'Asado Rojo', extra: 0 },
-  { nombre: 'Chorizo', extra: 0 },
-  { nombre: 'Jamón', extra: 0 },
-  { nombre: 'Aguacate', extra: 0 },
   { nombre: 'Champiñones', extra: 0 },
-  { nombre: 'Papa', extra: 0 },
-  { nombre: 'Rajas Poblanas', extra: 0 },
+  { nombre: 'Chicharrón Prensado', extra: 0 },
+  { nombre: 'Chorizo', extra: 0 },
   { nombre: 'Empanizado de Pollo', extra: 15 },
-  { nombre: 'Huitlacoche', extra: 15 },
   { nombre: 'Extra de Queso Oaxaca', extra: 0 },
+  { nombre: 'Huitlacoche', extra: 15 },
+  { nombre: 'Jamón', extra: 0 },
+  { nombre: 'Papa', extra: 0 },
+  { nombre: 'Pollo Deshebrado', extra: 0 },
+  { nombre: 'Rajas Poblanas', extra: 0 },
+  { nombre: 'Tinga de Res', extra: 15 },
 ]
 
-// Modificadores de remoción sobre los componentes base (tortilla hecha a
-// mano, frijol, salsa verde, romanita, crema, queso oaxaca).
+// Modificadores de remoción ("Personaliza") sobre los componentes base (tortilla
+// hecha a mano, frijol, salsa verde, romanita, crema, queso oaxaca).
 export const MODIFICADORES = [
   'Sin Crema',
   'Sin Frijol',
   'Sin Salsa Verde',
   'Sin Queso Oaxaca',
   'Sin Lechuga (Romanita)',
+]
+
+// Extras: agregados de pago disponibles en todos los platillos (grupo "Extras"
+// del sitio real). A diferencia de los ingredientes (elección de guiso, con tope
+// por nivel) y los modificadores (remociones gratis), estos siempre cuestan y no
+// tienen tope.
+export const EXTRAS = [
+  { nombre: 'Aguacate', precio: 30 },
+  { nombre: 'Chile de Árbol', precio: 5 },
+  { nombre: 'Chile Habanero', precio: 5 },
+  { nombre: 'Crema', precio: 10 },
+  { nombre: 'Salsa Verde', precio: 10 },
 ]
 
 function tiers(base, extra) {
@@ -46,7 +62,15 @@ export const MENU = [
     nombre: 'Sope',
     categoria: 'Sopes',
     base: 'Tortilla hecha a mano, frijol, salsa verde, romanita, crema y queso oaxaca',
-    tiers: tiers(110, [140, 165, 190]),
+    // El sitio real ofrece un "Sencillo con Chorizo" ($120) además del Sencillo ($110):
+    // un sope base con chorizo ya incluido (0 ingredientes a elegir).
+    tiers: [
+      { ingredientes: 0, nombre: 'Sencillo', precio: 110 },
+      { ingredientes: 0, nombre: 'Sencillo con Chorizo', precio: 120 },
+      { ingredientes: 1, nombre: '1 Ingrediente', precio: 140 },
+      { ingredientes: 2, nombre: '2 Ingredientes', precio: 165 },
+      { ingredientes: 3, nombre: '3 Ingredientes', precio: 190 },
+    ],
     permiteMitades: true,
     permiteNota: true,
   },

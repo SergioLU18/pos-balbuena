@@ -6,27 +6,29 @@ import { TierPicker } from './TierPicker'
 import { MitadSwitch } from './MitadSwitch'
 import { IngredienteChecklist } from './IngredienteChecklist'
 import { ModificadorToggles } from './ModificadorToggles'
+import { ExtrasToggles } from './ExtrasToggles'
 import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio } from '../../hooks/useOrderDraft'
 
 const MITAD_LABEL = { completo: 'Ingredientes', izquierda: 'Mitad 1', derecha: 'Mitad 2' }
 
-export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, onConfirm, onClose }) {
+export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], onConfirm, onClose }) {
   const [item, setItem] = useState(() => buildDraftItem(platillo, 0))
 
   function cambiarTier(tierIndex) {
     let next = buildDraftItem(platillo, tierIndex, item.tortillaId)
     if (item.dividido) next = toggleDividido(next)
     // conserva modificadores elegidos (no dependen del tier); los ingredientes se reinician
-    // porque el máximo permitido puede cambiar con el nuevo nivel.
+    // porque el máximo permitido puede cambiar con el nuevo nivel. Los extras (nivel
+    // platillo) también se conservan.
     next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
-    setItem({ ...next, cantidad: item.cantidad, nota: item.nota })
+    setItem({ ...next, cantidad: item.cantidad, nota: item.nota, extras: item.extras })
   }
 
   function cambiarTortilla(tortillaId) {
     let next = buildDraftItem(platillo, item.tierIndex, tortillaId)
     if (item.dividido) next = toggleDividido(next)
     next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
-    setItem({ ...next, cantidad: item.cantidad, nota: item.nota })
+    setItem({ ...next, cantidad: item.cantidad, nota: item.nota, extras: item.extras })
   }
 
   function toggleMitades() {
@@ -115,6 +117,12 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
               </div>
             ))}
           </div>
+
+          <ExtrasToggles
+            extras={extras}
+            seleccionados={item.extras}
+            onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
+          />
 
           {platillo.permiteNota && (
             <div>

@@ -25,6 +25,40 @@ function mapCuentas(cuentas) {
   return map
 }
 
+// meseros de Supabase → forma de la app (es_admin snake_case → esAdmin camelCase,
+// como lo usa el mock y el gate de admin). El resto de columnas pasa igual.
+function mapMeseros(rows) {
+  return (rows ?? []).map((m) => ({ ...m, esAdmin: m.es_admin ?? false }))
+}
+
+// platillos (tabla compartida con tali) → forma que consume el flujo de orden.
+// base cae a descripcion por si un platillo se creó desde tali (sin columnas POS).
+function mapPlatillos(rows) {
+  return (rows ?? []).map((p) => ({
+    id: p.id,
+    nombre: p.nombre,
+    categoria: p.categoria,
+    base: p.base ?? p.descripcion ?? '',
+    tiers: p.tiers ?? [],
+    tortillas: p.tortillas ?? undefined,
+    permiteMitades: p.permite_mitades ?? false,
+    permiteNota: p.permite_nota ?? false,
+    activo: p.activo,
+  }))
+}
+
+function mapIngredientes(rows) {
+  return (rows ?? []).map((i) => ({ id: i.id, nombre: i.nombre, extra: Number(i.extra ?? 0), activo: i.activo, orden: i.orden ?? 0 }))
+}
+
+function mapModificadores(rows) {
+  return (rows ?? []).map((m) => ({ id: m.id, nombre: m.nombre, activo: m.activo, orden: m.orden ?? 0 }))
+}
+
+function mapExtras(rows) {
+  return (rows ?? []).map((e) => ({ id: e.id, nombre: e.nombre, precio: Number(e.precio ?? 0), activo: e.activo, orden: e.orden ?? 0 }))
+}
+
 function mapPedidos(pedidos) {
   return (pedidos ?? []).map((p) => ({
     id: p.id,
@@ -42,18 +76,29 @@ function mapPedidos(pedidos) {
 }
 
 export async function cargarTodo(rid) {
-  const [mesasRes, meserosRes, cuentasRes, pedidosRes] = await Promise.all([
+  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes] = await Promise.all([
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
     sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
     sb.from('pedidos').select('*').eq('restaurante_id', rid),
+    // Menú: se cargan TODOS (incluidos inactivos) para que el admin los vea; el flujo
+    // de orden filtra activo en useMenu.
+    sb.from('platillos').select('*').eq('restaurante_id', rid).order('categoria', { nullsFirst: false }).order('nombre'),
+    sb.from('pos_ingredientes').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
+    sb.from('pos_modificadores').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
+    sb.from('pos_extras').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
   ])
 
-  const { setMesas, setMeseros } = usePosStore.getState()
+  const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras } = usePosStore.getState()
   setMesas((mesasRes.data ?? []).slice().sort(porNumero))
 
-  const meseros = meserosRes.data ?? []
+  const meseros = mapMeseros(meserosRes.data)
   setMeseros(meseros)
+
+  setPlatillos(mapPlatillos(platillosRes.data))
+  setIngredientes(mapIngredientes(ingredientesRes.data))
+  setModificadores(mapModificadores(modificadoresRes.data))
+  setExtras(mapExtras(extrasRes.data))
 
   // Si el mesero seleccionado ya no existe (ids reales ≠ ids mock), cae al primero.
   const meseroState = useMeseroStore.getState()
@@ -106,9 +151,15 @@ export function usePosData() {
       channel = sb
         .channel('pos-balbuena-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'meseros', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cuenta_items' }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `restaurante_id=eq.${rid}` }, recargar)
+        // Menú: un cambio desde el admin (o desde tali) se refleja en todas las tablets.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'platillos', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_ingredientes', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_modificadores', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_extras', filter: `restaurante_id=eq.${rid}` }, recargar)
         .subscribe()
     }
 

@@ -8,3 +8,10 @@ export function describirMitades(item) {
     return { lado: mitad.lado, prefijo, texto }
   })
 }
+
+/** Resumen de los extras (agregados de pago) de un renglón, a nivel platillo (no por
+ *  mitad). Devuelve null si no hay extras. */
+export function extrasTexto(item) {
+  const nombres = (item.extras ?? []).map((e) => e.nombre)
+  return nombres.length ? `Extras: ${nombres.join(', ')}` : null
+}
