@@ -279,9 +279,8 @@ export function useOrderDraft(mesaId) {
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
   function cerrarMesa() {
     if (!IS_MOCK) {
-      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
+      return sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
         .then(({ error }) => { if (error) console.error('[orden] cerrarMesa falló:', error) })
-      return
     }
     cerrarCuenta(mesaId)
     eliminarPedidosDeMesa(mesaId)

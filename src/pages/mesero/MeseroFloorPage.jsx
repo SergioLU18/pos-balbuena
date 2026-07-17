@@ -4,6 +4,7 @@ import { useMesas } from '../../hooks/useMesas'
 import { useMesaLayout } from '../../hooks/useMesaLayout'
 import { useMesaAdmin } from '../../hooks/useMesaAdmin'
 import { useMeseroStore } from '../../store/appStore'
+import { etiquetaMesa } from '../../lib/utils'
 import { MesaCard, MESA_CARD_W, MESA_CARD_H } from '../../components/mesero/MesaCard'
 import { CrearMesaModal } from '../../components/mesero/CrearMesaModal'
 
@@ -90,10 +91,10 @@ export default function MeseroFloorPage() {
 
   async function handleBorrarMesa(mesa) {
     if (mesa.estado === 'abierta') {
-      window.alert(`La Mesa ${mesa.numero} tiene una cuenta abierta — no se puede borrar.`)
+      window.alert(`${etiquetaMesa(mesa.numero)} tiene una cuenta abierta — no se puede borrar.`)
       return
     }
-    if (!window.confirm(`¿Borrar la Mesa ${mesa.numero}? Esta acción no se puede deshacer.`)) return
+    if (!window.confirm(`¿Borrar ${etiquetaMesa(mesa.numero)}? Esta acción no se puede deshacer.`)) return
     const { error } = await borrarMesa(mesa.id)
     if (error) window.alert(error)
   }
@@ -210,7 +211,7 @@ export default function MeseroFloorPage() {
                   <button
                     onClick={(e) => { e.stopPropagation(); handleBorrarMesa(mesa) }}
                     onPointerDown={(e) => e.stopPropagation()}
-                    title={`Borrar Mesa ${mesa.numero}`}
+                    title={`Borrar ${etiquetaMesa(mesa.numero)}`}
                     style={{
                       position: 'absolute', top: -8, left: -8, width: 32, height: 32,
                       borderRadius: '50%', background: '#C24A4A', color: '#fff', border: 'none',

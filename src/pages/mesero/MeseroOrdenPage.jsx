@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { usePosStore, usePedidosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
+import { useMesaAdmin } from '../../hooks/useMesaAdmin'
+import { esParaLlevar, etiquetaMesa } from '../../lib/utils'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
 import { PlatilloCard } from '../../components/mesero/PlatilloCard'
 import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlatilloModal'
@@ -23,6 +25,8 @@ export default function MeseroOrdenPage() {
     agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina,
     fijarCantidadEnviado, quitarItemEnviado, cerrarMesa,
   } = useOrderDraft(mesaId)
+  const { borrarMesa } = useMesaAdmin()
+  const llevar = esParaLlevar(mesa?.numero)
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
 
@@ -52,8 +56,17 @@ export default function MeseroOrdenPage() {
   // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
   // desde la app de pagos. Se quitará cuando esa integración esté lista.
   function handleCerrarMesa() {
-    if (!window.confirm(`¿Cerrar la Mesa ${mesa?.numero}? Esto libera la mesa para una nueva cuenta.`)) return
-    cerrarMesa()
+    const mensaje = llevar
+      ? '¿Cerrar este pedido para llevar? Se marcará como completado.'
+      : `¿Cerrar ${etiquetaMesa(mesa?.numero)}? Esto libera la mesa para una nueva cuenta.`
+    if (!window.confirm(mensaje)) return
+    // Un pedido para llevar es una mesa virtual de un solo uso (ver lib/utils.js): a
+    // diferencia de una mesa real, no tiene sentido dejarla "libre" en el mapa para
+    // reusarse, así que además de cerrar su cuenta se borra la mesa por completo. Se
+    // encadena tras cerrarMesa (no en paralelo) porque pos_borrar_mesa rechaza borrar
+    // una mesa con cuenta todavía activa.
+    if (llevar) Promise.resolve(cerrarMesa()).then(() => borrarMesa(mesa.id))
+    else cerrarMesa()
     navigate('/mesero')
   }
 
@@ -70,7 +83,7 @@ export default function MeseroOrdenPage() {
           ←
         </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)', flex: 1 }}>
-          Mesa {mesa?.numero ?? '—'}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
+          {mesa ? etiquetaMesa(mesa.numero) : '—'}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
         </h1>
 
         {cuenta && (
@@ -83,7 +96,7 @@ export default function MeseroOrdenPage() {
               background: '#fff', border: '2px solid #E0B4B4', color: '#A83232',
             }}
           >
-            Cerrar mesa (temporal)
+            {llevar ? 'Cerrar pedido (temporal)' : 'Cerrar mesa (temporal)'}
           </button>
         )}
       </div>

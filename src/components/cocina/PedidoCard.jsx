@@ -1,5 +1,5 @@
 import { useClock } from '../../hooks/useClock'
-import { cronometro } from '../../lib/utils'
+import { cronometro, etiquetaMesa } from '../../lib/utils'
 import { describirMitades } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 
@@ -61,7 +61,7 @@ export function PedidoCard({ pedido, onAvanzar }) {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-baseline" style={{ gap: 10 }}>
-          <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {pedido.mesaNumero}</span>
+          <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>{etiquetaMesa(pedido.mesaNumero)}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{pedido.meseroNombre}</span>
         </div>
         <span

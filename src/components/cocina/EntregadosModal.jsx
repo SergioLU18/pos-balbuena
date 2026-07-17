@@ -1,4 +1,4 @@
-import { duracionMin } from '../../lib/utils'
+import { duracionMin, etiquetaMesa } from '../../lib/utils'
 import { ItemLine } from './PedidoCard'
 
 function TiempoTag({ label, valor }) {
@@ -57,7 +57,7 @@ export function EntregadosModal({ pedidos, onClose }) {
               <div key={p.id} style={{ border: '2.5px solid var(--jb-line)', borderRadius: 18, padding: '14px 18px' }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-baseline" style={{ gap: 10 }}>
-                    <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {p.mesaNumero}</span>
+                    <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>{etiquetaMesa(p.mesaNumero)}</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{p.meseroNombre}</span>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--jb-ink)' }}>

@@ -1,4 +1,4 @@
-import { f } from '../../lib/utils'
+import { f, esParaLlevar } from '../../lib/utils'
 import { JbFlor } from '../ui/JbFlor'
 
 // Dimensión fija: todas las mesas se ven igual de grandes sin importar su
@@ -68,9 +68,15 @@ export function MesaCard({ mesa, onClick }) {
       )}
 
       <div className="flex items-center justify-between w-full">
-        <span style={{ fontSize: 30, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1 }}>
-          {mesa.numero}
-        </span>
+        {esParaLlevar(mesa.numero) ? (
+          <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.2 }}>
+            Para llevar<br />#{mesa.numero.slice(3)}
+          </span>
+        ) : (
+          <span style={{ fontSize: 30, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1 }}>
+            {mesa.numero}
+          </span>
+        )}
         <JbFlor size={22} color={theme.border} />
       </div>
 

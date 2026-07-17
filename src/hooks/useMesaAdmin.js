@@ -14,24 +14,27 @@ export function useMesaAdmin() {
   const setMesas = usePosStore((s) => s.setMesas)
   const setMeseros = usePosStore((s) => s.setMeseros)
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const cuentas = useOrderStore((s) => s.cuentas)
 
   function crearMesa(numero, meseroId) {
     if (IS_MOCK) {
-      setMesas([...mesas, { id: uid('mesa'), numero, activo: true }])
+      const id = uid('mesa')
+      setMesas([...mesas, { id, numero, activo: true }])
       if (meseroId) {
         setMeseros(meseros.map((m) => (m.id === meseroId ? { ...m, mesas: [...m.mesas, numero] } : m)))
       }
-      return Promise.resolve({ error: null })
+      return Promise.resolve({ error: null, id })
     }
     return sb
       .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: numero, p_mesero_id: meseroId ?? null })
-      .then(({ error }) => ({ error: error?.message ?? null }))
+      .then(({ data, error }) => ({ error: error?.message ?? null, id: data ?? null }))
   }
 
   function borrarMesa(mesaId) {
     if (IS_MOCK) {
-      if (cuentas[mesaId]) {
+      // Lee el estado fresco (no la suscripción reactiva de este render) porque a veces
+      // se llama justo después de cerrarMesa(), en el mismo tick, antes de que React
+      // vuelva a renderizar este hook con el `cuentas` ya actualizado.
+      if (useOrderStore.getState().cuentas[mesaId]) {
         return Promise.resolve({ error: 'No se puede borrar una mesa con cuenta abierta.' })
       }
       const mesa = mesas.find((m) => m.id === mesaId)
