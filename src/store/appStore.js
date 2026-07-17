@@ -35,17 +35,29 @@ const safeStorage = createJSONStorage(() => ({
   },
 }))
 
-export const useMeseroStore = create((set) => ({
-  currentMeseroId: MESEROS[0].id,
-  soloMisMesas: false,
-  // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. No se
-  // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
-  // al cambiar de mesero (ver setMesero).
-  adminUnlocked: false,
-  setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false }),
-  setAdminUnlocked: (v) => set({ adminUnlocked: v }),
-  toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
-}))
+export const useMeseroStore = create(
+  persist(
+    (set) => ({
+      currentMeseroId: MESEROS[0].id,
+      soloMisMesas: false,
+      // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. NO se
+      // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
+      // al cambiar de mesero (ver setMesero).
+      adminUnlocked: false,
+      setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false }),
+      setAdminUnlocked: (v) => set({ adminUnlocked: v }),
+      toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
+    }),
+    {
+      name: 'pos-balbuena-mesero',
+      storage: safeStorage,
+      // Solo se persiste la identidad del mesero (y su filtro de mesas). Antes NADA
+      // se persistía, así que un refresh reseteaba el mesero al primero de la lista.
+      // adminUnlocked queda fuera a propósito: el PIN se vuelve a pedir cada sesión.
+      partialize: (s) => ({ currentMeseroId: s.currentMeseroId, soloMisMesas: s.soloMisMesas }),
+    },
+  ),
+)
 
 // Catálogo de mesas y meseros. En modo mock arranca con los datos estáticos (así los
 // tests y el modo demo funcionan sin cargar nada); en modo backend `usePosData` lo
