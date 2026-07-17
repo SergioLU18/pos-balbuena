@@ -1,12 +1,16 @@
-// Catálogo de Jardín Balbuena (sucursal Los Pinos), reconstruido a partir del
-// menú público real (balbuena.app) y de su sistema de personalización real
-// (grupo "Ingredientes" con máximo = nivel del platillo, y modificadores de
-// remoción "Sin X" sobre los componentes base). Precios en MXN.
+// Catálogo de Jardín Balbuena, tomado 1:1 del menú y del sistema de personalización
+// real de la sucursal Av. Líbano (balbuena.app/libano, modal de cada platillo).
+// Precios en MXN.
+//
+// Modelo de personalización (igual que el sitio):
+//  - ingredientes: elección de guiso, con tope = nivel del platillo. Catálogo global;
+//    se muestran cuando el nivel elegido permite >0.
+//  - modificadores: remociones gratis ("Sin X"). Catálogo global, pero cada platillo
+//    declara CUÁLES aplican (una quesadilla no tiene frijol que quitar). -> p.modificadores
+//  - extras: agregados de PAGO. Catálogo global, y cada platillo declara cuáles aplican
+//    (las bebidas y el postre no llevan los extras de comida). -> p.extras
 
-// Ingredientes (guisos) elegibles, tomados 1:1 del sistema real de la sucursal
-// Av. Líbano (balbuena.app/libano, modal de cada platillo). El tope de cuántos
-// se pueden elegir lo marca el nivel del platillo. La mayoría no tiene cargo;
-// tres cuestan +$15.
+// Guisos elegibles. La mayoría sin cargo; tres cuestan +$15.
 export const INGREDIENTES = [
   { nombre: 'Aguacate', extra: 0 },
   { nombre: 'Asado', extra: 0 },
@@ -24,20 +28,20 @@ export const INGREDIENTES = [
   { nombre: 'Tinga de Res', extra: 15 },
 ]
 
-// Modificadores de remoción ("Personaliza") sobre los componentes base (tortilla
-// hecha a mano, frijol, salsa verde, romanita, crema, queso oaxaca).
+// Catálogo global de modificadores de remoción ("Personaliza"). Unión de los que usa
+// cada platillo; cada platillo elige su subconjunto (ver p.modificadores).
 export const MODIFICADORES = [
   'Sin Crema',
   'Sin Frijol',
   'Sin Salsa Verde',
+  'Sin Salsa Roja',
   'Sin Queso Oaxaca',
   'Sin Lechuga (Romanita)',
+  'Sin Aguacate',
 ]
 
-// Extras: agregados de pago disponibles en todos los platillos (grupo "Extras"
-// del sitio real). A diferencia de los ingredientes (elección de guiso, con tope
-// por nivel) y los modificadores (remociones gratis), estos siempre cuestan y no
-// tienen tope.
+// Catálogo global de extras (agregados de pago). Cada platillo elige cuáles aplican
+// (ver p.extras). No tienen tope y siempre cuestan.
 export const EXTRAS = [
   { nombre: 'Aguacate', precio: 30 },
   { nombre: 'Chile de Árbol', precio: 5 },
@@ -45,6 +49,9 @@ export const EXTRAS = [
   { nombre: 'Crema', precio: 10 },
   { nombre: 'Salsa Verde', precio: 10 },
 ]
+
+// Todos los platillos de comida ofrecen los mismos 5 extras; bebidas y postre, ninguno.
+const EXTRAS_COMIDA = EXTRAS.map((e) => e.nombre)
 
 function tiers(base, extra) {
   // base: precio "sencillo" (0 ingredientes). extra: [precio1, precio2, precio3?]
@@ -71,6 +78,8 @@ export const MENU = [
       { ingredientes: 2, nombre: '2 Ingredientes', precio: 165 },
       { ingredientes: 3, nombre: '3 Ingredientes', precio: 190 },
     ],
+    modificadores: ['Sin Crema', 'Sin Frijol', 'Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Lechuga (Romanita)'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -80,6 +89,8 @@ export const MENU = [
     categoria: 'Quesadillas',
     base: 'Tortilla hecha a mano y queso oaxaca',
     tiers: tiers(120, [140, 165, 190]),
+    modificadores: ['Sin Crema', 'Sin Salsa Verde'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -106,6 +117,8 @@ export const MENU = [
         ],
       },
     ],
+    modificadores: ['Sin Crema', 'Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Lechuga (Romanita)'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -119,6 +132,8 @@ export const MENU = [
       { ingredientes: 2, nombre: '2 Ingredientes', precio: 190 },
       { ingredientes: 3, nombre: '3 Ingredientes', precio: 220 },
     ],
+    modificadores: ['Sin Aguacate', 'Sin Frijol', 'Sin Crema'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -128,6 +143,8 @@ export const MENU = [
     categoria: 'Sincronizadas',
     base: 'Dos tortillas de harina con queso oaxaca',
     tiers: tiers(110, [130, 155, 180]),
+    modificadores: ['Sin Aguacate', 'Sin Queso Oaxaca', 'Sin Salsa Roja', 'Sin Crema'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -137,6 +154,8 @@ export const MENU = [
     categoria: 'Burritas',
     base: 'Tortilla de harina, frijol, crema y queso oaxaca',
     tiers: tiers(120, [140, 165, 190]),
+    modificadores: ['Sin Aguacate', 'Sin Queso Oaxaca', 'Sin Salsa Roja', 'Sin Crema'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: true,
     permiteNota: true,
   },
@@ -149,6 +168,8 @@ export const MENU = [
       { ingredientes: 1, nombre: '1 Ingrediente', precio: 150 },
       { ingredientes: 2, nombre: '2 Ingredientes', precio: 180 },
     ],
+    modificadores: ['Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Crema'],
+    extras: EXTRAS_COMIDA,
     permiteMitades: false,
     permiteNota: true,
   },
@@ -158,6 +179,8 @@ export const MENU = [
     categoria: 'Bebidas',
     base: 'Bebida embotellada',
     tiers: [{ ingredientes: 0, nombre: 'Único', precio: 40 }],
+    modificadores: [],
+    extras: [],
     permiteMitades: false,
     permiteNota: false,
   },
@@ -167,6 +190,8 @@ export const MENU = [
     categoria: 'Postres',
     base: 'Postre individual',
     tiers: [{ ingredientes: 0, nombre: 'Único', precio: 70 }],
+    modificadores: [],
+    extras: [],
     permiteMitades: false,
     permiteNota: false,
   },

@@ -41,6 +41,17 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
 
   const precio = calcItemPrecio(item)
 
+  // Solo los modificadores y extras que este platillo declara (el sitio real los
+  // asocia por platillo: una quesadilla no tiene frijol que quitar, una bebida no
+  // lleva extras de comida). modificadores == null => todos (platillo heredado sin
+  // lista); extras == null => ninguno (evita mostrar extras de comida donde no aplican).
+  const modsAplicables = platillo.modificadores == null
+    ? modificadores
+    : modificadores.filter((m) => platillo.modificadores.includes(m))
+  const extrasAplicables = platillo.extras == null
+    ? []
+    : extras.filter((e) => platillo.extras.includes(e.nombre))
+
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
@@ -110,7 +121,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
                   />
                 )}
                 <ModificadorToggles
-                  modificadores={modificadores}
+                  modificadores={modsAplicables}
                   seleccionados={mitad.modificadores}
                   onChange={(v) => cambiarMitad(mitad.lado, 'modificadores', v)}
                 />
@@ -119,7 +130,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
           </div>
 
           <ExtrasToggles
-            extras={extras}
+            extras={extrasAplicables}
             seleccionados={item.extras}
             onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
           />

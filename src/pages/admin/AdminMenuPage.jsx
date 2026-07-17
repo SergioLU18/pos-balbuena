@@ -3,6 +3,7 @@ import { usePosStore } from '../../store/appStore'
 import { useMenuAdmin } from '../../hooks/useMenuAdmin'
 import { f, uid } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
+import { Chip } from '../../components/ui/Chip'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
@@ -140,6 +141,19 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
   const [permiteMitades, setPermiteMitades] = useState(!!platillo.permiteMitades)
   const [permiteNota, setPermiteNota] = useState(!!platillo.permiteNota)
   const [activo, setActivo] = useState(platillo.activo !== false)
+
+  // Catálogos globales para las allowlists. Un platillo nuevo (o heredado sin lista)
+  // arranca con todos seleccionados; el admin destilda los que no apliquen.
+  const modCatalogo = usePosStore((s) => s.modificadores).filter((m) => m.activo !== false)
+  const extraCatalogo = usePosStore((s) => s.extras).filter((e) => e.activo !== false)
+  const [modsSel, setModsSel] = useState(
+    platillo.modificadores != null ? platillo.modificadores : modCatalogo.map((m) => m.nombre),
+  )
+  const [extrasSel, setExtrasSel] = useState(
+    platillo.extras != null ? platillo.extras : extraCatalogo.map((e) => e.nombre),
+  )
+  const toggleName = (list, setList, nombre) =>
+    setList(list.includes(nombre) ? list.filter((n) => n !== nombre) : [...list, nombre])
   const [error, setError] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
@@ -177,6 +191,8 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
       permiteMitades,
       permiteNota,
       activo,
+      modificadores: modsSel,
+      extras: extrasSel,
     })
     setGuardando(false)
     if (err) { setError(err); return }
@@ -209,6 +225,39 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
           <TiersEditor tiers={tiers} onChange={setTiers} />
         </Campo>
       )}
+
+      <Campo label="Modificadores que aplican (Sin…)">
+        {modCatalogo.length === 0 ? (
+          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay modificadores en el catálogo.</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {modCatalogo.map((m) => (
+              <Chip key={m.nombre} active={modsSel.includes(m.nombre)} onClick={() => toggleName(modsSel, setModsSel, m.nombre)}>
+                {m.nombre}
+              </Chip>
+            ))}
+          </div>
+        )}
+      </Campo>
+
+      <Campo label="Extras que aplican (agregados de pago)">
+        {extraCatalogo.length === 0 ? (
+          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay extras en el catálogo.</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {extraCatalogo.map((e) => (
+              <Chip
+                key={e.nombre}
+                active={extrasSel.includes(e.nombre)}
+                onClick={() => toggleName(extrasSel, setExtrasSel, e.nombre)}
+                sublabel={e.precio > 0 ? `+${f(e.precio)}` : undefined}
+              >
+                {e.nombre}
+              </Chip>
+            ))}
+          </div>
+        )}
+      </Campo>
 
       <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>
         <Toggle checked={permiteMitades} onChange={setPermiteMitades} label="Permite mitades" />

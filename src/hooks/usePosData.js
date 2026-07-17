@@ -41,6 +41,9 @@ function mapPlatillos(rows) {
     base: p.base ?? p.descripcion ?? '',
     tiers: p.tiers ?? [],
     tortillas: p.tortillas ?? undefined,
+    // Allowlists por platillo de qué modificadores/extras aplican (null = heredado).
+    modificadores: p.modificadores ?? null,
+    extras: p.extras ?? null,
     permiteMitades: p.permite_mitades ?? false,
     permiteNota: p.permite_nota ?? false,
     activo: p.activo,

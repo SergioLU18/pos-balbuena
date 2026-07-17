@@ -42,6 +42,12 @@ alter table platillos add column if not exists tiers           jsonb   not null 
 alter table platillos add column if not exists tortillas       jsonb;
 alter table platillos add column if not exists permite_mitades boolean not null default false;
 alter table platillos add column if not exists permite_nota    boolean not null default false;
+-- Allowlists por platillo: qué modificadores ("Sin X") y qué extras de pago aplican.
+-- El sitio real los asocia por platillo (una quesadilla no tiene frijol que quitar; una
+-- bebida no lleva extras de comida). Son arreglos de NOMBRES que referencian los
+-- catálogos globales pos_modificadores / pos_extras.
+alter table platillos add column if not exists modificadores   jsonb not null default '[]';
+alter table platillos add column if not exists extras          jsonb not null default '[]';
 
 -- ── 3. Ingredientes y modificadores (catálogos GLOBALes del restaurante) ────
 -- En el POS no son por-platillo: el tier del platillo solo dice CUÁNTOS
@@ -81,6 +87,9 @@ create table if not exists pos_extras (
 -- ── 4. RPC: guardar (crear/editar) un platillo del menú ─────────────────────
 -- p_id null => alta; p_id no null => edición. Mantiene precio = tier "Sencillo"
 -- (el de menos ingredientes) para tali.
+-- Se elimina la firma anterior para no dejar un overload ambiguo que confunda a
+-- PostgREST al resolver por nombres de argumento.
+drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb);
 create or replace function pos_guardar_platillo(
   p_id              uuid,
   p_restaurante_id  uuid,
@@ -91,7 +100,9 @@ create or replace function pos_guardar_platillo(
   p_permite_mitades boolean,
   p_permite_nota    boolean,
   p_activo          boolean,
-  p_tortillas       jsonb default null
+  p_tortillas       jsonb default null,
+  p_modificadores   jsonb default '[]',
+  p_extras          jsonb default '[]'
 ) returns uuid
 language plpgsql
 security definer
@@ -119,15 +130,17 @@ begin
 
   if v_id is null then
     insert into platillos (restaurante_id, nombre, categoria, descripcion, precio,
-                           base, tiers, tortillas, permite_mitades, permite_nota, activo)
+                           base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras)
     values (p_restaurante_id, p_nombre, p_categoria, p_base, v_precio,
-            p_base, coalesce(p_tiers, '[]'::jsonb), p_tortillas, p_permite_mitades, p_permite_nota, p_activo)
+            p_base, coalesce(p_tiers, '[]'::jsonb), p_tortillas, p_permite_mitades, p_permite_nota, p_activo,
+            coalesce(p_modificadores, '[]'::jsonb), coalesce(p_extras, '[]'::jsonb))
     returning id into v_id;
   else
     update platillos set
       nombre = p_nombre, categoria = p_categoria, descripcion = p_base, precio = v_precio,
       base = p_base, tiers = coalesce(p_tiers, '[]'::jsonb), tortillas = p_tortillas,
-      permite_mitades = p_permite_mitades, permite_nota = p_permite_nota, activo = p_activo
+      permite_mitades = p_permite_mitades, permite_nota = p_permite_nota, activo = p_activo,
+      modificadores = coalesce(p_modificadores, '[]'::jsonb), extras = coalesce(p_extras, '[]'::jsonb)
     where id = v_id;
   end if;
 
@@ -173,7 +186,7 @@ create policy "pos extras total" on pos_extras for all to anon, authenticated us
 drop policy if exists "pos platillos lectura anon" on platillos;
 create policy "pos platillos lectura anon" on platillos for select to anon using (true);
 
-grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb) to anon, authenticated;
+grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb) to anon, authenticated;
 grant execute on function pos_borrar_platillo(uuid) to anon, authenticated;
 
 -- ── 7. Realtime (un cambio de menú/mesero se refleja en todas las tablets) ──

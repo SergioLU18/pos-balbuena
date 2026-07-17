@@ -45,6 +45,8 @@ export function useMenuAdmin() {
         p_permite_nota: !!p.permiteNota,
         p_activo: p.activo !== false,
         p_tortillas: p.tortillas ?? null,
+        p_modificadores: p.modificadores ?? [],
+        p_extras: p.extras ?? [],
       })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }

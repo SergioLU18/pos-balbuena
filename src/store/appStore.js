@@ -74,14 +74,14 @@ export const usePosStore = create(
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      version: 2,
+      version: 3,
       // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
-      // v2 corrige el catálogo contra el menú real de Av. Líbano (ingredientes, extras,
-      // tier "con Chorizo"). En ambos saltos se re-siembran meseros y menú del mock,
-      // conservando las mesas que el usuario creó. En backend no importa: usePosData
-      // pisa todo esto al cargar.
+      // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agrega las
+      // allowlists por platillo (qué modificadores/extras aplican) y dos modificadores
+      // nuevos. En cada salto se re-siembran meseros y menú del mock, conservando las
+      // mesas que el usuario creó. En backend no importa: usePosData pisa todo al cargar.
       migrate: (persisted, version) => {
-        if (version < 2 && IS_MOCK) {
+        if (version < 3 && IS_MOCK) {
           return {
             ...persisted,
             meseros: MESEROS,
