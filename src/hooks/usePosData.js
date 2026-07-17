@@ -46,8 +46,13 @@ function mapPlatillos(rows) {
     extras: p.extras ?? null,
     permiteMitades: p.permite_mitades ?? false,
     permiteNota: p.permite_nota ?? false,
+    orden: p.orden ?? 0,
     activo: p.activo,
   }))
+}
+
+function mapCategorias(rows) {
+  return (rows ?? []).map((c) => ({ id: c.id, nombre: c.nombre, orden: c.orden ?? 0 }))
 }
 
 function mapIngredientes(rows) {
@@ -79,7 +84,7 @@ function mapPedidos(pedidos) {
 }
 
 export async function cargarTodo(rid) {
-  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes] = await Promise.all([
+  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes] = await Promise.all([
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
     sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
@@ -90,9 +95,10 @@ export async function cargarTodo(rid) {
     sb.from('pos_ingredientes').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
     sb.from('pos_modificadores').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
     sb.from('pos_extras').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
+    sb.from('pos_categorias').select('*').eq('restaurante_id', rid).order('orden'),
   ])
 
-  const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras } = usePosStore.getState()
+  const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
   setMesas((mesasRes.data ?? []).slice().sort(porNumero))
 
   const meseros = mapMeseros(meserosRes.data)
@@ -102,6 +108,7 @@ export async function cargarTodo(rid) {
   setIngredientes(mapIngredientes(ingredientesRes.data))
   setModificadores(mapModificadores(modificadoresRes.data))
   setExtras(mapExtras(extrasRes.data))
+  setCategoriasOrden(mapCategorias(categoriasRes.data))
 
   // Si el mesero seleccionado ya no existe (ids reales ≠ ids mock), cae al primero.
   const meseroState = useMeseroStore.getState()
@@ -163,6 +170,7 @@ export function usePosData() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_ingredientes', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_modificadores', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_extras', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_categorias', filter: `restaurante_id=eq.${rid}` }, recargar)
         .subscribe()
     }
 

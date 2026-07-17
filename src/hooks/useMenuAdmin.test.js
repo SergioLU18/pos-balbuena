@@ -7,10 +7,11 @@ import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
 
 beforeEach(() => {
   usePosStore.setState({
-    platillos: MENU.map((p) => ({ activo: true, ...p })),
+    platillos: MENU.map((p) => ({ activo: true, orden: 0, ...p })),
     ingredientes: INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x })),
     modificadores: MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i })),
     extras: EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x })),
+    categoriasOrden: [...new Set(MENU.map((p) => p.categoria))].map((nombre, i) => ({ id: `cat-${i}`, nombre, orden: i })),
   })
 })
 
@@ -77,6 +78,31 @@ describe('useMenuAdmin — ingredientes y modificadores', () => {
     expect(usePosStore.getState().ingredientes.some((i) => i.id === creado.id)).toBe(false)
   })
 
+  it('asignarExtraAProductos agrega el extra a los seleccionados y lo quita del resto', async () => {
+    const { result } = renderHook(() => useMenuAdmin())
+    const store = usePosStore.getState()
+    const sope = store.platillos.find((p) => p.categoria === 'Sopes')
+    const refresco = store.platillos.find((p) => p.nombre === 'Refresco')
+    // Asigna "Crema" solo al Refresco (y por lo tanto lo quita del Sope, que lo tenía).
+    await act(async () => {
+      await result.current.asignarExtraAProductos('Crema', [refresco.id])
+    })
+    const platillos = usePosStore.getState().platillos
+    expect(platillos.find((p) => p.id === refresco.id).extras).toContain('Crema')
+    expect(platillos.find((p) => p.id === sope.id).extras).not.toContain('Crema')
+  })
+
+  it('asignarExtraAProductos con renombre limpia el nombre viejo', async () => {
+    const { result } = renderHook(() => useMenuAdmin())
+    const sope = usePosStore.getState().platillos.find((p) => p.categoria === 'Sopes')
+    await act(async () => {
+      await result.current.asignarExtraAProductos('Crema Espesa', [sope.id], 'Crema')
+    })
+    const actualizado = usePosStore.getState().platillos.find((p) => p.id === sope.id)
+    expect(actualizado.extras).toContain('Crema Espesa')
+    expect(actualizado.extras).not.toContain('Crema')
+  })
+
   it('un modificador inactivo no llega al flujo de orden', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const objetivo = usePosStore.getState().modificadores[0]
@@ -105,5 +131,33 @@ describe('useMenuAdmin — ingredientes y modificadores', () => {
       await result.current.borrarExtra(objetivo.id)
     })
     expect(usePosStore.getState().extras.some((e) => e.id === objetivo.id)).toBe(false)
+  })
+})
+
+describe('useMenuAdmin — orden', () => {
+  it('reordenarCategorias cambia el orden de las categorías en useMenu', async () => {
+    const { result } = renderHook(() => useMenuAdmin())
+    const orden = usePosStore.getState().categoriasOrden.map((c) => c.nombre)
+    const nuevo = ['Postres', ...orden.filter((n) => n !== 'Postres')]
+    await act(async () => {
+      await result.current.reordenarCategorias(nuevo)
+    })
+    const { result: menuRes } = renderHook(() => useMenu())
+    expect(menuRes.current.categorias[0]).toBe('Postres')
+  })
+
+  it('reordenarPlatillos asigna orden por posición dentro de la categoría', async () => {
+    const store = usePosStore.getState()
+    const sope = store.platillos.find((p) => p.categoria === 'Sopes')
+    usePosStore.setState({
+      platillos: [...store.platillos, { id: 'sope2', nombre: 'Sope 2', categoria: 'Sopes', tiers: sope.tiers, activo: true, orden: 1 }],
+    })
+    const { result } = renderHook(() => useMenuAdmin())
+    await act(async () => {
+      await result.current.reordenarPlatillos(['sope2', sope.id])
+    })
+    const platillos = usePosStore.getState().platillos
+    expect(platillos.find((p) => p.id === 'sope2').orden).toBe(0)
+    expect(platillos.find((p) => p.id === sope.id).orden).toBe(1)
   })
 })

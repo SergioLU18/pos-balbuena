@@ -41,8 +41,8 @@ where r.nombre = 'Jardín Balbuena'
 -- Reconstruye el catálogo del mock (src/lib/mockMenu.js) en la tabla compartida
 -- `platillos`. precio = precio mínimo (para el precio plano que muestra tali);
 -- tiers/tortillas/base/flags en las columnas POS. Idempotente por (restaurante, nombre).
-insert into platillos (restaurante_id, nombre, categoria, descripcion, precio, base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras)
-select r.id, v.nombre, v.categoria, v.base, v.precio, v.base, v.tiers::jsonb, v.tortillas::jsonb, v.permite_mitades, v.permite_nota, true, v.modificadores::jsonb, v.extras::jsonb
+insert into platillos (restaurante_id, nombre, categoria, descripcion, precio, base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden)
+select r.id, v.nombre, v.categoria, v.base, v.precio, v.base, v.tiers::jsonb, v.tortillas::jsonb, v.permite_mitades, v.permite_nota, true, v.modificadores::jsonb, v.extras::jsonb, 0
 from restaurantes r
 cross join (values
   ('Sope', 'Sopes', 'Tortilla hecha a mano, frijol, salsa verde, romanita, crema y queso oaxaca', 110,
@@ -120,6 +120,19 @@ cross join (values
 where r.nombre = 'Jardín Balbuena'
   and not exists (
     select 1 from pos_extras e where e.restaurante_id = r.id and e.nombre = v.nombre
+  );
+
+-- ── Menú: orden de las categorías (Sopes primero) ───────────────────────────
+insert into pos_categorias (restaurante_id, nombre, orden)
+select r.id, v.nombre, v.orden
+from restaurantes r
+cross join (values
+  ('Sopes', 0), ('Quesadillas', 1), ('Tacos Dorados', 2), ('Tortas', 3),
+  ('Sincronizadas', 4), ('Burritas', 5), ('Ensaladas', 6), ('Bebidas', 7), ('Postres', 8)
+) as v(nombre, orden)
+where r.nombre = 'Jardín Balbuena'
+  and not exists (
+    select 1 from pos_categorias c where c.restaurante_id = r.id and c.nombre = v.nombre
   );
 
 -- ── Menú: modificadores de remoción ─────────────────────────────────────────

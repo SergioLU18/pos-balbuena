@@ -48,6 +48,9 @@ alter table platillos add column if not exists permite_nota    boolean not null 
 -- catálogos globales pos_modificadores / pos_extras.
 alter table platillos add column if not exists modificadores   jsonb not null default '[]';
 alter table platillos add column if not exists extras          jsonb not null default '[]';
+-- orden: posición del platillo DENTRO de su categoría (menor = primero). El orden
+-- de las CATEGORÍAS vive aparte, en pos_categorias.
+alter table platillos add column if not exists orden           int   not null default 0;
 
 -- ── 3. Ingredientes y modificadores (catálogos GLOBALes del restaurante) ────
 -- En el POS no son por-platillo: el tier del platillo solo dice CUÁNTOS
@@ -84,12 +87,26 @@ create table if not exists pos_extras (
   created_at     timestamptz not null default now()
 );
 
+-- Orden de las CATEGORÍAS del menú. Las categorías son texto libre en platillos.categoria;
+-- esta tabla solo aporta el ORDEN (nombre -> orden). Una categoría en uso que no tenga
+-- fila aquí se ordena al final (alfabético). unique(restaurante,nombre) para poder hacer
+-- upsert al reordenar.
+create table if not exists pos_categorias (
+  id             uuid primary key default gen_random_uuid(),
+  restaurante_id uuid references restaurantes(id) on delete cascade,
+  nombre         text not null,
+  orden          int not null default 0,
+  created_at     timestamptz not null default now(),
+  unique (restaurante_id, nombre)
+);
+
 -- ── 4. RPC: guardar (crear/editar) un platillo del menú ─────────────────────
 -- p_id null => alta; p_id no null => edición. Mantiene precio = tier "Sencillo"
 -- (el de menos ingredientes) para tali.
 -- Se elimina la firma anterior para no dejar un overload ambiguo que confunda a
 -- PostgREST al resolver por nombres de argumento.
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb);
+drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb);
 create or replace function pos_guardar_platillo(
   p_id              uuid,
   p_restaurante_id  uuid,
@@ -102,7 +119,8 @@ create or replace function pos_guardar_platillo(
   p_activo          boolean,
   p_tortillas       jsonb default null,
   p_modificadores   jsonb default '[]',
-  p_extras          jsonb default '[]'
+  p_extras          jsonb default '[]',
+  p_orden           int   default null
 ) returns uuid
 language plpgsql
 security definer
@@ -111,9 +129,16 @@ as $$
 declare
   v_id     uuid := p_id;
   v_precio numeric;
+  v_orden  int := p_orden;
 begin
   if p_nombre is null or length(trim(p_nombre)) = 0 then
     raise exception 'El nombre del platillo es obligatorio.';
+  end if;
+
+  -- Platillo nuevo sin orden explícito: se agrega al final de su categoría.
+  if v_id is null and v_orden is null then
+    select coalesce(max(orden), -1) + 1 into v_orden
+    from platillos where restaurante_id = p_restaurante_id and categoria is not distinct from p_categoria;
   end if;
 
   -- precio plano (para tali) = el MÍNIMO entre los tiers directos y los tiers de
@@ -130,17 +155,18 @@ begin
 
   if v_id is null then
     insert into platillos (restaurante_id, nombre, categoria, descripcion, precio,
-                           base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras)
+                           base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden)
     values (p_restaurante_id, p_nombre, p_categoria, p_base, v_precio,
             p_base, coalesce(p_tiers, '[]'::jsonb), p_tortillas, p_permite_mitades, p_permite_nota, p_activo,
-            coalesce(p_modificadores, '[]'::jsonb), coalesce(p_extras, '[]'::jsonb))
+            coalesce(p_modificadores, '[]'::jsonb), coalesce(p_extras, '[]'::jsonb), coalesce(v_orden, 0))
     returning id into v_id;
   else
     update platillos set
       nombre = p_nombre, categoria = p_categoria, descripcion = p_base, precio = v_precio,
       base = p_base, tiers = coalesce(p_tiers, '[]'::jsonb), tortillas = p_tortillas,
       permite_mitades = p_permite_mitades, permite_nota = p_permite_nota, activo = p_activo,
-      modificadores = coalesce(p_modificadores, '[]'::jsonb), extras = coalesce(p_extras, '[]'::jsonb)
+      modificadores = coalesce(p_modificadores, '[]'::jsonb), extras = coalesce(p_extras, '[]'::jsonb),
+      orden = coalesce(p_orden, orden)
     where id = v_id;
   end if;
 
@@ -165,11 +191,65 @@ begin
 end;
 $$;
 
+-- ── RPC: reordenar platillos. Recibe los ids en el orden deseado y les asigna
+-- orden = posición (0,1,2,…). Se usa para las flechas ▲▼ del editor de menú.
+-- (platillos no es escribible por anon directo; por eso va por RPC como el resto.)
+create or replace function pos_reordenar_platillos(p_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update platillos p
+  set orden = pos.idx
+  from (select id, (ord - 1) as idx from unnest(p_ids) with ordinality as t(id, ord)) pos
+  where p.id = pos.id;
+end;
+$$;
+
+-- ── RPC: fijar a qué platillos aplica un extra (edición desde el lado del extra).
+-- La asociación vive en platillos.extras (arreglo de nombres). Esta función, en una
+-- sola llamada, agrega el nombre del extra a los platillos seleccionados y lo quita
+-- de los demás. p_old_extra permite renombrar: si difiere, primero se limpia el nombre
+-- viejo de todos. (jsonb `-` texto quita elementos del arreglo; `?` prueba pertenencia.)
+create or replace function pos_set_extra_en_platillos(
+  p_restaurante_id uuid,
+  p_extra          text,
+  p_platillo_ids   uuid[],
+  p_old_extra      text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update platillos p set extras = sub.nuevo
+  from (
+    select id,
+      case
+        when id = any(p_platillo_ids)
+          then (case when base ? p_extra then base else base || to_jsonb(p_extra) end)
+        else base - p_extra
+      end as nuevo
+    from (
+      select id,
+        case when p_old_extra is not null and p_old_extra <> p_extra
+             then coalesce(extras, '[]'::jsonb) - p_old_extra
+             else coalesce(extras, '[]'::jsonb) end as base
+      from platillos where restaurante_id = p_restaurante_id
+    ) t
+  ) sub
+  where p.id = sub.id;
+end;
+$$;
+
 -- ── 6. RLS ──────────────────────────────────────────────────────────────────
 -- Tablas 100% del POS: políticas abiertas (mismo criterio que meseros/pedidos).
 alter table pos_ingredientes  enable row level security;
 alter table pos_modificadores enable row level security;
 alter table pos_extras        enable row level security;
+alter table pos_categorias    enable row level security;
 
 drop policy if exists "pos ingredientes total" on pos_ingredientes;
 create policy "pos ingredientes total" on pos_ingredientes for all to anon, authenticated using (true) with check (true);
@@ -180,14 +260,19 @@ create policy "pos modificadores total" on pos_modificadores for all to anon, au
 drop policy if exists "pos extras total" on pos_extras;
 create policy "pos extras total" on pos_extras for all to anon, authenticated using (true) with check (true);
 
+drop policy if exists "pos categorias total" on pos_categorias;
+create policy "pos categorias total" on pos_categorias for all to anon, authenticated using (true) with check (true);
+
 -- platillos (compartida): el POS solo necesita LEER con anon; las escrituras van
 -- por las RPCs de arriba (security definer). Esta política es aditiva y de solo
 -- lectura, así no debilita las escrituras que ya controla tali.
 drop policy if exists "pos platillos lectura anon" on platillos;
 create policy "pos platillos lectura anon" on platillos for select to anon using (true);
 
-grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb) to anon, authenticated;
+grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int) to anon, authenticated;
 grant execute on function pos_borrar_platillo(uuid) to anon, authenticated;
+grant execute on function pos_reordenar_platillos(uuid[]) to anon, authenticated;
+grant execute on function pos_set_extra_en_platillos(uuid, text, uuid[], text) to anon, authenticated;
 
 -- ── 7. Realtime (un cambio de menú/mesero se refleja en todas las tablets) ──
 -- meseros no estaba en la publicación; ahora el admin edita meseros y el POS se
@@ -197,3 +282,4 @@ do $$ begin alter publication supabase_realtime add table platillos;        exce
 do $$ begin alter publication supabase_realtime add table pos_ingredientes;  exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table pos_modificadores; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table pos_extras;        exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pos_categorias;    exception when duplicate_object then null; end $$;

@@ -11,10 +11,14 @@ import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
 // crear/editar/borrar igual en mock que en backend. El flujo de orden los recibe
 // aplanados por useMenu (ingredientes {nombre, extra}, modificadores string[],
 // extras {nombre, precio}).
-const MOCK_PLATILLOS = MENU.map((p) => ({ activo: true, ...p }))
+// orden: posición del platillo dentro de su categoría (hay un platillo por categoría
+// en el mock, así que 0). El orden de categorías vive en categoriasOrden.
+const MOCK_PLATILLOS = MENU.map((p) => ({ activo: true, orden: 0, ...p }))
 const MOCK_INGREDIENTES = INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x }))
 const MOCK_MODIFICADORES = MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i }))
 const MOCK_EXTRAS = EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x }))
+// Orden de categorías = orden de primera aparición en MENU (Sopes primero).
+const MOCK_CATEGORIAS_ORDEN = [...new Set(MENU.map((p) => p.categoria))].map((nombre, i) => ({ id: `cat-${i}`, nombre, orden: i }))
 
 // Envoltura defensiva: en un navegador real localStorage siempre funciona, pero en
 // algunos entornos (Safari en modo privado, o el runtime de pruebas) puede no existir
@@ -62,6 +66,7 @@ export const usePosStore = create(
       ingredientes: IS_MOCK ? MOCK_INGREDIENTES : [],
       modificadores: IS_MOCK ? MOCK_MODIFICADORES : [],
       extras: IS_MOCK ? MOCK_EXTRAS : [],
+      categoriasOrden: IS_MOCK ? MOCK_CATEGORIAS_ORDEN : [], // orden de las categorías (nombre -> orden)
       restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
@@ -69,19 +74,20 @@ export const usePosStore = create(
       setIngredientes: (ingredientes) => set({ ingredientes }),
       setModificadores: (modificadores) => set({ modificadores }),
       setExtras: (extras) => set({ extras }),
+      setCategoriasOrden: (categoriasOrden) => set({ categoriasOrden }),
       setRestauranteId: (restauranteId) => set({ restauranteId }),
     }),
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      version: 3,
+      version: 4,
       // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
-      // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agrega las
-      // allowlists por platillo (qué modificadores/extras aplican) y dos modificadores
-      // nuevos. En cada salto se re-siembran meseros y menú del mock, conservando las
-      // mesas que el usuario creó. En backend no importa: usePosData pisa todo al cargar.
+      // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agregó las
+      // allowlists por platillo. v4 agrega el orden de categorías y `orden` en platillos.
+      // En cada salto se re-siembran meseros y menú del mock, conservando las mesas que el
+      // usuario creó. En backend no importa: usePosData pisa todo al cargar.
       migrate: (persisted, version) => {
-        if (version < 3 && IS_MOCK) {
+        if (version < 4 && IS_MOCK) {
           return {
             ...persisted,
             meseros: MESEROS,
@@ -89,6 +95,7 @@ export const usePosStore = create(
             ingredientes: MOCK_INGREDIENTES,
             modificadores: MOCK_MODIFICADORES,
             extras: MOCK_EXTRAS,
+            categoriasOrden: MOCK_CATEGORIAS_ORDEN,
           }
         }
         return persisted
@@ -96,7 +103,7 @@ export const usePosStore = create(
       partialize: (s) => ({
         mesas: s.mesas, meseros: s.meseros,
         platillos: s.platillos, ingredientes: s.ingredientes,
-        modificadores: s.modificadores, extras: s.extras,
+        modificadores: s.modificadores, extras: s.extras, categoriasOrden: s.categoriasOrden,
       }),
     },
   ),
