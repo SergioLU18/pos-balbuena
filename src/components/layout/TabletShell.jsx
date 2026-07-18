@@ -16,7 +16,18 @@ export function TabletShell({ children }) {
           boxShadow: '0 2px 12px var(--jb-shadow)',
         }}
       >
-        <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
+        <div className="flex items-center" style={{ gap: 14 }}>
+          <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
+          <span
+            style={{
+              fontFamily: "'Snell Roundhand', 'Segoe Script', 'Brush Script MT', cursive",
+              fontStyle: 'italic', fontSize: 22, fontWeight: 600,
+              color: 'rgba(255,255,255,0.95)', whiteSpace: 'nowrap', lineHeight: 1,
+            }}
+          >
+            El restaurante de las niñas
+          </span>
+        </div>
         <div className="flex items-center" style={{ gap: 10 }}>
           <AdminEntry />
           <MeseroSwitcher />
