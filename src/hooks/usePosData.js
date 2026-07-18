@@ -8,6 +8,7 @@ import {
   useMeseroStore,
   useMesaPagadaStore,
 } from '../store/appStore'
+import { sumaCuenta } from './useOrderDraft'
 
 // Ordena números como texto ('2' antes que '10') para el mapa del piso.
 const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
@@ -113,6 +114,22 @@ function detectarPagadas(rows, activas) {
   }
 }
 
+// Consulta las dos formas de una cuenta (activas + pagadas recientes) y actualiza estado.
+// Es la versión LIGERA de cargarTodo (2 queries, sin menú/meseros): la usan el broadcast
+// de pago de tali y el sondeo periódico, porque un cobro solo cambia `cuentas`.
+async function refrescarCuentas(rid) {
+  const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+  const [cuentasRes, pagadasRes] = await Promise.all([
+    sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
+    sb.from('cuentas').select('id, mesa_id, closed_at, cuenta_items(precio_unitario, cantidad)')
+      .eq('restaurante_id', rid).eq('estado', 'pagada').gte('closed_at', desdePagos),
+  ])
+  if (cuentasRes.error) return
+  const activas = mapCuentas(cuentasRes.data)
+  useOrderStore.getState().setCuentas(activas)
+  detectarPagadas(pagadasRes.data, activas)
+}
+
 export async function cargarTodo(rid) {
   // Ventana de pagos recientes que miramos para detectar "Pagada" (12 h cubre un turno).
   const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
@@ -167,7 +184,9 @@ export function usePosData() {
 
     let vivo = true
     let channel = null
+    let panelSync = null
     let recargarTimer = null
+    let pollId = null
 
     async function init() {
       const { data: rest, error } = await sb
@@ -210,6 +229,40 @@ export function usePosData() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_extras', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_categorias', filter: `restaurante_id=eq.${rid}` }, recargar)
         .subscribe()
+
+      // El pago se hace en tali, NO en el POS. tali no depende de postgres_changes sobre
+      // `cuentas` para reflejarlo: al cobrar hace broadcast en el canal 'tali-panel-sync'
+      // (event 'cuenta-actualizada'). Nos sumamos a ese mismo canal para enterarnos del
+      // pago al instante y refrescar las cuentas — así la mesa pasa a "Pagada" al momento.
+      panelSync = sb
+        .channel('tali-panel-sync')
+        .on('broadcast', { event: 'cuenta-actualizada' }, ({ payload }) => {
+          // Al cobrar, tali pone la cuenta activa=false. La RLS de `cuentas` solo deja leer
+          // filas activas a la anon key, así que NO podemos releer la cuenta pagada para
+          // saber su mesa. Pero en este instante todavía la tenemos en el estado local:
+          // mapeamos cuenta_id → mesa aquí mismo y marcamos "Pagada" antes de refrescar.
+          if (payload?.estado === 'pagada' && payload?.cuenta_id) {
+            const cuentas = useOrderStore.getState().cuentas
+            const hit = Object.entries(cuentas).find(([, c]) => c.cuentaId === payload.cuenta_id)
+            if (hit) {
+              const [mesaId, c] = hit
+              useMesaPagadaStore.getState().marcarPagada(mesaId, { at: c.createdAt, total: sumaCuenta(c.items ?? []) })
+              // La cuenta ya la cerró tali, pero el pedido del POS (cocina) sigue vivo y, al
+              // recargar, haría que la mesa reapareciera como "Pedido enviado". La cerramos
+              // del lado POS: pos_cerrar_mesa borra sus pedidos (la cuenta activa=false ya no
+              // la toca). Optimista: también lo quitamos local para no esperar el Realtime.
+              usePedidosStore.getState().eliminarPedidosDeMesa(mesaId)
+              sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId }).then(() => {})
+            }
+          }
+          if (vivo) refrescarCuentas(rid).catch(() => {})
+        })
+        .subscribe()
+
+      // Red de seguridad: si un broadcast se pierde (tablet dormida, reconexión, o el POS
+      // abierto después del cobro), un sondeo ligero (solo cuentas) garantiza que el estado
+      // de las mesas —incl. "Pagada"— converja igual, aunque `cuentas` no emita Realtime.
+      pollId = setInterval(() => { if (vivo) refrescarCuentas(rid).catch(() => {}) }, 15000)
     }
 
     init()
@@ -217,7 +270,9 @@ export function usePosData() {
     return () => {
       vivo = false
       clearTimeout(recargarTimer)
+      clearInterval(pollId)
       if (channel) sb.removeChannel(channel)
+      if (panelSync) sb.removeChannel(panelSync)
     }
   }, [])
 }
