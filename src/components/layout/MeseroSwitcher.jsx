@@ -8,6 +8,7 @@ import { PinPad } from './PinPad'
 export function MeseroSwitcher() {
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const setMesero = useMeseroStore((s) => s.setMesero)
+  const setSessionUnlocked = useMeseroStore((s) => s.setSessionUnlocked)
   const meseros = usePosStore((s) => s.meseros)
 
   const [open, setOpen] = useState(false)
@@ -31,7 +32,7 @@ export function MeseroSwitcher() {
   function elegirMesero(m) {
     if (m.id === currentMeseroId) { cerrar(); return }
     // Sin PIN configurado (base sin sembrar): se permite el cambio directo para no bloquear.
-    if (!m.pin) { setMesero(m.id); cerrar(); return }
+    if (!m.pin) { setMesero(m.id); setSessionUnlocked(true); cerrar(); return }
     setTarget(m)
     setEntered('')
     setError(false)
@@ -45,6 +46,7 @@ export function MeseroSwitcher() {
     if (next.length === 4) {
       if (next === target.pin) {
         setMesero(target.id)
+        setSessionUnlocked(true)
         cerrar()
       } else {
         setError(true)

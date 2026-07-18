@@ -6,6 +6,7 @@ import {
   useOrderStore,
   usePedidosStore,
   useMeseroStore,
+  useMesaPagadaStore,
 } from '../store/appStore'
 
 // Ordena números como texto ('2' antes que '10') para el mapa del piso.
@@ -83,8 +84,39 @@ function mapPedidos(pedidos) {
   }))
 }
 
+// Baseline de cuentas ya pagadas al arrancar la sesión: las que ya estaban pagadas en el
+// primer cargarTodo son "viejas" y NO se anuncian como Pagada (por eso el badge desaparece
+// tras recargar). Solo los pagos que ocurren DURANTE la sesión se marcan. Es de módulo (no
+// de efecto) para sobrevivir remontajes; se resetea al recargar la página, que es justo la
+// semántica deseada ("hasta que recargue"). null = aún no se ha tomado el baseline.
+let pagadasVistas = null
+
+// Detecta mesas recién pagadas comparando contra el baseline. `activas` es el mapa de
+// cuentas activas ya calculado, para no marcar Pagada una mesa que ya abrió otra cuenta.
+function detectarPagadas(rows, activas) {
+  const paid = rows ?? []
+  const { marcarPagada, limpiarPagada, pagadas } = useMesaPagadaStore.getState()
+  if (pagadasVistas === null) {
+    pagadasVistas = new Set(paid.map((c) => c.id)) // primer load: todo lo pagado es viejo
+  } else {
+    for (const c of paid) {
+      if (pagadasVistas.has(c.id)) continue
+      pagadasVistas.add(c.id)
+      if (activas[c.mesa_id]) continue // ya reabrió cuenta → no anunciar
+      const total = (c.cuenta_items ?? []).reduce((s, it) => s + Number(it.precio_unitario) * Number(it.cantidad), 0)
+      marcarPagada(c.mesa_id, { at: c.closed_at, total })
+    }
+  }
+  // Apaga el badge de mesas que volvieron a tener cuenta activa (abrieron otra orden).
+  for (const mesaId of Object.keys(pagadas)) {
+    if (activas[mesaId]) limpiarPagada(mesaId)
+  }
+}
+
 export async function cargarTodo(rid) {
-  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes] = await Promise.all([
+  // Ventana de pagos recientes que miramos para detectar "Pagada" (12 h cubre un turno).
+  const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes] = await Promise.all([
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
     sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
@@ -96,6 +128,10 @@ export async function cargarTodo(rid) {
     sb.from('pos_modificadores').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
     sb.from('pos_extras').select('*').eq('restaurante_id', rid).order('orden').order('nombre'),
     sb.from('pos_categorias').select('*').eq('restaurante_id', rid).order('orden'),
+    // Cuentas pagadas recientemente (pago hecho en tali: estado='pagada', activa=false).
+    // Se usan solo para encender el badge "Pagada" del lado del mesero (ver detectarPagadas).
+    sb.from('cuentas').select('id, mesa_id, closed_at, cuenta_items(precio_unitario, cantidad)')
+      .eq('restaurante_id', rid).eq('estado', 'pagada').gte('closed_at', desdePagos),
   ])
 
   const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
@@ -116,8 +152,10 @@ export async function cargarTodo(rid) {
     meseroState.setMesero(meseros[0].id)
   }
 
-  useOrderStore.getState().setCuentas(mapCuentas(cuentasRes.data))
+  const activas = mapCuentas(cuentasRes.data)
+  useOrderStore.getState().setCuentas(activas)
   usePedidosStore.getState().setPedidos(mapPedidos(pedidosRes.data))
+  detectarPagadas(pagadasRes.data, activas)
 }
 
 // Carga inicial + suscripción en tiempo real. Se monta una sola vez en la raíz de la app

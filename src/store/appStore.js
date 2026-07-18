@@ -44,8 +44,15 @@ export const useMeseroStore = create(
       // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
       // al cambiar de mesero (ver setMesero).
       adminUnlocked: false,
-      setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false }),
+      // sessionUnlocked: el mesero confirmó su PIN al abrir la app en esta sesión. NO se
+      // persiste (ver partialize) → cada carga/refresh arranca en false y MeseroGate pide
+      // el PIN de nuevo, aunque la identidad sí se recuerde. setMesero lo baja a false para
+      // que un cambio programático (p. ej. el fallback de usePosData a meseros[0]) no salte
+      // el gate; solo un PIN correcto (MeseroGate/MeseroSwitcher) lo vuelve a subir.
+      sessionUnlocked: false,
+      setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false, sessionUnlocked: false }),
       setAdminUnlocked: (v) => set({ adminUnlocked: v }),
+      setSessionUnlocked: (v) => set({ sessionUnlocked: v }),
       toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
     }),
     {
@@ -135,6 +142,23 @@ export const useMesaLayoutStore = create(
     { name: 'pos-balbuena-mesa-layout', storage: safeStorage },
   ),
 )
+
+// Mesas recién pagadas (el pago ocurre en tali; aquí solo se refleja). A propósito NO
+// se persiste: es una señal efímera de sesión — la tarjeta muestra "Pagada" hasta que
+// el mesero recarga la página o abre una cuenta nueva (agrega un producto). usePosData
+// la enciende al detectar el pago por Realtime y la apaga cuando la mesa vuelve a tener
+// cuenta activa. En modo mock no se usa (no hay flujo de pago).
+export const useMesaPagadaStore = create((set) => ({
+  pagadas: {}, // mesaId -> { at, total }
+  marcarPagada: (mesaId, info) =>
+    set((s) => (mesaId in s.pagadas ? s : { pagadas: { ...s.pagadas, [mesaId]: info } })),
+  limpiarPagada: (mesaId) =>
+    set((s) => {
+      if (!(mesaId in s.pagadas)) return s
+      const { [mesaId]: _omit, ...rest } = s.pagadas
+      return { pagadas: rest }
+    }),
+}))
 
 const EMPTY_ITEMS = []
 

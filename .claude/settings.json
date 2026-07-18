@@ -26,7 +26,12 @@
       "Bash(echo \"exit: $?\")",
       "WebFetch(domain:balbuena.app)",
       "Bash(curl -s -A \"Mozilla/5.0\" \"https://balbuena.app/libano/\" -o balb.html)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali 2>/dev/null && grep -rln \"activa\\\\|pagad\\\\|cobr\\\\|pago\\\\|cerrar_cuenta\\\\|cuentas\" --include=*.js --include=*.jsx --include=*.ts --include=*.tsx --include=*.sql src supabase 2>/dev/null | head -30 || echo \"tali not found at that path\")",
+      "Read(//Users/sergio/Documents/ChichenIT/tali/src/**)",
+      "Read(//Users/sergio/Documents/ChichenIT/tali/supabase/**)",
+      "Bash(grep -n -e \"--jb-\" /Users/sergio/Documents/ChichenIT/pos-balbuena/src/styles/index.css)",
+      "Bash(grep -n -e \"--jb-.*:\" /Users/sergio/Documents/ChichenIT/pos-balbuena/src/styles/index.css)"
     ]
   }
 }

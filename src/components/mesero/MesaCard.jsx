@@ -12,8 +12,8 @@ export const MESA_CARD_H = 140
 // ya se envió pero cocina no lo ha empezado, azul = cocina ya lo está cocinando, teal =
 // cocina lo dejó listo (mismo color que "Recogido por Mesero" en cocina, para que se lea
 // como el mismo momento de entrega desde los dos lados), rosa = cuenta abierta sin nada
-// pendiente en cocina. Deliberadamente NO se usa verde: en el flujo de pago se asocia a
-// "mesa pagada", y confundir ambos le costaba errores al mesero.
+// pendiente en cocina, verde = mesa pagada (el pago se hizo en tali; señal efímera que se
+// muestra hasta que el mesero recarga o abre otra cuenta). El verde SOLO se usa para pago.
 const THEME = {
   libre:      { bg: '#fff', border: 'var(--jb-line)', label: null, labelColor: 'var(--jb-gray)' },
   preparando: { bg: 'var(--jb-warn-bg)', border: 'var(--jb-warn)', label: 'Armando pedido', labelColor: '#9A6B12' },
@@ -21,13 +21,17 @@ const THEME = {
   cocinando:  { bg: 'var(--jb-info-bg)', border: 'var(--jb-info)', label: 'En preparación', labelColor: '#2C5F86', pulse: true },
   abierta:    { bg: 'var(--jb-pink-tint)', border: 'var(--jb-pink)', label: 'Cuenta abierta', labelColor: 'var(--jb-pink-dark)' },
   listo:      { bg: 'var(--jb-teal-bg)', border: 'var(--jb-teal)', label: '¡Listo para servir!', labelColor: '#1B5E66', pulse: true, pulseBorder: true },
+  pagada:     { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: '✓ Pagada', labelColor: '#2C7A50' },
 }
 
 export function MesaCard({ mesa, onClick }) {
-  // Prioridad: listo > cocinando > pendiente (esperando a que cocina empiece) >
-  // lo que diga mesa.estado (abierta/preparando/libre). mesa.estado en sí no cambia
-  // por esto — solo se usa para elegir qué tema pintar.
-  const visual = mesa.tienePedidoListo
+  // Prioridad: pagada (recién cobrada, señal efímera) manda sobre cualquier estado de
+  // cocina que hubiera quedado pintado. Luego: listo > cocinando > pendiente (esperando a
+  // que cocina empiece) > lo que diga mesa.estado (abierta/preparando/libre). mesa.estado
+  // en sí no cambia por esto — solo se usa para elegir qué tema pintar.
+  const visual = mesa.estado === 'pagada'
+    ? 'pagada'
+    : mesa.tienePedidoListo
     ? 'listo'
     : mesa.tieneEnPreparacion
     ? 'cocinando'
@@ -84,6 +88,9 @@ export function MesaCard({ mesa, onClick }) {
 
       {mesa.estado === 'abierta' && (
         <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(mesa.total)}</span>
+      )}
+      {mesa.estado === 'pagada' && mesa.total > 0 && (
+        <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
       )}
     </button>
   )
