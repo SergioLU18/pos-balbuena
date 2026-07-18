@@ -81,9 +81,10 @@ cross join (values
     null, false, true,
     '["Sin Salsa Verde","Sin Queso Oaxaca","Sin Crema"]',
     '["Aguacate","Chile de Árbol","Chile Habanero","Crema","Salsa Verde"]'),
-  ('Refresco', 'Bebidas', 'Bebida embotellada', 40,
-    '[{"ingredientes":0,"nombre":"Único","precio":40}]',
-    null, false, false, '[]', '[]'),
+  ('Refresco', 'Bebidas', 'Elige tu sabor', 40,
+    '[]',
+    '[{"id":"coca-cola-regular","nombre":"Coca Cola Regular","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"coca-cola-light","nombre":"Coca Cola Light","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"coca-cola-sin-azucar","nombre":"Coca Cola Sin Azúcar","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"fanta","nombre":"Fanta","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"cebada","nombre":"Cebada","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"bebi","nombre":"Bebi","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"agua-de-horchata","nombre":"Agua de Horchata","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"agua-de-jamaica","nombre":"Agua de Jamaica","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"jamaica-con-canela-y-limon-sin-azucar","nombre":"Jamaica con Canela y Limón sin Azúcar","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"te-negro-stevia","nombre":"Té Negro Stevia","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]},{"id":"agua-purificada","nombre":"Agua Purificada","tiers":[{"ingredientes":0,"nombre":"Único","precio":40}]}]',
+    false, false, '[]', '[]'),
   ('Flan de Queso Oaxaca', 'Postres', 'Postre individual', 70,
     '[{"ingredientes":0,"nombre":"Único","precio":70}]',
     null, false, false, '[]', '[]')

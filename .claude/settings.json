@@ -38,7 +38,8 @@
       "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rn -e \"channel\" -e \"postgres_changes\" -e \"subscribe\" -e \"realtime\" src 2>/dev/null | head -40)",
       "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rn -e \"cerrada\" -e \"'pagada'\" -e \"activa\" -e \"cerrar_cuenta\" -e \"closed_at\" supabase 2>/dev/null | grep -iv \"select\\\\|comment\" | head -50)",
       "Bash(cd /Users/sergio/Documents/ChichenIT/tali && grep -rn -e \"supabase_realtime\" -e \"ALTER PUBLICATION\" -e \"REPLICA IDENTITY\" supabase 2>/dev/null; echo \"=====POS=====\"; grep -rn -e \"supabase_realtime\" -e \"ALTER PUBLICATION\" -e \"REPLICA IDENTITY\" supabase 2>/dev/null)",
-      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && sed -n '355,380p' src/hooks/usePayment.js; echo \"=====useCuenta panel sync sub=====\"; sed -n '155,185p' src/hooks/useCuenta.js)"
+      "Bash(cd /Users/sergio/Documents/ChichenIT/tali && sed -n '355,380p' src/hooks/usePayment.js; echo \"=====useCuenta panel sync sub=====\"; sed -n '155,185p' src/hooks/useCuenta.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }

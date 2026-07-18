@@ -63,6 +63,26 @@ function tiers(base, extra) {
   return list
 }
 
+// Bebidas: el SABOR se elige como variante (mismo modelo que las tortillas de los tacos),
+// todas al mismo precio. Cada sabor es una variante con un único tier ("Único").
+const SABORES_BEBIDA = [
+  'Coca Cola Regular',
+  'Coca Cola Light',
+  'Coca Cola Sin Azúcar',
+  'Fanta',
+  'Cebada',
+  'Bebi',
+  'Agua de Horchata',
+  'Agua de Jamaica',
+  'Jamaica con Canela y Limón sin Azúcar',
+  'Té Negro Stevia',
+  'Agua Purificada',
+]
+const slug = (s) =>
+  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+const saboresBebida = (precio) =>
+  SABORES_BEBIDA.map((nombre) => ({ id: slug(nombre), nombre, tiers: [{ ingredientes: 0, nombre: 'Único', precio }] }))
+
 export const MENU = [
   {
     id: 'sope',
@@ -177,8 +197,9 @@ export const MENU = [
     id: 'bebida',
     nombre: 'Refresco',
     categoria: 'Bebidas',
-    base: 'Bebida embotellada',
-    tiers: [{ ingredientes: 0, nombre: 'Único', precio: 40 }],
+    base: 'Elige tu sabor',
+    // El SABOR es la variante (como las tortillas de los tacos): 11 sabores, todos a $40.
+    tortillas: saboresBebida(40),
     modificadores: [],
     extras: [],
     permiteMitades: false,
