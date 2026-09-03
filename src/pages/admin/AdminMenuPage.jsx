@@ -38,7 +38,7 @@ function SubTab({ active, onClick, children }) {
       onClick={onClick}
       style={{
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        padding: '11px 18px', borderRadius: 12, cursor: 'pointer',
+        padding: '13px 20px', minHeight: 46, borderRadius: 12, cursor: 'pointer',
         border: active ? '2.5px solid var(--jb-pink)' : '2.5px solid var(--jb-line)',
         background: active ? 'var(--jb-pink-tint)' : '#fff',
         color: active ? 'var(--jb-pink-dark)' : 'var(--jb-ink)',
@@ -92,6 +92,7 @@ function PlatillosTab() {
   const platillos = usePosStore((s) => s.platillos)
   const categoriasOrden = usePosStore((s) => s.categoriasOrden)
   const { guardarPlatillo, borrarPlatillo, reordenarPlatillos } = useMenuAdmin()
+  const [viendo, setViendo] = useState(null)
   const [editando, setEditando] = useState(null)
   const [borrando, setBorrando] = useState(null)
 
@@ -102,6 +103,7 @@ function PlatillosTab() {
   async function confirmarBorrado() {
     const p = borrando
     setBorrando(null)
+    setEditando(null)
     await borrarPlatillo(p.id)
   }
 
@@ -152,8 +154,8 @@ function PlatillosTab() {
                       {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
                     </span>
                     <div className="flex" style={{ gap: 8, marginTop: 4 }}>
-                      <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setEditando(p)}>Editar</Button>
-                      <Button variant="ghost" size="md" style={{ color: '#C24A4A' }} onClick={() => setBorrando(p)}>Borrar</Button>
+                      <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setViendo(p)}>Ver</Button>
+                      <Button variant="ghost" size="md" style={{ color: 'var(--jb-pink-dark)' }} onClick={() => setEditando(p)}>Editar</Button>
                     </div>
                   </div>
                 )
@@ -163,11 +165,13 @@ function PlatillosTab() {
         )
       })}
 
+      {viendo && <PlatilloVistaModal platillo={viendo} onClose={() => setViendo(null)} />}
       {editando && (
         <PlatilloModal
           platillo={editando}
           categoriasExistentes={[...new Set(platillos.map((p) => p.categoria).filter(Boolean))]}
           onGuardar={guardarPlatillo}
+          onBorrar={() => setBorrando(editando)}
           onClose={() => setEditando(null)}
         />
       )}
@@ -225,7 +229,7 @@ function CategoriasTab() {
   )
 }
 
-function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
+function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, onClose }) {
   const esNuevo = !platillo.id
   const [nombre, setNombre] = useState(platillo.nombre ?? '')
   const [categoria, setCategoria] = useState(platillo.categoria ?? '')
@@ -366,21 +370,103 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
         <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
         <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
       </div>
+
+      {!esNuevo && onBorrar && (
+        <button onClick={onBorrar} style={borrarBtn}>Borrar platillo</button>
+      )}
     </ModalShell>
   )
 }
 
-function TiersEditor({ tiers, onChange }) {
+// Vista de solo lectura de un platillo (botón "Ver"): muestra todo sin editar.
+function PlatilloVistaModal({ platillo, onClose }) {
+  const grupos = platillo.tortillas?.length
+    ? platillo.tortillas.map((t) => ({ titulo: t.nombre, tiers: t.tiers ?? [] }))
+    : [{ titulo: null, tiers: platillo.tiers ?? [] }]
+  const lista = (arr) => (arr == null ? 'Todos' : arr.length ? arr.join(', ') : 'Ninguno')
+
+  return (
+    <ModalShell width={560} titulo={platillo.nombre} onClose={onClose}>
+      <Campo label="Categoría">
+        <div style={valorLeer}>{platillo.categoria || 'Sin categoría'}</div>
+      </Campo>
+
+      <Campo label="Ingredientes base">
+        <div style={valorLeer}>{platillo.base?.trim() || '—'}</div>
+      </Campo>
+
+      <Campo label="Niveles de precio">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {grupos.map((g, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {g.titulo && (
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{g.titulo}</span>
+              )}
+              {g.tiers.length === 0 && <span style={{ fontSize: 14, color: 'var(--jb-gray)' }}>Sin niveles</span>}
+              {g.tiers.map((t, j) => (
+                <div key={j} className="flex items-center justify-between" style={{
+                  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '10px 14px',
+                }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
+                    {t.nombre}
+                    <span style={{ fontWeight: 600, color: 'var(--jb-gray)', marginLeft: 8 }}>
+                      {Number(t.ingredientes) > 0 ? `${t.ingredientes} ing.` : 'sin ingredientes'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(Number(t.precio) || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Campo>
+
+      <Campo label="Modificadores que aplican">
+        <div style={valorLeer}>{lista(platillo.modificadores)}</div>
+      </Campo>
+
+      <Campo label="Extras que aplican">
+        <div style={valorLeer}>{lista(platillo.extras)}</div>
+      </Campo>
+
+      <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
+        <BanderaVista ok={!!platillo.permiteMitades}>Permite mitades</BanderaVista>
+        <BanderaVista ok={!!platillo.permiteNota}>Permite nota</BanderaVista>
+        <BanderaVista ok={platillo.activo !== false}>Disponible en el menú</BanderaVista>
+      </div>
+
+      <div className="flex" style={{ marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cerrar</Button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function BanderaVista({ ok, children }) {
+  return (
+    <span style={{ fontSize: 14, fontWeight: 700, color: ok ? 'var(--jb-ink)' : 'var(--jb-gray)' }}>
+      {ok ? '✓' : '✕'} {children}
+    </span>
+  )
+}
+
+function TiersEditor({ tiers, onChange, hint = true }) {
   function set(i, patch) { onChange(tiers.map((t, j) => (j === i ? { ...t, ...patch } : t))) }
   function add() { onChange([...tiers, { nombre: '', ingredientes: tiers.length, precio: '' }]) }
   function remove(i) { onChange(tiers.filter((_, j) => j !== i)) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <span style={{ flex: 2 }} />
+        <span style={{ ...colHead, width: 80, flex: 'none', textAlign: 'center' }}># Ingr.</span>
+        <span style={{ ...colHead, flex: 1, textAlign: 'center' }}>Precio</span>
+        <span style={{ width: 46, flexShrink: 0 }} />
+      </div>
       {tiers.map((t, i) => (
         <div key={i} className="flex items-center" style={{ gap: 8 }}>
-          <input value={t.nombre} onChange={(e) => set(i, { nombre: e.target.value })} placeholder="Nivel" style={{ ...inputStyle, flex: 2 }} />
-          <input value={t.ingredientes} onChange={(e) => set(i, { ingredientes: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="# ing" title="Ingredientes incluidos" style={{ ...inputStyle, width: 80, flex: 'none' }} />
+          <input value={t.nombre} onChange={(e) => set(i, { nombre: e.target.value })} placeholder="Ej. 2 Ingredientes" style={{ ...inputStyle, flex: 2 }} />
+          <input value={t.ingredientes} onChange={(e) => set(i, { ingredientes: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="0" title="Cuántos ingredientes puede elegir el mesero en este nivel" style={{ ...inputStyle, width: 80, flex: 'none', textAlign: 'center' }} />
           <div style={{ position: 'relative', flex: 1 }}>
             <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--jb-gray)', fontSize: 15 }}>$</span>
             <input value={t.precio} onChange={(e) => set(i, { precio: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" placeholder="0" style={{ ...inputStyle, paddingLeft: 24 }} />
@@ -388,6 +474,11 @@ function TiersEditor({ tiers, onChange }) {
           <button onClick={() => remove(i)} title="Quitar nivel" style={quitarBtn}>✕</button>
         </div>
       ))}
+      {hint && (
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+          <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+        </p>
+      )}
       <button onClick={add} style={agregarBtn}>+ Agregar nivel</button>
     </div>
   )
@@ -400,13 +491,16 @@ function TortillasEditor({ tortillas, onChange }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+        <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+      </p>
       {tortillas.map((t, i) => (
         <div key={t.id ?? i} style={{ border: '2px dashed var(--jb-line)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <input value={t.nombre} onChange={(e) => setTor(i, { nombre: e.target.value })} placeholder="Tortilla de Maíz" style={{ ...inputStyle, flex: 1 }} />
             <button onClick={() => removeTor(i)} title="Quitar tortilla" style={quitarBtn}>✕</button>
           </div>
-          <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} />
+          <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} hint={false} />
         </div>
       ))}
       <button onClick={addTor} style={agregarBtn}>+ Agregar variante de tortilla</button>
@@ -679,15 +773,35 @@ function ItemSimpleModal({ titulo, item, precioField, precioLabel, onGuardar, on
 }
 
 const quitarBtn = {
-  border: 'none', borderRadius: 10, width: 40, height: 40, flexShrink: 0,
+  border: 'none', borderRadius: 10, width: 46, height: 46, flexShrink: 0,
   fontSize: 15, fontWeight: 800, cursor: 'pointer',
   background: '#F6E7E7', color: '#C24A4A',
 }
 
 const agregarBtn = {
-  border: '2.5px dashed var(--jb-line)', borderRadius: 12, padding: '11px 0',
+  border: '2.5px dashed var(--jb-line)', borderRadius: 12, padding: '14px 0', minHeight: 48,
   fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 800,
   color: 'var(--jb-pink-dark)', background: '#fff', cursor: 'pointer',
+}
+
+// Botón "Borrar platillo" al pie del modal de edición, separado de Cancelar/Guardar
+// y lejos de la ✕ de cerrar. Sombreado de rojo.
+const borrarBtn = {
+  width: '100%', border: '2px solid #E6C2C2', borderRadius: 14, padding: '12px 0', minHeight: 48,
+  marginTop: 4, fontFamily: "'Inter Tight', sans-serif", fontSize: 15, fontWeight: 800,
+  cursor: 'pointer', background: '#F6E7E7', color: '#C24A4A',
+}
+
+// Encabezado de columna en el editor de niveles de precio.
+const colHead = {
+  fontSize: 11, fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase',
+  color: 'var(--jb-gray)',
+}
+
+// Valor de solo lectura (vista "Ver").
+const valorLeer = {
+  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '11px 14px',
+  fontSize: 15, color: 'var(--jb-ink)', background: 'var(--jb-cream)', whiteSpace: 'pre-wrap',
 }
 
 const miniBtn = {

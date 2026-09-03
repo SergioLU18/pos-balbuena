@@ -32,10 +32,10 @@ export default function AdminApp() {
         style={{ padding: '12px 24px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)' }}
       >
         <div className="flex items-center" style={{ gap: 18 }}>
-          <span style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Administración</span>
+          <span style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Ajustes</span>
           <nav className="flex items-center" style={{ gap: 8 }}>
-            <TabLink to="/admin" end>Meseros</TabLink>
             <TabLink to="/admin/menu">Menú</TabLink>
+            <TabLink to="/admin/meseros">Meseros</TabLink>
           </nav>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
@@ -44,7 +44,7 @@ export default function AdminApp() {
             onClick={salir}
             style={{
               fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-              padding: '10px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
+              padding: '12px 18px', minHeight: 44, borderRadius: 12, border: 'none', cursor: 'pointer',
               background: 'rgba(255,255,255,0.92)', color: 'var(--jb-pink-dark)',
             }}
           >
@@ -54,9 +54,10 @@ export default function AdminApp() {
       </header>
       <main className="flex-1 min-h-0" style={{ overflowY: 'auto' }}>
         <Routes>
-          <Route index element={<AdminMeserosPage />} />
+          <Route index element={<Navigate to="/admin/menu" replace />} />
           <Route path="menu" element={<AdminMenuPage />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="meseros" element={<AdminMeserosPage />} />
+          <Route path="*" element={<Navigate to="/admin/menu" replace />} />
         </Routes>
       </main>
     </div>
@@ -70,7 +71,8 @@ function TabLink({ to, end, children }) {
       end={end}
       style={({ isActive }) => ({
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        padding: '9px 16px', borderRadius: 11, textDecoration: 'none',
+        padding: '11px 18px', minHeight: 44, display: 'inline-flex', alignItems: 'center',
+        borderRadius: 11, textDecoration: 'none',
         background: isActive ? '#fff' : 'rgba(255,255,255,0.18)',
         color: isActive ? 'var(--jb-pink-dark)' : '#fff',
       })}
