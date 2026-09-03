@@ -1,8 +1,9 @@
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
+import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
-import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
+import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
 import { cargarTodo } from './usePosData'
 
 // Recargo de un ingrediente: se lee del catálogo vivo (store), no de una lista estática,
@@ -121,6 +122,15 @@ export function useOrderDraft(mesaId) {
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
 
+  // Un fallo suena igual para todos los casos, así que el tono solo dice "algo no se
+  // guardó". El renglón en la campana es el que dice qué fue y en qué mesa, y sigue ahí
+  // cuando el mesero por fin voltea a ver la tablet.
+  const mesaNumero = mesas.find((m) => m.id === mesaId)?.numero ?? '—'
+  const avisarError = (titulo, detalle) => {
+    sonarError()
+    useAvisosStore.getState().agregarAviso({ tipo: 'error', titulo: `Mesa ${mesaNumero} · ${titulo}`, detalle, mesaId })
+  }
+
   function agregarPlatillo(platillo, tierIndex) {
     addDraftItem(mesaId, buildDraftItem(platillo, tierIndex))
   }
@@ -177,8 +187,14 @@ export function useOrderDraft(mesaId) {
         p_mesero_nombre: mesero?.nombre ?? '—',
         p_items: payload,
       }).then(({ error }) => {
-        if (error) console.error('[orden] enviarACocina falló:', error)
-        else clearDraft(mesaId)
+        // Hasta aquí un fallo era invisible: el draft se quedaba en pantalla y el mesero
+        // no podía distinguir "no se envió" de "se envió y la pantalla no ha refrescado",
+        // así que se iba de la mesa o volvía a picar (con riesgo de orden duplicada).
+        if (error) {
+          console.error('[orden] enviarACocina falló:', error)
+          avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
+        }
+        else { clearDraft(mesaId); sonarConfirmacion() }
       })
       return
     }
@@ -194,6 +210,7 @@ export function useOrderDraft(mesaId) {
       estado: 'pendiente',
     })
     enviarOrden(mesaId)
+    sonarConfirmacion()
   }
 
   // El renglón de cuenta_items que corresponde a un renglón de un pedido: ambos comparten
@@ -231,7 +248,11 @@ export function useOrderDraft(mesaId) {
 
       sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad })
         .then(({ error }) => {
-          if (error) { console.error('[orden] cambiarCantidadEnviado falló:', error); recargarDesdeBackend() }
+          if (error) {
+            console.error('[orden] cambiarCantidadEnviado falló:', error)
+            avisarError('no se pudo cambiar la cantidad', 'El pedido se dejó como estaba')
+            recargarDesdeBackend()
+          }
         })
       return
     }
@@ -273,7 +294,11 @@ export function useOrderDraft(mesaId) {
 
       sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
         .then(({ error }) => {
-          if (error) { console.error('[orden] quitarItemEnviado falló:', error); recargarDesdeBackend() }
+          if (error) {
+            console.error('[orden] quitarItemEnviado falló:', error)
+            avisarError('no se pudo quitar el platillo', 'Sigue en la comanda de cocina')
+            recargarDesdeBackend()
+          }
         })
       return
     }
@@ -290,7 +315,12 @@ export function useOrderDraft(mesaId) {
   function cerrarMesa() {
     if (!IS_MOCK) {
       sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
-        .then(({ error }) => { if (error) console.error('[orden] cerrarMesa falló:', error) })
+        .then(({ error }) => {
+          if (error) {
+            console.error('[orden] cerrarMesa falló:', error)
+            avisarError('no se pudo cerrar la cuenta', 'La mesa sigue abierta')
+          }
+        })
       return
     }
     cerrarCuenta(mesaId)
