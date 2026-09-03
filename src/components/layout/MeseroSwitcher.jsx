@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMeseroStore, usePosStore } from '../../store/appStore'
 import { PinPad } from './PinPad'
+import { sonarError } from '../../lib/sonidos'
 
 // Cambio de mesero con PIN. Es "atribución, no seguridad": el PIN evita que se mande
 // una orden bajo el nombre equivocado por accidente, no protege dinero (los pagos viven
@@ -51,6 +52,7 @@ export function MeseroSwitcher() {
       } else {
         setError(true)
         setEntered('')
+        sonarError()
       }
     }
   }

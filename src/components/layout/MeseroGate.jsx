@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMeseroStore, usePosStore } from '../../store/appStore'
 import { PinPad } from './PinPad'
+import { sonarError, desbloquearAudio } from '../../lib/sonidos'
 
 // Bloqueo de sesión del lado del mesero. La IDENTIDAD del mesero se recuerda entre
 // refreshes (persistida), pero `sessionUnlocked` no se persiste: cada carga arranca
@@ -34,6 +35,10 @@ export function MeseroGate({ children }) {
   function desbloquear(id) {
     if (id !== currentMeseroId) setMesero(id)
     setSessionUnlocked(true) // set separado: queda true aunque setMesero lo haya bajado
+    // Único gesto garantizado en cada carga de la app (sessionUnlocked no se persiste),
+    // así que es aquí donde se arma el audio: el aviso de "listo" llega después solo,
+    // sin que nadie toque la pantalla, y el navegador no deja sonar nada sin un gesto.
+    desbloquearAudio()
   }
 
   function elegir(m) {
@@ -55,6 +60,7 @@ export function MeseroGate({ children }) {
       } else {
         setError(true)
         setEntered('')
+        sonarError()
       }
     }
   }

@@ -4,6 +4,7 @@ import { IS_MOCK } from '../lib/config'
 import { MESEROS } from '../lib/mockMeseros'
 import { MESAS } from '../lib/mockMesas'
 import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
+import { uid } from '../lib/utils'
 
 // Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
 // (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
@@ -159,6 +160,25 @@ export const useMesaPagadaStore = create((set) => ({
       const { [mesaId]: _omit, ...rest } = s.pagadas
       return { pagadas: rest }
     }),
+}))
+
+// Avisos del turno: la contraparte VISIBLE de los sonidos. El tono dice "algo pasó",
+// pero no qué ni en qué mesa, y si el mesero traía la tablet lejos puede que ni lo haya
+// oído. Aquí queda el registro para consultarlo cuando pueda. NO se persiste: es
+// información del turno en curso, no historial — al recargar se empieza limpio.
+const MAX_AVISOS = 30
+
+export const useAvisosStore = create((set) => ({
+  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, at, leido }
+  agregarAviso: (aviso) =>
+    set((s) => ({
+      avisos: [
+        { ...aviso, id: uid('aviso'), at: new Date().toISOString(), leido: false },
+        ...s.avisos,
+      ].slice(0, MAX_AVISOS),
+    })),
+  marcarTodosLeidos: () => set((s) => ({ avisos: s.avisos.map((a) => ({ ...a, leido: true })) })),
+  limpiarAvisos: () => set({ avisos: [] }),
 }))
 
 const EMPTY_ITEMS = []
