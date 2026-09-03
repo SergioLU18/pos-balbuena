@@ -1,0 +1,811 @@
+import { useState } from 'react'
+import { usePosStore } from '../../store/appStore'
+import { useMenuAdmin } from '../../hooks/useMenuAdmin'
+import { f, uid } from '../../lib/utils'
+import { Button } from '../../components/ui/Button'
+import { Chip } from '../../components/ui/Chip'
+import { ConfirmModal } from '../../components/ui/ConfirmModal'
+import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
+import { inputStyle } from '../../components/admin/adminStyles'
+
+// Editor de menú: platillos (con niveles de precio y variantes de tortilla), orden de
+// categorías, e ingredientes/modificadores/extras globales. Sub-pestañas.
+export default function AdminMenuPage() {
+  const [tab, setTab] = useState('platillos')
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 24px 60px' }}>
+      <div className="flex" style={{ gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
+        <SubTab active={tab === 'platillos'} onClick={() => setTab('platillos')}>Platillos</SubTab>
+        <SubTab active={tab === 'categorias'} onClick={() => setTab('categorias')}>Categorías</SubTab>
+        <SubTab active={tab === 'ingredientes'} onClick={() => setTab('ingredientes')}>Ingredientes</SubTab>
+        <SubTab active={tab === 'modificadores'} onClick={() => setTab('modificadores')}>Modificadores</SubTab>
+        <SubTab active={tab === 'extras'} onClick={() => setTab('extras')}>Extras</SubTab>
+      </div>
+
+      {tab === 'platillos' && <PlatillosTab />}
+      {tab === 'categorias' && <CategoriasTab />}
+      {tab === 'ingredientes' && <IngredientesTab />}
+      {tab === 'modificadores' && <ModificadoresTab />}
+      {tab === 'extras' && <ExtrasTab />}
+    </div>
+  )
+}
+
+function SubTab({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
+        padding: '13px 20px', minHeight: 46, borderRadius: 12, cursor: 'pointer',
+        border: active ? '2.5px solid var(--jb-pink)' : '2.5px solid var(--jb-line)',
+        background: active ? 'var(--jb-pink-tint)' : '#fff',
+        color: active ? 'var(--jb-pink-dark)' : 'var(--jb-ink)',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ── Platillos ────────────────────────────────────────────────────────────────
+function preciosDe(p) {
+  const tiers = p.tortillas ? p.tortillas.flatMap((t) => t.tiers) : (p.tiers ?? [])
+  return tiers.map((t) => Number(t.precio)).filter((n) => !isNaN(n))
+}
+
+// Categorías en uso, ordenadas por el catálogo categoriasOrden (las que no estén, al final).
+function categoriasOrdenadas(platillos, categoriasOrden) {
+  const rango = new Map(categoriasOrden.map((c) => [c.nombre, c.orden]))
+  const rank = (n) => (rango.has(n) ? rango.get(n) : Number.MAX_SAFE_INTEGER)
+  return [...new Set(platillos.map((p) => p.categoria || 'Sin categoría'))].sort(
+    (a, b) => rank(a) - rank(b) || a.localeCompare(b),
+  )
+}
+
+// Botones ▲▼ para reordenar. Deshabilita el extremo correspondiente.
+function MoveButtons({ onUp, onDown, disableUp, disableDown }) {
+  const btn = (dis) => ({
+    border: '2px solid var(--jb-line)', borderRadius: 9, width: 34, height: 34, flexShrink: 0,
+    fontSize: 14, fontWeight: 900, cursor: dis ? 'default' : 'pointer',
+    background: '#fff', color: dis ? 'var(--jb-line)' : 'var(--jb-ink)', opacity: dis ? 0.5 : 1,
+  })
+  return (
+    <div className="flex" style={{ gap: 4 }}>
+      <button onClick={onUp} disabled={disableUp} title="Subir" style={btn(disableUp)}>▲</button>
+      <button onClick={onDown} disabled={disableDown} title="Bajar" style={btn(disableDown)}>▼</button>
+    </div>
+  )
+}
+
+// Devuelve una copia del arreglo con el elemento en `idx` movido `dir` (-1 arriba, +1 abajo).
+function mover(arr, idx, dir) {
+  const next = idx + dir
+  if (next < 0 || next >= arr.length) return arr
+  const copia = arr.slice()
+  ;[copia[idx], copia[next]] = [copia[next], copia[idx]]
+  return copia
+}
+
+function PlatillosTab() {
+  const platillos = usePosStore((s) => s.platillos)
+  const categoriasOrden = usePosStore((s) => s.categoriasOrden)
+  const { guardarPlatillo, borrarPlatillo, reordenarPlatillos } = useMenuAdmin()
+  const [viendo, setViendo] = useState(null)
+  const [editando, setEditando] = useState(null)
+  const [borrando, setBorrando] = useState(null)
+
+  const categorias = categoriasOrdenadas(platillos, categoriasOrden)
+  const dishesDe = (cat) =>
+    platillos.filter((p) => (p.categoria || 'Sin categoría') === cat).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+
+  async function confirmarBorrado() {
+    const p = borrando
+    setBorrando(null)
+    setEditando(null)
+    await borrarPlatillo(p.id)
+  }
+
+  function moverPlatillo(cat, idx, dir) {
+    const lista = dishesDe(cat)
+    const reordenada = mover(lista, idx, dir)
+    if (reordenada !== lista) reordenarPlatillos(reordenada.map((p) => p.id))
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>
+          {platillos.length} {platillos.length === 1 ? 'platillo' : 'platillos'} · usa ▲▼ para ordenar dentro de la categoría
+        </p>
+        <Button size="md" onClick={() => setEditando({})}>+ Nuevo platillo</Button>
+      </div>
+
+      {categorias.map((cat) => {
+        const lista = dishesDe(cat)
+        return (
+          <div key={cat} style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{cat}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+              {lista.map((p, idx) => {
+                const precios = preciosDe(p)
+                const inactivo = p.activo === false
+                const min = precios.length ? Math.min(...precios) : 0
+                const max = precios.length ? Math.max(...precios) : 0
+                return (
+                  <div key={p.id} style={{
+                    background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
+                    padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
+                  }}>
+                    <div className="flex items-center justify-between">
+                      <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
+                      <div className="flex items-center" style={{ gap: 8 }}>
+                        {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
+                        <MoveButtons
+                          onUp={() => moverPlatillo(cat, idx, -1)}
+                          onDown={() => moverPlatillo(cat, idx, 1)}
+                          disableUp={idx === 0}
+                          disableDown={idx === lista.length - 1}
+                        />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
+                      {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
+                    </span>
+                    <div className="flex" style={{ gap: 8, marginTop: 4 }}>
+                      <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setViendo(p)}>Ver</Button>
+                      <Button variant="ghost" size="md" style={{ color: 'var(--jb-pink-dark)' }} onClick={() => setEditando(p)}>Editar</Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+
+      {viendo && <PlatilloVistaModal platillo={viendo} onClose={() => setViendo(null)} />}
+      {editando && (
+        <PlatilloModal
+          platillo={editando}
+          categoriasExistentes={[...new Set(platillos.map((p) => p.categoria).filter(Boolean))]}
+          onGuardar={guardarPlatillo}
+          onBorrar={() => setBorrando(editando)}
+          onClose={() => setEditando(null)}
+        />
+      )}
+      {borrando && (
+        <ConfirmModal
+          titulo={`¿Borrar ${borrando.nombre}?`}
+          mensaje="Se quita del menú. Las cuentas que ya lo incluyen conservan su nombre y precio."
+          confirmarLabel="Borrar platillo"
+          danger
+          onConfirm={confirmarBorrado}
+          onClose={() => setBorrando(null)}
+        />
+      )}
+    </>
+  )
+}
+
+// ── Categorías (orden de los tableros del menú) ──────────────────────────────
+function CategoriasTab() {
+  const platillos = usePosStore((s) => s.platillos)
+  const categoriasOrden = usePosStore((s) => s.categoriasOrden)
+  const { reordenarCategorias } = useMenuAdmin()
+
+  const categorias = categoriasOrdenadas(platillos, categoriasOrden)
+
+  function moverCategoria(idx, dir) {
+    const reordenada = mover(categorias, idx, dir)
+    if (reordenada !== categorias) reordenarCategorias(reordenada)
+  }
+
+  return (
+    <>
+      <p style={{ margin: '0 0 18px', fontSize: 14, color: 'var(--jb-ink-soft)' }}>
+        El orden de las categorías en el menú del mesero. Usa ▲▼ para acomodarlas.
+      </p>
+      <div style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {categorias.map((cat, idx) => (
+          <div key={cat} style={{
+            background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14,
+            padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)' }}>
+              <span style={{ color: 'var(--jb-gray)', marginRight: 10 }}>{idx + 1}.</span>{cat}
+            </span>
+            <MoveButtons
+              onUp={() => moverCategoria(idx, -1)}
+              onDown={() => moverCategoria(idx, 1)}
+              disableUp={idx === 0}
+              disableDown={idx === categorias.length - 1}
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, onClose }) {
+  const esNuevo = !platillo.id
+  const [nombre, setNombre] = useState(platillo.nombre ?? '')
+  const [categoria, setCategoria] = useState(platillo.categoria ?? '')
+  const [base, setBase] = useState(platillo.base ?? '')
+  const [usaTortillas, setUsaTortillas] = useState(!!platillo.tortillas)
+  const [tiers, setTiers] = useState(platillo.tiers?.length ? platillo.tiers : [{ nombre: 'Sencillo', ingredientes: 0, precio: '' }])
+  const [tortillas, setTortillas] = useState(platillo.tortillas ?? [{ id: uid('tor'), nombre: '', tiers: [{ nombre: '1 Ingrediente', ingredientes: 1, precio: '' }] }])
+  const [permiteMitades, setPermiteMitades] = useState(!!platillo.permiteMitades)
+  const [permiteNota, setPermiteNota] = useState(!!platillo.permiteNota)
+  const [activo, setActivo] = useState(platillo.activo !== false)
+
+  // Catálogos globales para las allowlists. Un platillo nuevo (o heredado sin lista)
+  // arranca con todos seleccionados; el admin destilda los que no apliquen.
+  const modCatalogo = usePosStore((s) => s.modificadores).filter((m) => m.activo !== false)
+  const extraCatalogo = usePosStore((s) => s.extras).filter((e) => e.activo !== false)
+  const [modsSel, setModsSel] = useState(
+    platillo.modificadores != null ? platillo.modificadores : modCatalogo.map((m) => m.nombre),
+  )
+  const [extrasSel, setExtrasSel] = useState(
+    platillo.extras != null ? platillo.extras : extraCatalogo.map((e) => e.nombre),
+  )
+  const toggleName = (list, setList, nombre) =>
+    setList(list.includes(nombre) ? list.filter((n) => n !== nombre) : [...list, nombre])
+  const [error, setError] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  function normalizarTiers(list) {
+    return list
+      .map((t) => ({ nombre: t.nombre?.trim() || 'Nivel', ingredientes: Number(t.ingredientes) || 0, precio: Number(t.precio) || 0 }))
+  }
+
+  async function guardar() {
+    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return }
+
+    let payloadTiers = []
+    let payloadTortillas = null
+    if (usaTortillas) {
+      const limpias = tortillas
+        .filter((t) => t.nombre?.trim() && t.tiers?.length)
+        .map((t) => ({ id: t.id || uid('tor'), nombre: t.nombre.trim(), tiers: normalizarTiers(t.tiers) }))
+      if (limpias.length === 0) { setError('Agrega al menos una variante de tortilla con un nivel.'); return }
+      payloadTortillas = limpias
+    } else {
+      if (tiers.length === 0 || tiers.every((t) => t.precio === '' || t.precio == null)) {
+        setError('Agrega al menos un nivel con precio.'); return
+      }
+      payloadTiers = normalizarTiers(tiers.filter((t) => t.precio !== '' && t.precio != null))
+    }
+
+    setGuardando(true)
+    const { error: err } = await onGuardar({
+      id: platillo.id,
+      nombre: nombre.trim(),
+      categoria: categoria.trim(),
+      base: base.trim(),
+      tiers: payloadTiers,
+      tortillas: payloadTortillas,
+      permiteMitades,
+      permiteNota,
+      activo,
+      modificadores: modsSel,
+      extras: extrasSel,
+    })
+    setGuardando(false)
+    if (err) { setError(err); return }
+    onClose()
+  }
+
+  return (
+    <ModalShell width={640} titulo={esNuevo ? 'Nuevo platillo' : `Editar ${platillo.nombre}`} onClose={onClose}>
+      <Campo label="Nombre">
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={inputStyle} placeholder="Ej. Sope" />
+      </Campo>
+
+      <Campo label="Categoría">
+        <input list="cats-existentes" value={categoria} onChange={(e) => setCategoria(e.target.value)} style={inputStyle} placeholder="Ej. Sopes" />
+        <datalist id="cats-existentes">
+          {categoriasExistentes.map((c) => <option key={c} value={c} />)}
+        </datalist>
+      </Campo>
+
+      <Campo label="Ingredientes base (texto descriptivo)">
+        <textarea value={base} onChange={(e) => setBase(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'none' }} placeholder="Tortilla hecha a mano, frijol, crema…" />
+      </Campo>
+
+      <Toggle checked={usaTortillas} onChange={setUsaTortillas} label="Usa variantes de tortilla (precio por tipo de tortilla)" />
+
+      {usaTortillas ? (
+        <TortillasEditor tortillas={tortillas} onChange={setTortillas} />
+      ) : (
+        <Campo label="Niveles de precio">
+          <TiersEditor tiers={tiers} onChange={setTiers} />
+        </Campo>
+      )}
+
+      <Campo label="Modificadores que aplican (Sin…)">
+        {modCatalogo.length === 0 ? (
+          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay modificadores en el catálogo.</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {modCatalogo.map((m) => (
+              <Chip key={m.nombre} active={modsSel.includes(m.nombre)} onClick={() => toggleName(modsSel, setModsSel, m.nombre)}>
+                {m.nombre}
+              </Chip>
+            ))}
+          </div>
+        )}
+      </Campo>
+
+      <Campo label="Extras que aplican (agregados de pago)">
+        {extraCatalogo.length === 0 ? (
+          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay extras en el catálogo.</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {extraCatalogo.map((e) => (
+              <Chip
+                key={e.nombre}
+                active={extrasSel.includes(e.nombre)}
+                onClick={() => toggleName(extrasSel, setExtrasSel, e.nombre)}
+                sublabel={e.precio > 0 ? `+${f(e.precio)}` : undefined}
+              >
+                {e.nombre}
+              </Chip>
+            ))}
+          </div>
+        )}
+      </Campo>
+
+      <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>
+        <Toggle checked={permiteMitades} onChange={setPermiteMitades} label="Permite mitades" />
+        <Toggle checked={permiteNota} onChange={setPermiteNota} label="Permite nota" />
+        <Toggle checked={activo} onChange={setActivo} label="Disponible en el menú" />
+      </div>
+
+      {error && <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
+
+      <div className="flex" style={{ gap: 12, marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
+        <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+      </div>
+
+      {!esNuevo && onBorrar && (
+        <button onClick={onBorrar} style={borrarBtn}>Borrar platillo</button>
+      )}
+    </ModalShell>
+  )
+}
+
+// Vista de solo lectura de un platillo (botón "Ver"): muestra todo sin editar.
+function PlatilloVistaModal({ platillo, onClose }) {
+  const grupos = platillo.tortillas?.length
+    ? platillo.tortillas.map((t) => ({ titulo: t.nombre, tiers: t.tiers ?? [] }))
+    : [{ titulo: null, tiers: platillo.tiers ?? [] }]
+  const lista = (arr) => (arr == null ? 'Todos' : arr.length ? arr.join(', ') : 'Ninguno')
+
+  return (
+    <ModalShell width={560} titulo={platillo.nombre} onClose={onClose}>
+      <Campo label="Categoría">
+        <div style={valorLeer}>{platillo.categoria || 'Sin categoría'}</div>
+      </Campo>
+
+      <Campo label="Ingredientes base">
+        <div style={valorLeer}>{platillo.base?.trim() || '—'}</div>
+      </Campo>
+
+      <Campo label="Niveles de precio">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {grupos.map((g, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {g.titulo && (
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{g.titulo}</span>
+              )}
+              {g.tiers.length === 0 && <span style={{ fontSize: 14, color: 'var(--jb-gray)' }}>Sin niveles</span>}
+              {g.tiers.map((t, j) => (
+                <div key={j} className="flex items-center justify-between" style={{
+                  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '10px 14px',
+                }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
+                    {t.nombre}
+                    <span style={{ fontWeight: 600, color: 'var(--jb-gray)', marginLeft: 8 }}>
+                      {Number(t.ingredientes) > 0 ? `${t.ingredientes} ing.` : 'sin ingredientes'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(Number(t.precio) || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Campo>
+
+      <Campo label="Modificadores que aplican">
+        <div style={valorLeer}>{lista(platillo.modificadores)}</div>
+      </Campo>
+
+      <Campo label="Extras que aplican">
+        <div style={valorLeer}>{lista(platillo.extras)}</div>
+      </Campo>
+
+      <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
+        <BanderaVista ok={!!platillo.permiteMitades}>Permite mitades</BanderaVista>
+        <BanderaVista ok={!!platillo.permiteNota}>Permite nota</BanderaVista>
+        <BanderaVista ok={platillo.activo !== false}>Disponible en el menú</BanderaVista>
+      </div>
+
+      <div className="flex" style={{ marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cerrar</Button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function BanderaVista({ ok, children }) {
+  return (
+    <span style={{ fontSize: 14, fontWeight: 700, color: ok ? 'var(--jb-ink)' : 'var(--jb-gray)' }}>
+      {ok ? '✓' : '✕'} {children}
+    </span>
+  )
+}
+
+function TiersEditor({ tiers, onChange, hint = true }) {
+  function set(i, patch) { onChange(tiers.map((t, j) => (j === i ? { ...t, ...patch } : t))) }
+  function add() { onChange([...tiers, { nombre: '', ingredientes: tiers.length, precio: '' }]) }
+  function remove(i) { onChange(tiers.filter((_, j) => j !== i)) }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <span style={{ flex: 2 }} />
+        <span style={{ ...colHead, width: 80, flex: 'none', textAlign: 'center' }}># Ingr.</span>
+        <span style={{ ...colHead, flex: 1, textAlign: 'center' }}>Precio</span>
+        <span style={{ width: 46, flexShrink: 0 }} />
+      </div>
+      {tiers.map((t, i) => (
+        <div key={i} className="flex items-center" style={{ gap: 8 }}>
+          <input value={t.nombre} onChange={(e) => set(i, { nombre: e.target.value })} placeholder="Ej. 2 Ingredientes" style={{ ...inputStyle, flex: 2 }} />
+          <input value={t.ingredientes} onChange={(e) => set(i, { ingredientes: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="0" title="Cuántos ingredientes puede elegir el mesero en este nivel" style={{ ...inputStyle, width: 80, flex: 'none', textAlign: 'center' }} />
+          <div style={{ position: 'relative', flex: 1 }}>
+            <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--jb-gray)', fontSize: 15 }}>$</span>
+            <input value={t.precio} onChange={(e) => set(i, { precio: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" placeholder="0" style={{ ...inputStyle, paddingLeft: 24 }} />
+          </div>
+          <button onClick={() => remove(i)} title="Quitar nivel" style={quitarBtn}>✕</button>
+        </div>
+      ))}
+      {hint && (
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+          <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+        </p>
+      )}
+      <button onClick={add} style={agregarBtn}>+ Agregar nivel</button>
+    </div>
+  )
+}
+
+function TortillasEditor({ tortillas, onChange }) {
+  function setTor(i, patch) { onChange(tortillas.map((t, j) => (j === i ? { ...t, ...patch } : t))) }
+  function addTor() { onChange([...tortillas, { id: uid('tor'), nombre: '', tiers: [{ nombre: '1 Ingrediente', ingredientes: 1, precio: '' }] }]) }
+  function removeTor(i) { onChange(tortillas.filter((_, j) => j !== i)) }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+        <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+      </p>
+      {tortillas.map((t, i) => (
+        <div key={t.id ?? i} style={{ border: '2px dashed var(--jb-line)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <input value={t.nombre} onChange={(e) => setTor(i, { nombre: e.target.value })} placeholder="Tortilla de Maíz" style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={() => removeTor(i)} title="Quitar tortilla" style={quitarBtn}>✕</button>
+          </div>
+          <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} hint={false} />
+        </div>
+      ))}
+      <button onClick={addTor} style={agregarBtn}>+ Agregar variante de tortilla</button>
+    </div>
+  )
+}
+
+// ── Ingredientes ─────────────────────────────────────────────────────────────
+function IngredientesTab() {
+  const ingredientes = usePosStore((s) => s.ingredientes)
+  const { guardarIngrediente, borrarIngrediente } = useMenuAdmin()
+  const [editando, setEditando] = useState(null)
+  const [borrando, setBorrando] = useState(null)
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>Ingredientes disponibles para personalizar platillos.</p>
+        <Button size="md" onClick={() => setEditando({})}>+ Nuevo</Button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {ingredientes.map((i) => (
+          <FilaSimple
+            key={i.id}
+            nombre={i.nombre}
+            sub={i.extra > 0 ? `+${f(i.extra)}` : 'Sin cargo'}
+            inactivo={i.activo === false}
+            onEdit={() => setEditando(i)}
+            onDelete={() => setBorrando(i)}
+          />
+        ))}
+      </div>
+      {editando && (
+        <ItemSimpleModal
+          titulo={editando.id ? 'Editar ingrediente' : 'Nuevo ingrediente'}
+          item={editando}
+          precioField="extra"
+          precioLabel="Cargo extra (MXN)"
+          onGuardar={guardarIngrediente}
+          onClose={() => setEditando(null)}
+        />
+      )}
+      {borrando && (
+        <ConfirmModal titulo={`¿Borrar ${borrando.nombre}?`} confirmarLabel="Borrar" danger
+          onConfirm={async () => { const x = borrando; setBorrando(null); await borrarIngrediente(x.id) }}
+          onClose={() => setBorrando(null)} />
+      )}
+    </>
+  )
+}
+
+// ── Modificadores ────────────────────────────────────────────────────────────
+function ModificadoresTab() {
+  const modificadores = usePosStore((s) => s.modificadores)
+  const { guardarModificador, borrarModificador } = useMenuAdmin()
+  const [editando, setEditando] = useState(null)
+  const [borrando, setBorrando] = useState(null)
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>Modificadores de remoción ("Sin crema", "Sin frijol"…).</p>
+        <Button size="md" onClick={() => setEditando({})}>+ Nuevo</Button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {modificadores.map((m) => (
+          <FilaSimple
+            key={m.id}
+            nombre={m.nombre}
+            inactivo={m.activo === false}
+            onEdit={() => setEditando(m)}
+            onDelete={() => setBorrando(m)}
+          />
+        ))}
+      </div>
+      {editando && (
+        <ItemSimpleModal
+          titulo={editando.id ? 'Editar modificador' : 'Nuevo modificador'}
+          item={editando}
+          onGuardar={guardarModificador}
+          onClose={() => setEditando(null)}
+        />
+      )}
+      {borrando && (
+        <ConfirmModal titulo={`¿Borrar ${borrando.nombre}?`} confirmarLabel="Borrar" danger
+          onConfirm={async () => { const x = borrando; setBorrando(null); await borrarModificador(x.id) }}
+          onClose={() => setBorrando(null)} />
+      )}
+    </>
+  )
+}
+
+// ── Extras (agregados de pago) ───────────────────────────────────────────────
+function ExtrasTab() {
+  const extras = usePosStore((s) => s.extras)
+  const platillos = usePosStore((s) => s.platillos)
+  const { guardarExtra, borrarExtra, asignarExtraAProductos } = useMenuAdmin()
+  const [editando, setEditando] = useState(null)
+  const [borrando, setBorrando] = useState(null)
+
+  // Para cada extra, en cuántos platillos aplica (para mostrarlo en la lista).
+  const cuentaProductos = (nombre) => platillos.filter((p) => (p.extras ?? []).includes(nombre)).length
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>Agregados de pago. Al editar uno, eliges su precio y en qué platillos aparece.</p>
+        <Button size="md" onClick={() => setEditando({})}>+ Nuevo</Button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {extras.map((x) => {
+          const n = cuentaProductos(x.nombre)
+          const precioTxt = x.precio > 0 ? `+${f(x.precio)}` : 'Sin cargo'
+          return (
+            <FilaSimple
+              key={x.id}
+              nombre={x.nombre}
+              sub={`${precioTxt} · ${n} ${n === 1 ? 'platillo' : 'platillos'}`}
+              inactivo={x.activo === false}
+              onEdit={() => setEditando(x)}
+              onDelete={() => setBorrando(x)}
+            />
+          )
+        })}
+      </div>
+      {editando && (
+        <ExtraModal
+          extra={editando}
+          onGuardarExtra={guardarExtra}
+          onAsignar={asignarExtraAProductos}
+          onClose={() => setEditando(null)}
+        />
+      )}
+      {borrando && (
+        <ConfirmModal titulo={`¿Borrar ${borrando.nombre}?`} confirmarLabel="Borrar" danger
+          onConfirm={async () => { const x = borrando; setBorrando(null); await borrarExtra(x.id) }}
+          onClose={() => setBorrando(null)} />
+      )}
+    </>
+  )
+}
+
+// Editor de un extra: nombre, precio, activo, y en qué platillos aparece (allowlist
+// vista desde el lado del extra). Guarda el extra y luego fija sus asociaciones.
+function ExtraModal({ extra, onGuardarExtra, onAsignar, onClose }) {
+  const platillos = usePosStore((s) => s.platillos)
+  const categoriasOrden = usePosStore((s) => s.categoriasOrden)
+  const [nombre, setNombre] = useState(extra.nombre ?? '')
+  const [precio, setPrecio] = useState(extra.precio ?? 0)
+  const [activo, setActivo] = useState(extra.activo !== false)
+  const [prodSel, setProdSel] = useState(() =>
+    platillos.filter((p) => (p.extras ?? []).includes(extra.nombre)).map((p) => p.id),
+  )
+  const [error, setError] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  const cats = categoriasOrdenadas(platillos, categoriasOrden)
+  const dishesDe = (cat) =>
+    platillos.filter((p) => (p.categoria || 'Sin categoría') === cat).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+  const toggleProd = (id) => setProdSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+
+  async function guardar() {
+    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return }
+    setGuardando(true)
+    const oldNombre = extra.nombre
+    const { error: e1 } = await onGuardarExtra({ id: extra.id, nombre: nombre.trim(), precio: Number(precio) || 0, activo })
+    if (e1) { setGuardando(false); setError(e1); return }
+    const { error: e2 } = await onAsignar(nombre.trim(), prodSel, oldNombre)
+    setGuardando(false)
+    if (e2) { setError(e2); return }
+    onClose()
+  }
+
+  return (
+    <ModalShell width={600} titulo={extra.id ? 'Editar extra' : 'Nuevo extra'} onClose={onClose}>
+      <div className="flex" style={{ gap: 12 }}>
+        <div style={{ flex: 2 }}>
+          <Campo label="Nombre">
+            <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={inputStyle} autoFocus />
+          </Campo>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Campo label="Precio (MXN)">
+            <input value={precio} onChange={(e) => setPrecio(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" style={inputStyle} placeholder="0" />
+          </Campo>
+        </div>
+      </div>
+
+      <Toggle checked={activo} onChange={setActivo} label="Activo" />
+
+      <Campo label="Platillos que ofrecen este extra">
+        <div className="flex" style={{ gap: 8, marginBottom: 6 }}>
+          <button onClick={() => setProdSel(platillos.map((p) => p.id))} style={miniBtn}>Todos</button>
+          <button onClick={() => setProdSel([])} style={miniBtn}>Ninguno</button>
+        </div>
+        {cats.map((cat) => (
+          <div key={cat} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--jb-pink-dark)', margin: '2px 0 6px' }}>{cat}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {dishesDe(cat).map((p) => (
+                <Chip key={p.id} active={prodSel.includes(p.id)} onClick={() => toggleProd(p.id)}>{p.nombre}</Chip>
+              ))}
+            </div>
+          </div>
+        ))}
+      </Campo>
+
+      {error && <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
+      <div className="flex" style={{ gap: 12, marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
+        <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function FilaSimple({ nombre, sub, inactivo, onEdit, onDelete }) {
+  return (
+    <div style={{ background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, opacity: inactivo ? 0.5 : 1 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
+        {sub && <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>{sub}</div>}
+      </div>
+      <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
+        <button onClick={onEdit} title="Editar" style={{ ...quitarBtn, color: 'var(--jb-pink-dark)', background: 'var(--jb-pink-light)' }}>✎</button>
+        <button onClick={onDelete} title="Borrar" style={quitarBtn}>✕</button>
+      </div>
+    </div>
+  )
+}
+
+// Modal para catálogos simples (ingredientes, modificadores, extras). Si se pasa
+// `precioField` ('extra' o 'precio') muestra un campo numérico ligado a ese campo.
+function ItemSimpleModal({ titulo, item, precioField, precioLabel, onGuardar, onClose }) {
+  const [nombre, setNombre] = useState(item.nombre ?? '')
+  const [precio, setPrecio] = useState(precioField ? (item[precioField] ?? 0) : 0)
+  const [activo, setActivo] = useState(item.activo !== false)
+  const [error, setError] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar() {
+    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return }
+    setGuardando(true)
+    const payload = { id: item.id, nombre: nombre.trim(), activo }
+    if (precioField) payload[precioField] = Number(precio) || 0
+    const { error: err } = await onGuardar(payload)
+    setGuardando(false)
+    if (err) { setError(err); return }
+    onClose()
+  }
+
+  return (
+    <ModalShell width={440} titulo={titulo} onClose={onClose}>
+      <Campo label="Nombre">
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={inputStyle} autoFocus />
+      </Campo>
+      {precioField && (
+        <Campo label={precioLabel}>
+          <input value={precio} onChange={(e) => setPrecio(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" style={inputStyle} placeholder="0" />
+        </Campo>
+      )}
+      <Toggle checked={activo} onChange={setActivo} label="Activo" />
+      {error && <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
+      <div className="flex" style={{ gap: 12, marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
+        <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+      </div>
+    </ModalShell>
+  )
+}
+
+const quitarBtn = {
+  border: 'none', borderRadius: 10, width: 46, height: 46, flexShrink: 0,
+  fontSize: 15, fontWeight: 800, cursor: 'pointer',
+  background: '#F6E7E7', color: '#C24A4A',
+}
+
+const agregarBtn = {
+  border: '2.5px dashed var(--jb-line)', borderRadius: 12, padding: '14px 0', minHeight: 48,
+  fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 800,
+  color: 'var(--jb-pink-dark)', background: '#fff', cursor: 'pointer',
+}
+
+// Botón "Borrar platillo" al pie del modal de edición, separado de Cancelar/Guardar
+// y lejos de la ✕ de cerrar. Sombreado de rojo.
+const borrarBtn = {
+  width: '100%', border: '2px solid #E6C2C2', borderRadius: 14, padding: '12px 0', minHeight: 48,
+  marginTop: 4, fontFamily: "'Inter Tight', sans-serif", fontSize: 15, fontWeight: 800,
+  cursor: 'pointer', background: '#F6E7E7', color: '#C24A4A',
+}
+
+// Encabezado de columna en el editor de niveles de precio.
+const colHead = {
+  fontSize: 11, fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase',
+  color: 'var(--jb-gray)',
+}
+
+// Valor de solo lectura (vista "Ver").
+const valorLeer = {
+  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '11px 14px',
+  fontSize: 15, color: 'var(--jb-ink)', background: 'var(--jb-cream)', whiteSpace: 'pre-wrap',
+}
+
+const miniBtn = {
+  border: '2px solid var(--jb-line)', borderRadius: 9, padding: '6px 12px',
+  fontFamily: "'Inter Tight', sans-serif", fontSize: 13, fontWeight: 800,
+  color: 'var(--jb-ink)', background: '#fff', cursor: 'pointer',
+}

@@ -1,18 +1,22 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { TabletShell } from './components/layout/TabletShell'
+import { MeseroGate } from './components/layout/MeseroGate'
 import MeseroFloorPage from './pages/mesero/MeseroFloorPage'
 import MeseroOrdenPage from './pages/mesero/MeseroOrdenPage'
 import CocinaPage from './pages/cocina/CocinaPage'
+import AdminApp from './pages/admin/AdminApp'
 import { usePosData } from './hooks/usePosData'
 
 function MeseroApp() {
   return (
-    <TabletShell>
-      <Routes>
-        <Route index element={<MeseroFloorPage />} />
-        <Route path="orden/:mesaId" element={<MeseroOrdenPage />} />
-      </Routes>
-    </TabletShell>
+    <MeseroGate>
+      <TabletShell>
+        <Routes>
+          <Route index element={<MeseroFloorPage />} />
+          <Route path="orden/:mesaId" element={<MeseroOrdenPage />} />
+        </Routes>
+      </TabletShell>
+    </MeseroGate>
   )
 }
 
@@ -26,7 +30,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/mesero" replace />} />
         <Route path="/mesero/*" element={<MeseroApp />} />
         <Route path="/cocina" element={<CocinaPage />} />
-        {/* /admin/* se agrega en una fase futura */}
+        <Route path="/admin/*" element={<AdminApp />} />
         <Route path="*" element={<Navigate to="/mesero" replace />} />
       </Routes>
     </BrowserRouter>

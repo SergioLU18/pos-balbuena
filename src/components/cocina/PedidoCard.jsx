@@ -1,6 +1,6 @@
 import { useClock } from '../../hooks/useClock'
-import { cronometro, etiquetaMesa } from '../../lib/utils'
-import { describirMitades } from '../../lib/describirItem'
+import { cronometro } from '../../lib/utils'
+import { describirMitades, extrasTexto } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 
 const SIGUIENTE = {
@@ -37,6 +37,9 @@ export function ItemLine({ item }) {
           {prefijo}{texto}
         </p>
       ))}
+      {extrasTexto(item) && (
+        <p style={{ margin: '3px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>{extrasTexto(item)}</p>
+      )}
       {item.nota && (
         <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--jb-pink-dark)' }}>“{item.nota}”</p>
       )}
@@ -61,7 +64,7 @@ export function PedidoCard({ pedido, onAvanzar }) {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-baseline" style={{ gap: 10 }}>
-          <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>{etiquetaMesa(pedido.mesaNumero)}</span>
+          <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {pedido.mesaNumero}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{pedido.meseroNombre}</span>
         </div>
         <span

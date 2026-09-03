@@ -1,6 +1,7 @@
-import { usePedidosStore } from '../store/appStore'
+import { usePedidosStore, usePosStore } from '../store/appStore'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
+import { cargarTodo } from './usePosData'
 
 // Nuevos/Preparando: FIFO (el más antiguo arriba) — así no se deja esperando
 // a una mesa que llegó primero. Listos: el más reciente arriba, porque lo que
@@ -24,16 +25,30 @@ export function usePedidos() {
   // queda congelado en la fila al llegar a "entregado" (útil para reportes después).
   const COLUMNA_TIEMPO = { preparando: 'preparando_at', listo: 'listo_at', entregado: 'entregado_at' }
 
-  // Modo mock: muta el store local. Modo backend: persiste en Supabase y deja que
-  // Realtime propague el cambio a todas las pantallas (mesero y cocina).
+  // Modo mock: muta el store local. Modo backend: mueve la tarjeta en el acto y persiste
+  // en Supabase, dejando que Realtime propague el cambio a las demás pantallas.
+  //
+  // El movimiento local es lo que hace que la tarjeta responda al instante. Antes se
+  // esperaba el viaje completo —update → evento de Realtime → debounce de 200 ms →
+  // cargarTodo (diez consultas)—, así que pasaban ~2 s entre el toque y el salto de
+  // columna: tiempo de sobra para que en cocina creyeran que no había registrado y
+  // volvieran a picar. Mismo patrón optimista que cambiarCantidadEnviado en useOrderDraft.
   function avanzarEstado(pedidoId, estado) {
     if (IS_MOCK) return avanzarEstadoLocal(pedidoId, estado)
     const ahora = new Date().toISOString()
     const columna = COLUMNA_TIEMPO[estado]
+    avanzarEstadoLocal(pedidoId, estado)
     sb.from('pedidos')
       .update({ estado, estado_actualizado_at: ahora, ...(columna ? { [columna]: ahora } : {}) })
       .eq('id', pedidoId)
-      .then(({ error }) => { if (error) console.error('[pedidos] avanzarEstado falló:', error) })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[pedidos] avanzarEstado falló:', error)
+          // Recarga autoritativa: si el update no pasó, la tarjeta regresa sola a su
+          // columna real en vez de quedarse mintiendo hasta el siguiente evento.
+          cargarTodo(usePosStore.getState().restauranteId).catch(() => {})
+        }
+      })
   }
 
   return {

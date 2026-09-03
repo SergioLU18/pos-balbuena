@@ -3,6 +3,23 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { IS_MOCK } from '../lib/config'
 import { MESEROS } from '../lib/mockMeseros'
 import { MESAS } from '../lib/mockMesas'
+import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
+import { uid } from '../lib/utils'
+
+// Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
+// (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
+// guardan como objetos con id/activo/orden — así el editor de menú (admin) los puede
+// crear/editar/borrar igual en mock que en backend. El flujo de orden los recibe
+// aplanados por useMenu (ingredientes {nombre, extra}, modificadores string[],
+// extras {nombre, precio}).
+// orden: posición del platillo dentro de su categoría (hay un platillo por categoría
+// en el mock, así que 0). El orden de categorías vive en categoriasOrden.
+const MOCK_PLATILLOS = MENU.map((p) => ({ activo: true, orden: 0, ...p }))
+const MOCK_INGREDIENTES = INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x }))
+const MOCK_MODIFICADORES = MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i }))
+const MOCK_EXTRAS = EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x }))
+// Orden de categorías = orden de primera aparición en MENU (Sopes primero).
+const MOCK_CATEGORIAS_ORDEN = [...new Set(MENU.map((p) => p.categoria))].map((nombre, i) => ({ id: `cat-${i}`, nombre, orden: i }))
 
 // Envoltura defensiva: en un navegador real localStorage siempre funciona, pero en
 // algunos entornos (Safari en modo privado, o el runtime de pruebas) puede no existir
@@ -19,12 +36,36 @@ const safeStorage = createJSONStorage(() => ({
   },
 }))
 
-export const useMeseroStore = create((set) => ({
-  currentMeseroId: MESEROS[0].id,
-  soloMisMesas: false,
-  setMesero: (id) => set({ currentMeseroId: id }),
-  toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
-}))
+export const useMeseroStore = create(
+  persist(
+    (set) => ({
+      currentMeseroId: MESEROS[0].id,
+      soloMisMesas: false,
+      // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. NO se
+      // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
+      // al cambiar de mesero (ver setMesero).
+      adminUnlocked: false,
+      // sessionUnlocked: el mesero confirmó su PIN al abrir la app en esta sesión. NO se
+      // persiste (ver partialize) → cada carga/refresh arranca en false y MeseroGate pide
+      // el PIN de nuevo, aunque la identidad sí se recuerde. setMesero lo baja a false para
+      // que un cambio programático (p. ej. el fallback de usePosData a meseros[0]) no salte
+      // el gate; solo un PIN correcto (MeseroGate/MeseroSwitcher) lo vuelve a subir.
+      sessionUnlocked: false,
+      setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false, sessionUnlocked: false }),
+      setAdminUnlocked: (v) => set({ adminUnlocked: v }),
+      setSessionUnlocked: (v) => set({ sessionUnlocked: v }),
+      toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
+    }),
+    {
+      name: 'pos-balbuena-mesero',
+      storage: safeStorage,
+      // Solo se persiste la identidad del mesero (y su filtro de mesas). Antes NADA
+      // se persistía, así que un refresh reseteaba el mesero al primero de la lista.
+      // adminUnlocked queda fuera a propósito: el PIN se vuelve a pedir cada sesión.
+      partialize: (s) => ({ currentMeseroId: s.currentMeseroId, soloMisMesas: s.soloMisMesas }),
+    },
+  ),
+)
 
 // Catálogo de mesas y meseros. En modo mock arranca con los datos estáticos (así los
 // tests y el modo demo funcionan sin cargar nada); en modo backend `usePosData` lo
@@ -39,15 +80,52 @@ export const usePosStore = create(
     (set) => ({
       mesas: IS_MOCK ? MESAS : [],
       meseros: IS_MOCK ? MESEROS : [],
+      // Menú: en mock arranca del catálogo estático; en backend lo rellena usePosData
+      // desde Supabase (tabla compartida `platillos` + pos_ingredientes/pos_modificadores).
+      platillos: IS_MOCK ? MOCK_PLATILLOS : [],
+      ingredientes: IS_MOCK ? MOCK_INGREDIENTES : [],
+      modificadores: IS_MOCK ? MOCK_MODIFICADORES : [],
+      extras: IS_MOCK ? MOCK_EXTRAS : [],
+      categoriasOrden: IS_MOCK ? MOCK_CATEGORIAS_ORDEN : [], // orden de las categorías (nombre -> orden)
       restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
+      setPlatillos: (platillos) => set({ platillos }),
+      setIngredientes: (ingredientes) => set({ ingredientes }),
+      setModificadores: (modificadores) => set({ modificadores }),
+      setExtras: (extras) => set({ extras }),
+      setCategoriasOrden: (categoriasOrden) => set({ categoriasOrden }),
       setRestauranteId: (restauranteId) => set({ restauranteId }),
     }),
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      partialize: (s) => ({ mesas: s.mesas, meseros: s.meseros }),
+      version: 5,
+      // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
+      // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agregó las
+      // allowlists por platillo. v4 agrega el orden de categorías y `orden` en platillos.
+      // v5: Bebidas pasa a elegir SABOR como variante (Refresco con tortillas/sabores).
+      // En cada salto se re-siembran meseros y menú del mock, conservando las mesas que el
+      // usuario creó. En backend no importa: usePosData pisa todo al cargar.
+      migrate: (persisted, version) => {
+        if (version < 5 && IS_MOCK) {
+          return {
+            ...persisted,
+            meseros: MESEROS,
+            platillos: MOCK_PLATILLOS,
+            ingredientes: MOCK_INGREDIENTES,
+            modificadores: MOCK_MODIFICADORES,
+            extras: MOCK_EXTRAS,
+            categoriasOrden: MOCK_CATEGORIAS_ORDEN,
+          }
+        }
+        return persisted
+      },
+      partialize: (s) => ({
+        mesas: s.mesas, meseros: s.meseros,
+        platillos: s.platillos, ingredientes: s.ingredientes,
+        modificadores: s.modificadores, extras: s.extras, categoriasOrden: s.categoriasOrden,
+      }),
     },
   ),
 )
@@ -66,6 +144,42 @@ export const useMesaLayoutStore = create(
     { name: 'pos-balbuena-mesa-layout', storage: safeStorage },
   ),
 )
+
+// Mesas recién pagadas (el pago ocurre en tali; aquí solo se refleja). A propósito NO
+// se persiste: es una señal efímera de sesión — la tarjeta muestra "Pagada" hasta que
+// el mesero recarga la página o abre una cuenta nueva (agrega un producto). usePosData
+// la enciende al detectar el pago por Realtime y la apaga cuando la mesa vuelve a tener
+// cuenta activa. En modo mock no se usa (no hay flujo de pago).
+export const useMesaPagadaStore = create((set) => ({
+  pagadas: {}, // mesaId -> { at, total }
+  marcarPagada: (mesaId, info) =>
+    set((s) => (mesaId in s.pagadas ? s : { pagadas: { ...s.pagadas, [mesaId]: info } })),
+  limpiarPagada: (mesaId) =>
+    set((s) => {
+      if (!(mesaId in s.pagadas)) return s
+      const { [mesaId]: _omit, ...rest } = s.pagadas
+      return { pagadas: rest }
+    }),
+}))
+
+// Avisos del turno: la contraparte VISIBLE de los sonidos. El tono dice "algo pasó",
+// pero no qué ni en qué mesa, y si el mesero traía la tablet lejos puede que ni lo haya
+// oído. Aquí queda el registro para consultarlo cuando pueda. NO se persiste: es
+// información del turno en curso, no historial — al recargar se empieza limpio.
+const MAX_AVISOS = 30
+
+export const useAvisosStore = create((set) => ({
+  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, at, leido }
+  agregarAviso: (aviso) =>
+    set((s) => ({
+      avisos: [
+        { ...aviso, id: uid('aviso'), at: new Date().toISOString(), leido: false },
+        ...s.avisos,
+      ].slice(0, MAX_AVISOS),
+    })),
+  marcarTodosLeidos: () => set((s) => ({ avisos: s.avisos.map((a) => ({ ...a, leido: true })) })),
+  limpiarAvisos: () => set({ avisos: [] }),
+}))
 
 const EMPTY_ITEMS = []
 

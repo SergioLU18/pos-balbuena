@@ -8,6 +8,8 @@ export function ModificadorToggles({ modificadores, seleccionados, onChange }) {
     )
   }
 
+  if (!modificadores.length) return null
+
   return (
     <div>
       <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Personaliza</p>

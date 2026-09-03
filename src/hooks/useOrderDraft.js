@@ -1,12 +1,15 @@
-import { INGREDIENTES } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
-import { describirMitades } from '../lib/describirItem'
-import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
+import { sonarConfirmacion, sonarError } from '../lib/sonidos'
+import { describirMitades, extrasTexto } from '../lib/describirItem'
+import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
 import { cargarTodo } from './usePosData'
 
-const extraCost = (nombreIngrediente) => INGREDIENTES.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
+// Recargo de un ingrediente: se lee del catálogo vivo (store), no de una lista estática,
+// para que un cambio del admin al cargo de un ingrediente se refleje en el precio.
+const extraCost = (nombreIngrediente) =>
+  usePosStore.getState().ingredientes.find((i) => i.nombre === nombreIngrediente)?.extra ?? 0
 
 // Referencia estable para el fallback: si el selector devolviera un array literal
 // nuevo (`?? []`) en cada llamada, useSyncExternalStore entra en loop infinito
@@ -33,6 +36,10 @@ export function buildDraftItem(platillo, tierIndex, tortillaId) {
     tier,
     dividido: false,
     mitades: [{ lado: 'completo', ingredientes: [], modificadores: [] }],
+    // extras: agregados de pago a nivel platillo (no por mitad), como [{ nombre, precio }].
+    // El precio se guarda en el propio renglón para que calcItemPrecio no dependa de un
+    // catálogo externo (y para que un renglón ya enviado conserve el precio de su extra).
+    extras: [],
     cantidad: 1,
     nota: '',
   }
@@ -58,13 +65,15 @@ export function setMitadField(item, lado, field, value) {
   return { ...item, mitades: item.mitades.map((m) => (m.lado === lado ? { ...m, [field]: value } : m)) }
 }
 
-/** Precio unitario del renglón: precio del tier + recargos de todos los ingredientes elegidos (ambas mitades). */
+/** Precio unitario del renglón: precio del tier + recargos de los ingredientes elegidos
+ *  (ambas mitades) + los extras de pago del platillo. */
 export function calcItemPrecio(item) {
   const recargos = item.mitades.reduce(
     (sum, m) => sum + m.ingredientes.reduce((s, ing) => s + extraCost(ing), 0),
     0,
   )
-  return item.tier.precio + recargos
+  const extras = (item.extras ?? []).reduce((s, e) => s + (e.precio ?? 0), 0)
+  return item.tier.precio + recargos + extras
 }
 
 export function calcSubtotal(items) {
@@ -78,6 +87,8 @@ export function nombreItem(item) {
   const partes = describirMitades(item)
     .map((d) => `${d.prefijo}${d.texto}`)
     .filter((t) => t && !/Sin personalizar$/.test(t))
+  const extras = extrasTexto(item)
+  if (extras) partes.push(extras)
   return partes.length ? `${base} (${partes.join(' / ')})` : base
 }
 
@@ -110,6 +121,15 @@ export function useOrderDraft(mesaId) {
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
+
+  // Un fallo suena igual para todos los casos, así que el tono solo dice "algo no se
+  // guardó". El renglón en la campana es el que dice qué fue y en qué mesa, y sigue ahí
+  // cuando el mesero por fin voltea a ver la tablet.
+  const mesaNumero = mesas.find((m) => m.id === mesaId)?.numero ?? '—'
+  const avisarError = (titulo, detalle) => {
+    sonarError()
+    useAvisosStore.getState().agregarAviso({ tipo: 'error', titulo: `Mesa ${mesaNumero} · ${titulo}`, detalle, mesaId })
+  }
 
   function agregarPlatillo(platillo, tierIndex) {
     addDraftItem(mesaId, buildDraftItem(platillo, tierIndex))
@@ -167,8 +187,14 @@ export function useOrderDraft(mesaId) {
         p_mesero_nombre: mesero?.nombre ?? '—',
         p_items: payload,
       }).then(({ error }) => {
-        if (error) console.error('[orden] enviarACocina falló:', error)
-        else clearDraft(mesaId)
+        // Hasta aquí un fallo era invisible: el draft se quedaba en pantalla y el mesero
+        // no podía distinguir "no se envió" de "se envió y la pantalla no ha refrescado",
+        // así que se iba de la mesa o volvía a picar (con riesgo de orden duplicada).
+        if (error) {
+          console.error('[orden] enviarACocina falló:', error)
+          avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
+        }
+        else { clearDraft(mesaId); sonarConfirmacion() }
       })
       return
     }
@@ -184,6 +210,7 @@ export function useOrderDraft(mesaId) {
       estado: 'pendiente',
     })
     enviarOrden(mesaId)
+    sonarConfirmacion()
   }
 
   // El renglón de cuenta_items que corresponde a un renglón de un pedido: ambos comparten
@@ -221,7 +248,11 @@ export function useOrderDraft(mesaId) {
 
       sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad })
         .then(({ error }) => {
-          if (error) { console.error('[orden] cambiarCantidadEnviado falló:', error); recargarDesdeBackend() }
+          if (error) {
+            console.error('[orden] cambiarCantidadEnviado falló:', error)
+            avisarError('no se pudo cambiar la cantidad', 'El pedido se dejó como estaba')
+            recargarDesdeBackend()
+          }
         })
       return
     }
@@ -263,7 +294,11 @@ export function useOrderDraft(mesaId) {
 
       sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
         .then(({ error }) => {
-          if (error) { console.error('[orden] quitarItemEnviado falló:', error); recargarDesdeBackend() }
+          if (error) {
+            console.error('[orden] quitarItemEnviado falló:', error)
+            avisarError('no se pudo quitar el platillo', 'Sigue en la comanda de cocina')
+            recargarDesdeBackend()
+          }
         })
       return
     }
@@ -279,8 +314,14 @@ export function useOrderDraft(mesaId) {
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
   function cerrarMesa() {
     if (!IS_MOCK) {
-      return sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
-        .then(({ error }) => { if (error) console.error('[orden] cerrarMesa falló:', error) })
+      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
+        .then(({ error }) => {
+          if (error) {
+            console.error('[orden] cerrarMesa falló:', error)
+            avisarError('no se pudo cerrar la cuenta', 'La mesa sigue abierta')
+          }
+        })
+      return
     }
     cerrarCuenta(mesaId)
     eliminarPedidosDeMesa(mesaId)
