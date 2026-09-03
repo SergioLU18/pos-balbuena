@@ -53,15 +53,15 @@ export function AdminEntry() {
     <>
       <button
         onClick={abrir}
-        title="Panel de administración"
+        title="Ajustes"
         style={{
           fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-          padding: '10px 14px', borderRadius: 12, border: 'none', cursor: 'pointer',
+          padding: '12px 16px', minHeight: 44, borderRadius: 12, border: 'none', cursor: 'pointer',
           background: 'rgba(255,255,255,0.22)', color: '#fff',
           display: 'inline-flex', alignItems: 'center', gap: 7,
         }}
       >
-        <span style={{ fontSize: 17 }}>⚙</span> Admin
+        <span style={{ fontSize: 17 }}>⚙</span> Ajustes
       </button>
 
       {open && (
@@ -80,7 +80,7 @@ export function AdminEntry() {
             }}
           >
             <PinPad
-              titulo="Panel de administración"
+              titulo="Ajustes"
               subtitulo={`PIN de ${mesero.nombre}`}
               entered={entered}
               error={error}

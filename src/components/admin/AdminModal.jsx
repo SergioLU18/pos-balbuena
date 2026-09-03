@@ -18,11 +18,12 @@ export function ModalShell({ titulo, children, onClose, width = 560 }) {
           padding: '26px 28px 30px', display: 'flex', flexDirection: 'column', gap: 16,
         }}
       >
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between" style={{ gap: 12 }}>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{titulo}</h2>
           <button
             onClick={onClose}
-            style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 12, width: 38, height: 38, fontSize: 17, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
+            aria-label="Cerrar"
+            style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 12, width: 44, height: 44, flexShrink: 0, fontSize: 17, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
           >✕</button>
         </div>
         {children}
@@ -42,8 +43,8 @@ export function Campo({ label, children }) {
 
 export function Toggle({ checked, onChange, label }) {
   return (
-    <label className="flex items-center" style={{ gap: 10, cursor: 'pointer', fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--jb-pink)' }} />
+    <label className="flex items-center" style={{ gap: 12, minHeight: 44, padding: '6px 0', cursor: 'pointer', fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 24, height: 24, flexShrink: 0, accentColor: 'var(--jb-pink)' }} />
       {label}
     </label>
   )

@@ -21,6 +21,7 @@ export function Chip({ active, disabled, onClick, children, sublabel }) {
         alignItems: 'flex-start',
         gap: 2,
         minHeight: 52,
+        minWidth: 44,
         justifyContent: 'center',
         transition: 'all 0.12s ease',
       }}

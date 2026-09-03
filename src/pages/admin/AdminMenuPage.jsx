@@ -35,7 +35,7 @@ function SubTab({ active, onClick, children }) {
       onClick={onClick}
       style={{
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        padding: '11px 18px', borderRadius: 12, cursor: 'pointer',
+        padding: '13px 20px', minHeight: 46, borderRadius: 12, cursor: 'pointer',
         border: active ? '2.5px solid var(--jb-pink)' : '2.5px solid var(--jb-line)',
         background: active ? 'var(--jb-pink-tint)' : '#fff',
         color: active ? 'var(--jb-pink-dark)' : 'var(--jb-ink)',
@@ -52,17 +52,37 @@ function preciosDe(p) {
   return tiers.map((t) => Number(t.precio)).filter((n) => !isNaN(n))
 }
 
+// Bebidas y Postres siempre al final (en ese orden); el resto, alfabético.
+const CATEGORIAS_AL_FINAL = ['Postres', 'Bebidas']
+function ordenarCategorias(cats) {
+  const cola = CATEGORIAS_AL_FINAL.filter((c) => cats.includes(c))
+  const resto = cats.filter((c) => !CATEGORIAS_AL_FINAL.includes(c)).sort((a, b) => a.localeCompare(b, 'es'))
+  return [...resto, ...cola]
+}
+
 function PlatillosTab() {
   const platillos = usePosStore((s) => s.platillos)
   const { guardarPlatillo, borrarPlatillo } = useMenuAdmin()
+  const [viendo, setViendo] = useState(null)
   const [editando, setEditando] = useState(null)
   const [borrando, setBorrando] = useState(null)
 
-  const categorias = [...new Set(platillos.map((p) => p.categoria || 'Sin categoría'))]
+  const categorias = ordenarCategorias([...new Set(platillos.map((p) => p.categoria || 'Sin categoría'))])
+  const platillosOrdenados = categorias.flatMap((cat) =>
+    platillos.filter((p) => (p.categoria || 'Sin categoría') === cat),
+  )
+  // La etiqueta de categoría en la tarjeta solo se muestra si la categoría agrupa
+  // 2 o más platillos; si solo tiene uno, no aporta y se omite.
+  const conteoPorCategoria = platillos.reduce((acc, p) => {
+    const c = p.categoria || 'Sin categoría'
+    acc[c] = (acc[c] || 0) + 1
+    return acc
+  }, {})
 
   async function confirmarBorrado() {
     const p = borrando
     setBorrando(null)
+    setEditando(null)
     await borrarPlatillo(p.id)
   }
 
@@ -75,43 +95,45 @@ function PlatillosTab() {
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo platillo</Button>
       </div>
 
-      {categorias.map((cat) => (
-        <div key={cat} style={{ marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{cat}</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-            {platillos.filter((p) => (p.categoria || 'Sin categoría') === cat).map((p) => {
-              const precios = preciosDe(p)
-              const inactivo = p.activo === false
-              const min = precios.length ? Math.min(...precios) : 0
-              const max = precios.length ? Math.max(...precios) : 0
-              return (
-                <div key={p.id} style={{
-                  background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
-                  padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
-                }}>
-                  <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
-                    {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
-                    {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
-                  </span>
-                  <div className="flex" style={{ gap: 8, marginTop: 4 }}>
-                    <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setEditando(p)}>Editar</Button>
-                    <Button variant="ghost" size="md" style={{ color: '#C24A4A' }} onClick={() => setBorrando(p)}>Borrar</Button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, alignItems: 'start' }}>
+        {platillosOrdenados.map((p) => {
+          const precios = preciosDe(p)
+          const inactivo = p.activo === false
+          const min = precios.length ? Math.min(...precios) : 0
+          const max = precios.length ? Math.max(...precios) : 0
+          return (
+            <div key={p.id} style={{
+              background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
+              padding: '14px 18px 16px', display: 'flex', flexDirection: 'column', gap: 4, opacity: inactivo ? 0.55 : 1,
+            }}>
+              {conteoPorCategoria[p.categoria || 'Sin categoría'] > 1 && (
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--jb-pink-dark)' }}>
+                  {p.categoria || 'Sin categoría'}
+                </span>
+              )}
+              <div className="flex items-center justify-between" style={{ gap: 8 }}>
+                <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
+                {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
+                {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
+              </span>
+              <div className="flex" style={{ gap: 8, marginTop: 6 }}>
+                <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setViendo(p)}>Ver</Button>
+                <Button variant="ghost" size="md" style={{ color: 'var(--jb-pink-dark)' }} onClick={() => setEditando(p)}>Editar</Button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
+      {viendo && <PlatilloVistaModal platillo={viendo} onClose={() => setViendo(null)} />}
       {editando && (
         <PlatilloModal
           platillo={editando}
           categoriasExistentes={[...new Set(platillos.map((p) => p.categoria).filter(Boolean))]}
           onGuardar={guardarPlatillo}
+          onBorrar={() => setBorrando(editando)}
           onClose={() => setEditando(null)}
         />
       )}
@@ -129,7 +151,7 @@ function PlatillosTab() {
   )
 }
 
-function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
+function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, onClose }) {
   const esNuevo = !platillo.id
   const [nombre, setNombre] = useState(platillo.nombre ?? '')
   const [categoria, setCategoria] = useState(platillo.categoria ?? '')
@@ -222,21 +244,94 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onClose }) {
         <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
         <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
       </div>
+
+      {!esNuevo && onBorrar && (
+        <button onClick={onBorrar} style={borrarBtn}>Borrar platillo</button>
+      )}
     </ModalShell>
   )
 }
 
-function TiersEditor({ tiers, onChange }) {
+// Vista de solo lectura de un platillo (botón "Ver"): muestra todo sin editar.
+function PlatilloVistaModal({ platillo, onClose }) {
+  const grupos = platillo.tortillas?.length
+    ? platillo.tortillas.map((t) => ({ titulo: t.nombre, tiers: t.tiers ?? [] }))
+    : [{ titulo: null, tiers: platillo.tiers ?? [] }]
+
+  return (
+    <ModalShell width={560} titulo={platillo.nombre} onClose={onClose}>
+      <Campo label="Categoría">
+        <div style={valorLeer}>{platillo.categoria || 'Sin categoría'}</div>
+      </Campo>
+
+      <Campo label="Ingredientes base">
+        <div style={valorLeer}>{platillo.base?.trim() || '—'}</div>
+      </Campo>
+
+      <Campo label="Niveles de precio">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {grupos.map((g, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {g.titulo && (
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{g.titulo}</span>
+              )}
+              {g.tiers.length === 0 && <span style={{ fontSize: 14, color: 'var(--jb-gray)' }}>Sin niveles</span>}
+              {g.tiers.map((t, j) => (
+                <div key={j} className="flex items-center justify-between" style={{
+                  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '10px 14px',
+                }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>
+                    {t.nombre}
+                    <span style={{ fontWeight: 600, color: 'var(--jb-gray)', marginLeft: 8 }}>
+                      {Number(t.ingredientes) > 0 ? `${t.ingredientes} ing.` : 'sin ingredientes'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(Number(t.precio) || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Campo>
+
+      <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
+        <BanderaVista ok={!!platillo.permiteMitades}>Permite mitades</BanderaVista>
+        <BanderaVista ok={!!platillo.permiteNota}>Permite nota</BanderaVista>
+        <BanderaVista ok={platillo.activo !== false}>Disponible en el menú</BanderaVista>
+      </div>
+
+      <div className="flex" style={{ marginTop: 6 }}>
+        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cerrar</Button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function BanderaVista({ ok, children }) {
+  return (
+    <span style={{ fontSize: 14, fontWeight: 700, color: ok ? 'var(--jb-ink)' : 'var(--jb-gray)' }}>
+      {ok ? '✓' : '✕'} {children}
+    </span>
+  )
+}
+
+function TiersEditor({ tiers, onChange, hint = true }) {
   function set(i, patch) { onChange(tiers.map((t, j) => (j === i ? { ...t, ...patch } : t))) }
   function add() { onChange([...tiers, { nombre: '', ingredientes: tiers.length, precio: '' }]) }
   function remove(i) { onChange(tiers.filter((_, j) => j !== i)) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <span style={{ flex: 2 }} />
+        <span style={{ ...colHead, width: 80, flex: 'none', textAlign: 'center' }}># Ingr.</span>
+        <span style={{ ...colHead, flex: 1, textAlign: 'center' }}>Precio</span>
+        <span style={{ width: 46, flexShrink: 0 }} />
+      </div>
       {tiers.map((t, i) => (
         <div key={i} className="flex items-center" style={{ gap: 8 }}>
-          <input value={t.nombre} onChange={(e) => set(i, { nombre: e.target.value })} placeholder="Nivel" style={{ ...inputStyle, flex: 2 }} />
-          <input value={t.ingredientes} onChange={(e) => set(i, { ingredientes: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="# ing" title="Ingredientes incluidos" style={{ ...inputStyle, width: 80, flex: 'none' }} />
+          <input value={t.nombre} onChange={(e) => set(i, { nombre: e.target.value })} placeholder="Ej. 2 Ingredientes" style={{ ...inputStyle, flex: 2 }} />
+          <input value={t.ingredientes} onChange={(e) => set(i, { ingredientes: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="0" title="Cuántos ingredientes puede elegir el mesero en este nivel" style={{ ...inputStyle, width: 80, flex: 'none', textAlign: 'center' }} />
           <div style={{ position: 'relative', flex: 1 }}>
             <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--jb-gray)', fontSize: 15 }}>$</span>
             <input value={t.precio} onChange={(e) => set(i, { precio: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" placeholder="0" style={{ ...inputStyle, paddingLeft: 24 }} />
@@ -244,6 +339,11 @@ function TiersEditor({ tiers, onChange }) {
           <button onClick={() => remove(i)} title="Quitar nivel" style={quitarBtn}>✕</button>
         </div>
       ))}
+      {hint && (
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+          <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+        </p>
+      )}
       <button onClick={add} style={agregarBtn}>+ Agregar nivel</button>
     </div>
   )
@@ -256,13 +356,16 @@ function TortillasEditor({ tortillas, onChange }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--jb-gray)', lineHeight: 1.4 }}>
+        <b># Ingr.</b> = cuántos ingredientes puede elegir el mesero en ese nivel (0 = ninguno, no aparece la lista).
+      </p>
       {tortillas.map((t, i) => (
         <div key={t.id ?? i} style={{ border: '2px dashed var(--jb-line)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <input value={t.nombre} onChange={(e) => setTor(i, { nombre: e.target.value })} placeholder="Tortilla de Maíz" style={{ ...inputStyle, flex: 1 }} />
             <button onClick={() => removeTor(i)} title="Quitar tortilla" style={quitarBtn}>✕</button>
           </div>
-          <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} />
+          <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} hint={false} />
         </div>
       ))}
       <button onClick={addTor} style={agregarBtn}>+ Agregar variante de tortilla</button>
@@ -406,7 +509,7 @@ function FilaSimple({ nombre, sub, inactivo, onEdit, onDelete }) {
         <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
         {sub && <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>{sub}</div>}
       </div>
-      <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
+      <div className="flex items-center" style={{ gap: 8, flexShrink: 0 }}>
         <button onClick={onEdit} title="Editar" style={{ ...quitarBtn, color: 'var(--jb-pink-dark)', background: 'var(--jb-pink-light)' }}>✎</button>
         <button onClick={onDelete} title="Borrar" style={quitarBtn}>✕</button>
       </div>
@@ -455,13 +558,33 @@ function ItemSimpleModal({ titulo, item, precioField, precioLabel, onGuardar, on
 }
 
 const quitarBtn = {
-  border: 'none', borderRadius: 10, width: 40, height: 40, flexShrink: 0,
+  border: 'none', borderRadius: 10, width: 46, height: 46, flexShrink: 0,
   fontSize: 15, fontWeight: 800, cursor: 'pointer',
   background: '#F6E7E7', color: '#C24A4A',
 }
 
 const agregarBtn = {
-  border: '2.5px dashed var(--jb-line)', borderRadius: 12, padding: '11px 0',
+  border: '2.5px dashed var(--jb-line)', borderRadius: 12, padding: '14px 0', minHeight: 48,
   fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 800,
   color: 'var(--jb-pink-dark)', background: '#fff', cursor: 'pointer',
+}
+
+// Botón "Borrar platillo" al pie del modal de edición, separado de Cancelar/Guardar
+// y lejos de la ✕ de cerrar. Sombreado de rojo.
+const borrarBtn = {
+  width: '100%', border: '2px solid #E6C2C2', borderRadius: 14, padding: '12px 0', minHeight: 48,
+  marginTop: 4, fontFamily: "'Inter Tight', sans-serif", fontSize: 15, fontWeight: 800,
+  cursor: 'pointer', background: '#F6E7E7', color: '#C24A4A',
+}
+
+// Encabezado de columna en el editor de niveles de precio.
+const colHead = {
+  fontSize: 11, fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase',
+  color: 'var(--jb-gray)',
+}
+
+// Valor de solo lectura (vista "Ver").
+const valorLeer = {
+  border: '2px solid var(--jb-line)', borderRadius: 12, padding: '11px 14px',
+  fontSize: 15, color: 'var(--jb-ink)', background: 'var(--jb-cream)', whiteSpace: 'pre-wrap',
 }
