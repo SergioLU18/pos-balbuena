@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { IS_MOCK } from '../lib/config'
-import { MESEROS } from '../lib/mockMeseros'
+import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
 import { MESAS } from '../lib/mockMesas'
 import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
+import * as asig from '../lib/asignaciones'
 
 // Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
 // (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
@@ -80,6 +81,11 @@ export const usePosStore = create(
     (set) => ({
       mesas: IS_MOCK ? MESAS : [],
       meseros: IS_MOCK ? MESEROS : [],
+      // Quién atiende qué mesa, como pares { mesaId, meseroId }. Vive aparte del
+      // mesero (y no como un arreglo dentro de él) porque una mesa puede tener
+      // VARIOS meseros y hay que poder preguntarlo desde los dos lados — ver
+      // src/lib/asignaciones.js.
+      asignaciones: IS_MOCK ? ASIGNACIONES : [],
       // Menú: en mock arranca del catálogo estático; en backend lo rellena usePosData
       // desde Supabase (tabla compartida `platillos` + pos_ingredientes/pos_modificadores).
       platillos: IS_MOCK ? MOCK_PLATILLOS : [],
@@ -90,6 +96,16 @@ export const usePosStore = create(
       restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
+      setAsignaciones: (asignaciones) => set({ asignaciones }),
+      // Los mutadores solo se usan en modo mock: en backend la fuente de verdad es
+      // `mesa_meseros` y usePosData vuelve a bajar la lista completa por Realtime.
+      atenderMesa: (mesaId, meseroId) =>
+        set((s) => ({ asignaciones: asig.conMesero(s.asignaciones, mesaId, meseroId) })),
+      soltarMesa: (mesaId) => set((s) => ({ asignaciones: asig.sinMesa(s.asignaciones, mesaId) })),
+      soltarMesero: (meseroId) =>
+        set((s) => ({ asignaciones: asig.sinMeseroEnTodas(s.asignaciones, meseroId) })),
+      fijarMesasDeMesero: (meseroId, mesaIds) =>
+        set((s) => ({ asignaciones: asig.fijarMesasDeMesero(s.asignaciones, meseroId, mesaIds) })),
       setPlatillos: (platillos) => set({ platillos }),
       setIngredientes: (ingredientes) => set({ ingredientes }),
       setModificadores: (modificadores) => set({ modificadores }),
@@ -100,17 +116,20 @@ export const usePosStore = create(
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      version: 5,
+      version: 6,
       // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
       // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agregó las
       // allowlists por platillo. v4 agrega el orden de categorías y `orden` en platillos.
       // v5: Bebidas pasa a elegir SABOR como variante (Refresco con tortillas/sabores).
+      // v6: la asignación mesa↔mesero sale de `mesero.mesas` y pasa a `asignaciones`.
       // En cada salto se re-siembran meseros y menú del mock, conservando las mesas que el
       // usuario creó. En backend no importa: usePosData pisa todo al cargar.
       migrate: (persisted, version) => {
-        if (version < 5 && IS_MOCK) {
-          return {
-            ...persisted,
+        if (!IS_MOCK) return persisted
+        let next = persisted
+        if (version < 5) {
+          next = {
+            ...next,
             meseros: MESEROS,
             platillos: MOCK_PLATILLOS,
             ingredientes: MOCK_INGREDIENTES,
@@ -119,10 +138,32 @@ export const usePosStore = create(
             categoriasOrden: MOCK_CATEGORIAS_ORDEN,
           }
         }
-        return persisted
+        // v6: `mesero.mesas` era un arreglo de NÚMEROS de mesa; ahora la relación es
+        // muchos-a-muchos y vive en pares por id. Se traduce lo que el usuario tuviera
+        // (resolviendo cada número contra el catálogo de mesas persistido) en vez de
+        // re-sembrar, para no borrarle el reparto del salón; solo si no quedó nada que
+        // traducir se cae al reparto del mock. La columna vieja se tira del mesero.
+        if (version < 6) {
+          const mesas = next.mesas ?? []
+          const traducidas = (next.meseros ?? []).flatMap((m) =>
+            (m.mesas ?? []).flatMap((numero) => {
+              const mesa = mesas.find((x) => x.numero === numero)
+              return mesa ? [{ mesaId: mesa.id, meseroId: m.id }] : []
+            }),
+          )
+          next = {
+            ...next,
+            asignaciones: traducidas.length ? traducidas : ASIGNACIONES,
+            meseros: (next.meseros ?? []).map((m) => {
+              const { mesas: _viejas, ...resto } = m
+              return resto
+            }),
+          }
+        }
+        return next
       },
       partialize: (s) => ({
-        mesas: s.mesas, meseros: s.meseros,
+        mesas: s.mesas, meseros: s.meseros, asignaciones: s.asignaciones,
         platillos: s.platillos, ingredientes: s.ingredientes,
         modificadores: s.modificadores, extras: s.extras, categoriasOrden: s.categoriasOrden,
       }),
@@ -281,7 +322,10 @@ const COLUMNA_TIEMPO = { preparando: 'preparandoAt', listo: 'listoAt', entregado
 export const usePedidosStore = create(
   persist(
     (set) => ({
-      pedidos: [], // { id, mesaId, mesaNumero, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
+      // meseroId: quién mandó ESTE pedido. Una mesa puede tener varios meseros, así que
+      // la mesa ya no basta para saber a quién avisarle que su platillo está listo.
+      // meseroNombre se queda al lado, denormalizado, para el ticket de cocina.
+      pedidos: [], // { id, mesaId, mesaNumero, meseroId, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
 
       // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
       setPedidos: (pedidos) => set({ pedidos }),

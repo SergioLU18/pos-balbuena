@@ -22,20 +22,38 @@ where r.nombre = 'Jardín Balbuena'
     select 1 from mesas m where m.restaurante_id = r.id and m.numero = g::text
   );
 
--- 3 meseros con sus mesas asignadas y PIN de 4 dígitos. Doña Rosa es admin
--- (puede editar meseros y el menú desde /admin).
-insert into meseros (restaurante_id, nombre, mesas, pin, es_admin)
-select r.id, v.nombre, v.mesas, v.pin, v.es_admin
+-- 3 meseros con PIN de 4 dígitos. Doña Rosa es admin (puede editar meseros y el
+-- menú desde /admin).
+insert into meseros (restaurante_id, nombre, pin, es_admin)
+select r.id, v.nombre, v.pin, v.es_admin
 from restaurantes r
 cross join (values
-  ('Doña Rosa', array['1','2','3','4','5'],      '1111', true),
-  ('Don Beto',  array['6','7','8','9','10'],     '2222', false),
-  ('Lupita',    array['11','12','13','14','15'], '3333', false)
-) as v(nombre, mesas, pin, es_admin)
+  ('Doña Rosa', '1111', true),
+  ('Don Beto',  '2222', false),
+  ('Lupita',    '3333', false)
+) as v(nombre, pin, es_admin)
 where r.nombre = 'Jardín Balbuena'
   and not exists (
     select 1 from meseros m where m.restaurante_id = r.id and m.nombre = v.nombre
   );
+
+-- Reparto inicial del salón: 5 mesas por mesero. Es solo un punto de partida — una
+-- mesa admite varios meseros, y quien mande una orden a una mesa que no traía se
+-- suma solo a la lista (lo hace pos_enviar_orden).
+insert into mesa_meseros (mesa_id, mesero_id)
+select m.id, w.id
+from restaurantes r
+join mesas   m on m.restaurante_id = r.id
+join meseros w on w.restaurante_id = r.id
+cross join (values
+  ('Doña Rosa', array['1','2','3','4','5']),
+  ('Don Beto',  array['6','7','8','9','10']),
+  ('Lupita',    array['11','12','13','14','15'])
+) as v(nombre, mesas)
+where r.nombre = 'Jardín Balbuena'
+  and w.nombre = v.nombre
+  and m.numero = any(v.mesas)
+on conflict do nothing;
 
 -- ── Menú: platillos ─────────────────────────────────────────────────────────
 -- Reconstruye el catálogo del mock (src/lib/mockMenu.js) en la tabla compartida

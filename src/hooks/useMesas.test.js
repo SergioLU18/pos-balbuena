@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useMesas } from './useMesas'
 import { buildDraftItem } from './useOrderDraft'
-import { useOrderStore, usePedidosStore, useMeseroStore, useMesaPagadaStore } from '../store/appStore'
+import { useOrderStore, usePedidosStore, useMeseroStore, useMesaPagadaStore, usePosStore } from '../store/appStore'
 import { MENU } from '../lib/mockMenu'
 import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
+import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
 
 const sope = MENU.find((p) => p.id === 'sope')
 const I_2ING = sope.tiers.findIndex((t) => t.nombre === '2 Ingredientes') // -> 165
@@ -16,7 +16,11 @@ beforeEach(() => {
   usePedidosStore.setState({ pedidos: [] })
   useMesaPagadaStore.setState({ pagadas: {} })
   useMeseroStore.setState({ currentMeseroId: MESEROS[0].id, soloMisMesas: false })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
 })
+
+// mesa-5 arranca compartida entre Doña Rosa (MESEROS[0]) y Don Beto (MESEROS[1]).
+const compartida = MESAS[4]
 
 describe('useMesas — total de una mesa con cuenta abierta', () => {
   it('suma el precio real de los renglones (tier + recargos), no un campo inexistente', () => {
@@ -46,6 +50,56 @@ describe('useMesas — mesa pagada', () => {
     const { result } = renderHook(() => useMesas())
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
     expect(mesa.estado).toBe('preparando')
+  })
+})
+
+describe('useMesas — una mesa con varios meseros', () => {
+  it('lista a todos los que atienden la mesa y la marca como compartida', () => {
+    const { result } = renderHook(() => useMesas())
+    const mesa = result.current.mesas.find((m) => m.id === compartida.id)
+    expect(mesa.meseros.map((w) => w.id)).toEqual([MESEROS[0].id, MESEROS[1].id])
+    expect(mesa.compartida).toBe(true)
+  })
+
+  it('la mesa compartida es "mía" para los dos meseros que la atienden', () => {
+    const paraMesero = (id) => {
+      useMeseroStore.setState({ currentMeseroId: id })
+      const { result } = renderHook(() => useMesas())
+      return result.current.mesas.find((m) => m.id === compartida.id)
+    }
+    expect(paraMesero(MESEROS[0].id).esMia).toBe(true)
+    expect(paraMesero(MESEROS[1].id).esMia).toBe(true)
+    expect(paraMesero(MESEROS[2].id).esMia).toBe(false)
+  })
+
+  it('"solo mis mesas" deja ver la compartida sin colar las del otro mesero', () => {
+    useMeseroStore.setState({ currentMeseroId: MESEROS[1].id, soloMisMesas: true })
+    const { result } = renderHook(() => useMesas())
+    const numeros = result.current.mesas.map((m) => m.numero)
+    expect(numeros).toContain(compartida.numero) // la comparte con Doña Rosa
+    expect(numeros).not.toContain('1') // esa sí es solo de Doña Rosa
+  })
+
+  it('cuenta como mía una mesa ajena donde mandé un pedido, aunque no me la hayan asignado', () => {
+    // El hueco real: mando la orden y el backend todavía no confirma la asignación.
+    // Sin esto, "solo mis mesas" escondería la mesa que acabo de atender.
+    const ajena = MESAS[0] // de Doña Rosa
+    useMeseroStore.setState({ currentMeseroId: MESEROS[2].id, soloMisMesas: true })
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p-ajena', mesaId: ajena.id, mesaNumero: ajena.numero, meseroId: MESEROS[2].id, meseroNombre: 'Lupita', items: [], enviadoAt: new Date().toISOString(), estado: 'pendiente' }],
+    })
+    const { result } = renderHook(() => useMesas())
+    expect(result.current.mesas.map((m) => m.id)).toContain(ajena.id)
+  })
+
+  it('el pedido de OTRO mesero no me hace dueño de la mesa', () => {
+    const ajena = MESAS[0]
+    useMeseroStore.setState({ currentMeseroId: MESEROS[2].id, soloMisMesas: true })
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p-otro', mesaId: ajena.id, mesaNumero: ajena.numero, meseroId: MESEROS[0].id, meseroNombre: 'Doña Rosa', items: [], enviadoAt: new Date().toISOString(), estado: 'pendiente' }],
+    })
+    const { result } = renderHook(() => useMesas())
+    expect(result.current.mesas.map((m) => m.id)).not.toContain(ajena.id)
   })
 })
 

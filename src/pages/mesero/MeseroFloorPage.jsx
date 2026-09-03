@@ -27,6 +27,9 @@ export default function MeseroFloorPage() {
   const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
   const toggleSoloMisMesas = useMeseroStore((s) => s.toggleSoloMisMesas)
   const { posiciones, setPosicion } = useMesaLayout()
+  // Cuántas atiende el mesero actual. Con `ignorarFiltro` (modo mover) la lista trae
+  // todas las mesas, así que se cuenta por esMia y no por el largo de `mesas`.
+  const misMesas = mesas.filter((m) => m.esMia).length
   const { crearMesa, borrarMesa } = useMesaAdmin()
   const [creandoMesa, setCreandoMesa] = useState(false)
 
@@ -106,7 +109,7 @@ export default function MeseroFloorPage() {
           <p style={{ margin: '4px 0 0', fontSize: 15, color: 'var(--jb-ink-soft)' }}>
             {moviendo
               ? 'Arrastra cada mesa a donde quieras acomodarla en el mapa'
-              : mesero ? `Atendiendo como ${mesero.nombre}` : ''}
+              : mesero ? `Atendiendo como ${mesero.nombre} · ${misMesas} ${misMesas === 1 ? 'mesa' : 'mesas'}` : ''}
           </p>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
@@ -193,7 +196,11 @@ export default function MeseroFloorPage() {
                 transition: arrastrando ? 'none' : 'transform 0.12s ease',
               }}
             >
-              <MesaCard mesa={mesa} onClick={moviendo ? undefined : () => navigate(`/mesero/orden/${mesa.id}`)} />
+              <MesaCard
+                mesa={mesa}
+                meseroActualId={mesero?.id}
+                onClick={moviendo ? undefined : () => navigate(`/mesero/orden/${mesa.id}`)}
+              />
               {moviendo && (
                 <>
                   <span

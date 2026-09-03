@@ -121,6 +121,7 @@ export function useOrderDraft(mesaId) {
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
+  const atenderMesa = usePosStore((s) => s.atenderMesa)
 
   // Un fallo suena igual para todos los casos, así que el tono solo dice "algo no se
   // guardó". El renglón en la campana es el que dice qué fue y en qué mesa, y sigue ahí
@@ -184,6 +185,7 @@ export function useOrderDraft(mesaId) {
       }))
       sb.rpc('pos_enviar_orden', {
         p_mesa_id: mesaId,
+        p_mesero_id: mesero?.id ?? null,
         p_mesero_nombre: mesero?.nombre ?? '—',
         p_items: payload,
       }).then(({ error }) => {
@@ -204,11 +206,15 @@ export function useOrderDraft(mesaId) {
       id: uid('pedido'),
       mesaId,
       mesaNumero: mesa?.numero ?? '—',
+      meseroId: mesero?.id ?? null,
       meseroNombre: mesero?.nombre ?? '—',
       items: draft,
       enviadoAt: new Date().toISOString(),
       estado: 'pendiente',
     })
+    // Quien toma la orden pasa a atender la mesa (sin desplazar a los que ya estaban).
+    // El backend hace lo mismo dentro de pos_enviar_orden; aquí es el espejo del mock.
+    atenderMesa(mesaId, mesero?.id)
     enviarOrden(mesaId)
     sonarConfirmacion()
   }
