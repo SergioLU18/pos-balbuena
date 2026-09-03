@@ -1,5 +1,6 @@
 import { f } from '../../lib/utils'
 import { Chip } from '../ui/Chip'
+import { chipGrid } from '../ui/chipStyles'
 
 /** Extras de pago (Aguacate +$30, Crema +$10, …) — selección libre, sin tope, a nivel
  *  platillo. `seleccionados` es un arreglo de { nombre, precio } (el precio se guarda en
@@ -19,8 +20,8 @@ export function ExtrasToggles({ extras, seleccionados, onChange }) {
 
   return (
     <div>
-      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Extras</p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Extras</p>
+      <div style={chipGrid}>
         {extras.map((ex) => (
           <Chip
             key={ex.nombre}

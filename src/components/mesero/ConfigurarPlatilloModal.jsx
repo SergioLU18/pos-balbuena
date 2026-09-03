@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { f } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
+import { chipGrid } from '../ui/chipStyles'
 import { TierPicker } from './TierPicker'
 import { MitadSwitch } from './MitadSwitch'
 import { IngredienteChecklist } from './IngredienteChecklist'
@@ -13,8 +14,10 @@ const MITAD_LABEL = { completo: 'Ingredientes', izquierda: 'Mitad 1', derecha: '
 
 export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], onConfirm, onClose }) {
   const [item, setItem] = useState(() => buildDraftItem(platillo, 0))
+  const [error, setError] = useState(null)
 
   function cambiarTier(tierIndex) {
+    setError(null)
     let next = buildDraftItem(platillo, tierIndex, item.tortillaId)
     if (item.dividido) next = toggleDividido(next)
     // conserva modificadores elegidos (no dependen del tier); los ingredientes se reinician
@@ -25,6 +28,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   }
 
   function cambiarTortilla(tortillaId) {
+    setError(null)
     let next = buildDraftItem(platillo, item.tierIndex, tortillaId)
     if (item.dividido) next = toggleDividido(next)
     next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
@@ -32,11 +36,32 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   }
 
   function toggleMitades() {
+    setError(null)
     setItem((it) => toggleDividido(it))
   }
 
   function cambiarMitad(lado, field, value) {
+    setError(null)
     setItem((it) => setMitadField(it, lado, field, value))
+  }
+
+  // Cada mitad debe llegar al número de ingredientes que pide el nivel elegido.
+  function intentarAgregar() {
+    const requeridos = item.tier.ingredientes
+    if (requeridos > 0) {
+      const incompletas = item.mitades.filter((m) => (m.ingredientes?.length ?? 0) < requeridos)
+      if (incompletas.length) {
+        const n = requeridos
+        const cuantos = `${n} ${n === 1 ? 'ingrediente' : 'ingredientes'}`
+        setError(
+          item.dividido
+            ? `Elige ${cuantos} en cada mitad antes de agregar.`
+            : `Elige ${cuantos} antes de agregar (llevas ${item.mitades[0].ingredientes.length}).`,
+        )
+        return
+      }
+    }
+    onConfirm(item)
   }
 
   const precio = calcItemPrecio(item)
@@ -64,26 +89,27 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
         className="jb-pop no-scrollbar"
         style={{
           background: '#fff', borderRadius: 26, width: 760, maxWidth: '100%', maxHeight: '92vh',
-          overflowY: 'auto', display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', display: 'flex', flexDirection: 'column',
           fontFamily: "'Inter Tight', sans-serif", boxShadow: '0 24px 60px rgba(51,34,42,0.3)',
         }}
       >
-        <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{ padding: '24px 28px 20px', flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', borderBottom: '2px solid var(--jb-line)' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>{platillo.nombre}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>{platillo.base}</p>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 12, width: 40, height: 40, fontSize: 18, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
+            aria-label="Cerrar"
+            style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 14, width: 52, height: 52, flexShrink: 0, fontSize: 22, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
           >
             ✕
           </button>
         </div>
 
-        <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 28, display: 'flex', flexDirection: 'column', gap: 24 }}>
           {platillo.tortillas && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div style={chipGrid}>
               {platillo.tortillas.map((t) => (
                 <Chip key={t.id} active={item.tortillaId === t.id} onClick={() => cambiarTortilla(t.id)}>
                   {t.nombre}
@@ -117,6 +143,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
                     ingredientes={ingredientes}
                     seleccionados={mitad.ingredientes}
                     max={item.tier.ingredientes}
+                    resaltarFalta={!!error}
                     onChange={(v) => cambiarMitad(mitad.lado, 'ingredientes', v)}
                   />
                 )}
@@ -137,7 +164,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
 
           {platillo.permiteNota && (
             <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Nota especial</p>
+              <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Nota especial</p>
               <textarea
                 value={item.nota}
                 onChange={(e) => setItem((it) => ({ ...it, nota: e.target.value }))}
@@ -145,25 +172,47 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
                 rows={2}
                 style={{
                   width: '100%', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: 14,
-                  fontFamily: "'Inter Tight', sans-serif", fontSize: 15, resize: 'none', outline: 'none',
+                  fontFamily: "'Inter Tight', sans-serif", fontSize: 16, resize: 'none', outline: 'none',
                 }}
               />
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center" style={{ gap: 0, border: '2.5px solid var(--jb-line)', borderRadius: 14, overflow: 'hidden' }}>
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0, borderTop: '2px solid var(--jb-line)', background: '#fff',
+            padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10,
+          }}
+        >
+          {error && (
+            <p
+              role="alert"
+              style={{
+                margin: 0, padding: '10px 14px', borderRadius: 12,
+                background: '#F6E7E7', color: '#C24A4A',
+                fontSize: 15, fontWeight: 800, textAlign: 'center',
+              }}
+            >
+              {error}
+            </p>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div className="flex items-center" style={{ gap: 0, border: '2.5px solid var(--jb-line)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
               <button
                 onClick={() => setItem((it) => ({ ...it, cantidad: Math.max(1, it.cantidad - 1) }))}
-                style={{ width: 52, height: 52, border: 'none', background: 'var(--jb-cream)', fontSize: 24, fontWeight: 800, cursor: 'pointer' }}
+                aria-label="Quitar uno"
+                style={{ width: 60, height: 64, border: 'none', background: 'var(--jb-cream)', fontSize: 28, fontWeight: 800, cursor: 'pointer' }}
               >−</button>
-              <span style={{ width: 56, textAlign: 'center', fontSize: 20, fontWeight: 900 }}>{item.cantidad}</span>
+              <span style={{ width: 52, textAlign: 'center', fontSize: 22, fontWeight: 900 }}>{item.cantidad}</span>
               <button
                 onClick={() => setItem((it) => ({ ...it, cantidad: it.cantidad + 1 }))}
-                style={{ width: 52, height: 52, border: 'none', background: 'var(--jb-cream)', fontSize: 24, fontWeight: 800, cursor: 'pointer' }}
+                aria-label="Agregar uno"
+                style={{ width: 60, height: 64, border: 'none', background: 'var(--jb-cream)', fontSize: 28, fontWeight: 800, cursor: 'pointer' }}
               >+</button>
             </div>
-            <Button onClick={() => onConfirm(item)}>
+            <Button onClick={intentarAgregar} style={{ flex: 1, minHeight: 68, fontSize: 21 }}>
               Agregar · {f(precio * item.cantidad)}
             </Button>
           </div>

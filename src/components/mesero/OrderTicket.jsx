@@ -239,7 +239,12 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>Total</span>
           <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{f(totalGeneral)}</span>
         </div>
-        <Button onClick={enviarTodo} disabled={!puedeEnviar} style={{ width: '100%' }}>
+        <Button
+          onClick={enviarTodo}
+          disabled={!puedeEnviar}
+          className={puedeEnviar ? 'jb-cta-pulse' : undefined}
+          style={{ width: '100%' }}
+        >
           {draft.length > 0
             ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
             : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}
