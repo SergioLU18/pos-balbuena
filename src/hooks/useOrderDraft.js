@@ -164,6 +164,12 @@ export function useOrderDraft(mesaId) {
     updateDraftItem(mesaId, itemId, { nota })
   }
 
+  /** Reemplaza un renglón del draft (aún sin enviar) por su versión reeditada
+   *  desde ConfigurarPlatilloModal, conservando su posición en la lista. */
+  function reemplazarItem(itemId, nuevoItem) {
+    updateDraftItem(mesaId, itemId, { ...nuevoItem, id: itemId })
+  }
+
   function quitarItem(itemId) {
     removeDraftItem(mesaId, itemId)
   }
@@ -337,6 +343,7 @@ export function useOrderDraft(mesaId) {
     subtotalCuenta,
     agregarPlatillo,
     agregarItemConstruido,
+    reemplazarItem,
     cambiarCantidad,
     cambiarDividido,
     cambiarMitad,

@@ -12,8 +12,28 @@ import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio } from '.
 
 const MITAD_LABEL = { completo: 'Ingredientes', izquierda: 'Mitad 1', derecha: 'Mitad 2' }
 
-export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], onConfirm, onClose }) {
-  const [item, setItem] = useState(() => buildDraftItem(platillo, 0))
+// Reconstruye un renglón a partir del platillo actual del menú (para que el tier
+// tome precios frescos) y le vuelve a poner lo que el mesero ya había elegido.
+function rehidratarItem(platillo, prev) {
+  let base = buildDraftItem(platillo, prev.tierIndex ?? 0, prev.tortillaId)
+  if (prev.dividido) base = toggleDividido(base)
+  return {
+    ...base,
+    id: prev.id ?? base.id,
+    mitades: base.mitades.map((m, i) => ({
+      ...m,
+      ingredientes: prev.mitades?.[i]?.ingredientes ?? [],
+      modificadores: prev.mitades?.[i]?.modificadores ?? [],
+    })),
+    extras: prev.extras ?? [],
+    cantidad: prev.cantidad ?? 1,
+    nota: prev.nota ?? '',
+  }
+}
+
+export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], itemInicial = null, onConfirm, onClose }) {
+  const editando = itemInicial != null
+  const [item, setItem] = useState(() => (editando ? rehidratarItem(platillo, itemInicial) : buildDraftItem(platillo, 0)))
   const [error, setError] = useState(null)
 
   function cambiarTier(tierIndex) {
@@ -95,7 +115,9 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
       >
         <div style={{ padding: '24px 28px 20px', flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', borderBottom: '2px solid var(--jb-line)' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>{platillo.nombre}</h2>
+            <h2 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>
+              {editando ? `Editar · ${platillo.nombre}` : platillo.nombre}
+            </h2>
             <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>{platillo.base}</p>
           </div>
           <button
@@ -213,7 +235,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
               >+</button>
             </div>
             <Button onClick={intentarAgregar} style={{ flex: 1, minHeight: 68, fontSize: 21 }}>
-              Agregar · {f(precio * item.cantidad)}
+              {editando ? 'Guardar cambios' : 'Agregar'} · {f(precio * item.cantidad)}
             </Button>
           </div>
         </div>
