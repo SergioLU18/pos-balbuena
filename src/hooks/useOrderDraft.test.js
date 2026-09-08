@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio, calcSubtotal } from './useOrderDraft'
+import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio, calcSubtotal, nombreItem } from './useOrderDraft'
 import { MENU } from '../lib/mockMenu'
 
 const sope = MENU.find((p) => p.id === 'sope')
@@ -64,5 +64,29 @@ describe('calcSubtotal', () => {
     const a = buildDraftItem(sope, I_SENCILLO) // Sencillo -> 110
     const b = { ...buildDraftItem(sope, I_2ING), cantidad: 2 } // 2 Ingredientes -> 165 x2
     expect(calcSubtotal([a, b])).toBe(110 + 165 * 2)
+  })
+})
+
+describe('extras libres (escritos por el mesero)', () => {
+  it('suma su precio como cualquier otro extra', () => {
+    let item = buildDraftItem(sope, I_1ING) // 140
+    item = { ...item, extras: [{ nombre: 'Un huevo', precio: 15, libre: true }] }
+    expect(calcItemPrecio(item)).toBe(140 + 15)
+  })
+
+  // cuenta_items agrupa por nombre: si dos "Huevo" con precio distinto produjeran el
+  // mismo nombre, el segundo se cobraría al precio del primero.
+  it('lleva su precio en el nombre facturable, para no colapsar con otro del mismo nombre', () => {
+    const base = buildDraftItem(sope, I_1ING)
+    const a = { ...base, extras: [{ nombre: 'Huevo', precio: 15, libre: true }] }
+    const b = { ...base, extras: [{ nombre: 'Huevo', precio: 20, libre: true }] }
+    expect(nombreItem(a)).toContain('Huevo (+$15.00)')
+    expect(nombreItem(a)).not.toBe(nombreItem(b))
+  })
+
+  it('los del catálogo siguen saliendo sin precio (su precio lo fija el catálogo)', () => {
+    const item = { ...buildDraftItem(sope, I_1ING), extras: [{ nombre: 'Aguacate', precio: 30 }] }
+    expect(nombreItem(item)).toContain('Extras: Aguacate')
+    expect(nombreItem(item)).not.toContain('$30')
   })
 })
