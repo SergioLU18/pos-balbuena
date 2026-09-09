@@ -67,6 +67,24 @@ describe('useMesaAdmin — renombrar mesa', () => {
   })
 })
 
+describe('useMesaAdmin — reordenar mesas', () => {
+  it('deja las mesas en el orden de ids recibido', async () => {
+    const { result } = renderHook(() => useMesaAdmin())
+    const invertido = [...MESAS].reverse().map((m) => m.id)
+    await result.current.reordenarMesas(invertido)
+    expect(usePosStore.getState().mesas.map((m) => m.id)).toEqual(invertido)
+  })
+
+  it('conserva las mesas que no venían en la lista, al final', async () => {
+    const { result } = renderHook(() => useMesaAdmin())
+    const soloDos = [MESAS[2].id, MESAS[0].id]
+    await result.current.reordenarMesas(soloDos)
+    const ids = usePosStore.getState().mesas.map((m) => m.id)
+    expect(ids.slice(0, 2)).toEqual(soloDos)
+    expect(ids.length).toBe(MESAS.length)
+  })
+})
+
 describe('useMesaAdmin — borrar mesa', () => {
   it('quita la mesa del catálogo y de cualquier mesero que la tuviera asignada', async () => {
     const mesa1 = MESAS[0]

@@ -1,9 +1,9 @@
 import { f, esParaLlevar } from '../../lib/utils'
 import { JbFlor } from '../ui/JbFlor'
 
-// Dimensión fija: todas las mesas se ven igual de grandes sin importar su
-// estado, y el mapa del piso (MeseroFloorPage) reusa estas mismas medidas
-// para calcular posiciones.
+// MESA_CARD_W es el ancho MÍNIMO de la tarjeta: el listado del piso usa una
+// cuadrícula que estira las tarjetas para llenar el espacio disponible según
+// cuántas mesas haya. La altura sí es fija para que el listado quede parejo.
 export const MESA_CARD_W = 180
 export const MESA_CARD_H = 140
 
@@ -56,7 +56,7 @@ export function MesaCard({ mesa, onClick }) {
         cursor: 'pointer',
         textAlign: 'left',
         fontFamily: "'Inter Tight', sans-serif",
-        width: MESA_CARD_W,
+        width: '100%',
         height: MESA_CARD_H,
         transition: 'transform 0.1s ease',
       }}

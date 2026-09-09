@@ -261,9 +261,15 @@ begin
 end;
 $$;
 
+-- ── Orden del listado de mesas (compartido, lo ajusta el admin en Ajustes) ──
+-- Igual que platillos.orden: menor = primero. Es una columna del POS sobre la
+-- tabla `mesas` de tali (que la ignora); default 0 para las filas que ya existen.
+alter table mesas add column if not exists orden int not null default 0;
+
 -- ============================================================================
--- RPC: crear mesa. Se usa desde el modo "Mover mesas" del mapa del piso. Si se
--- indica un mesero, se le asigna la mesa (se agrega su número a meseros.mesas).
+-- RPC: crear mesa. La usa el admin desde Ajustes → Mesas. Si se indica un mesero,
+-- se le asigna la mesa (se agrega su nombre a meseros.mesas). La mesa nueva se
+-- coloca al final del listado (orden = máximo actual + 1).
 -- ============================================================================
 create or replace function pos_crear_mesa(
   p_restaurante_id uuid,
@@ -291,8 +297,11 @@ begin
     raise exception 'Ya existe una mesa llamada "%".', v_numero;
   end if;
 
-  insert into mesas (numero, restaurante_id, activo)
-  values (v_numero, p_restaurante_id, true)
+  insert into mesas (numero, restaurante_id, activo, orden)
+  values (
+    v_numero, p_restaurante_id, true,
+    coalesce((select max(orden) + 1 from mesas where restaurante_id = p_restaurante_id and activo), 0)
+  )
   returning id into v_mesa;
 
   if p_mesero_id is not null then
@@ -398,6 +407,27 @@ end;
 $$;
 
 -- ============================================================================
+-- RPC: reordenar mesas. Recibe los ids en el orden deseado y les asigna
+-- orden = posición (0,1,2,…). Es el listado compartido que ve todo mesero; solo
+-- el admin lo cambia (flechas ▲▼ en Ajustes → Mesas).
+-- ============================================================================
+create or replace function pos_reordenar_mesas(p_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update mesas m
+  set orden = pos.idx
+  from (
+    select unnest(p_ids) as id, generate_subscripts(p_ids, 1) - 1 as idx
+  ) pos
+  where m.id = pos.id;
+end;
+$$;
+
+-- ============================================================================
 -- RLS · solo en las tablas nuevas del POS. Las tablas de tali conservan SUS
 -- políticas: el POS lee cuentas/cuenta_items/mesas con la anon key (como ya hace
 -- tali) y escribe mediante las RPCs SECURITY DEFINER de arriba.
@@ -418,6 +448,7 @@ grant execute on function pos_cerrar_mesa(uuid)                       to anon, a
 grant execute on function pos_crear_mesa(uuid, text, uuid)            to anon, authenticated;
 grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
 grant execute on function pos_renombrar_mesa(uuid, text)              to anon, authenticated;
+grant execute on function pos_reordenar_mesas(uuid[])                 to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

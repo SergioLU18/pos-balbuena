@@ -76,6 +76,23 @@ export function useMesaAdmin() {
       .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
+  /** Reordena el listado compartido de mesas. Recibe los ids en el orden deseado
+   *  (los que muestra Ajustes → Mesas). Solo el admin llega aquí. */
+  function reordenarMesas(idsEnOrden) {
+    if (IS_MOCK) {
+      const porId = new Map(mesas.map((m) => [m.id, m]))
+      const nuevas = [
+        ...idsEnOrden.map((id) => porId.get(id)).filter(Boolean),
+        ...mesas.filter((m) => !idsEnOrden.includes(m.id)),
+      ]
+      setMesas(nuevas)
+      return Promise.resolve({ error: null })
+    }
+    return sb
+      .rpc('pos_reordenar_mesas', { p_ids: idsEnOrden })
+      .then(({ error }) => ({ error: error?.message ?? null }))
+  }
+
   function borrarMesa(mesaId) {
     if (IS_MOCK) {
       // Lee el estado fresco (no la suscripción reactiva de este render) porque a veces
@@ -92,5 +109,5 @@ export function useMesaAdmin() {
     return sb.rpc('pos_borrar_mesa', { p_mesa_id: mesaId }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
-  return { crearMesa, renombrarMesa, borrarMesa }
+  return { crearMesa, renombrarMesa, reordenarMesas, borrarMesa }
 }
