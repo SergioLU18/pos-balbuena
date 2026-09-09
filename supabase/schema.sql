@@ -275,15 +275,32 @@ security definer
 set search_path = public
 as $$
 declare
-  v_mesa uuid;
+  v_mesa   uuid;
+  v_numero text := btrim(coalesce(p_numero, ''));
 begin
+  if length(v_numero) = 0 then
+    raise exception 'El nombre de la mesa no puede estar vacío.';
+  end if;
+  if v_numero ilike 'PL-%' then
+    raise exception 'El prefijo "PL-" está reservado para pedidos para llevar.';
+  end if;
+  if exists (
+    select 1 from mesas
+    where restaurante_id = p_restaurante_id and activo and lower(numero) = lower(v_numero)
+  ) then
+    raise exception 'Ya existe una mesa llamada "%".', v_numero;
+  end if;
+
   insert into mesas (numero, restaurante_id, activo)
-  values (p_numero, p_restaurante_id, true)
+  values (v_numero, p_restaurante_id, true)
   returning id into v_mesa;
 
   if p_mesero_id is not null then
-    update meseros set mesas = array_append(mesas, p_numero)
-    where id = p_mesero_id and not (p_numero = any(mesas));
+    begin
+      update meseros set mesas = array_append(meseros.mesas, v_numero)
+      where id = p_mesero_id and not (v_numero = any(meseros.mesas));
+    exception when undefined_column then null;
+    end;
   end if;
 
   return v_mesa;
@@ -314,8 +331,69 @@ begin
 
   update mesas set activo = false where id = p_mesa_id;
 
-  update meseros set mesas = array_remove(mesas, v_numero)
-  where v_numero = any(mesas);
+  begin
+    update meseros set mesas = array_remove(meseros.mesas, v_numero)
+    where v_numero = any(meseros.mesas);
+  exception when undefined_column then null;
+  end;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: renombrar mesa. El nombre acepta letras y números; debe ser único entre
+-- las mesas activas del restaurante (sin distinguir mayúsculas) y no puede usar
+-- el prefijo "PL-" (reservado para pedidos para llevar). Como meseros.mesas y
+-- pedidos.mesa_numero guardan el NOMBRE (no el id), se actualizan en cascada.
+-- ============================================================================
+create or replace function pos_renombrar_mesa(p_mesa_id uuid, p_numero text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_restaurante uuid;
+  v_viejo       text;
+  v_nuevo       text := btrim(coalesce(p_numero, ''));
+begin
+  if length(v_nuevo) = 0 then
+    raise exception 'El nombre de la mesa no puede estar vacío.';
+  end if;
+  if length(v_nuevo) > 24 then
+    raise exception 'El nombre de la mesa es demasiado largo (máx. 24 caracteres).';
+  end if;
+  if v_nuevo ilike 'PL-%' then
+    raise exception 'El prefijo "PL-" está reservado para pedidos para llevar.';
+  end if;
+
+  select restaurante_id, numero into v_restaurante, v_viejo from mesas where id = p_mesa_id;
+  if not found then
+    raise exception 'La mesa no existe.';
+  end if;
+
+  if exists (
+    select 1 from mesas
+    where restaurante_id = v_restaurante and id <> p_mesa_id and activo
+      and lower(numero) = lower(v_nuevo)
+  ) then
+    raise exception 'Ya existe una mesa llamada "%".', v_nuevo;
+  end if;
+
+  update mesas set numero = v_nuevo where id = p_mesa_id;
+
+  -- Cascadas opcionales: meseros.mesas y pedidos.mesa_numero guardan el NOMBRE
+  -- (no el id). Si este proyecto no tiene esas columnas, el renombrado igual queda
+  -- hecho — por eso van en sub-bloques que ignoran `undefined_column`.
+  begin
+    update meseros set mesas = array_replace(meseros.mesas, v_viejo, v_nuevo)
+    where v_viejo = any(meseros.mesas);
+  exception when undefined_column then null;
+  end;
+
+  begin
+    update pedidos set mesa_numero = v_nuevo where mesa_id = p_mesa_id;
+  exception when undefined_column then null;
+  end;
 end;
 $$;
 
@@ -339,6 +417,7 @@ grant execute on function pos_eliminar_item_pedido(uuid, text)        to anon, a
 grant execute on function pos_cerrar_mesa(uuid)                       to anon, authenticated;
 grant execute on function pos_crear_mesa(uuid, text, uuid)            to anon, authenticated;
 grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
+grant execute on function pos_renombrar_mesa(uuid, text)              to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

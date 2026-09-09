@@ -77,7 +77,11 @@ export function MesaCard({ mesa, onClick }) {
             Para llevar<br />#{mesa.numero.slice(3)}
           </span>
         ) : (
-          <span style={{ fontSize: 30, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1 }}>
+          <span style={{
+            fontSize: mesa.numero.length > 4 ? 19 : 30,
+            fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.1,
+            overflowWrap: 'anywhere',
+          }}>
             {mesa.numero}
           </span>
         )}

@@ -1,17 +1,21 @@
 import { useState } from 'react'
 import { Button } from '../ui/Button'
 
-export function CrearMesaModal({ meseros, onConfirm, onClose }) {
-  const [numero, setNumero] = useState('')
-  const [meseroId, setMeseroId] = useState('')
+/** Cambia el nombre de una mesa (acepta letras y números). La validación real
+ *  —único, sin prefijo "PL-", longitud— la hace `onConfirm` (useMesaAdmin) y su
+ *  mensaje de error se muestra aquí. */
+export function RenombrarMesaModal({ mesa, onConfirm, onClose }) {
+  const [nombre, setNombre] = useState(mesa.numero ?? '')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState(null)
 
+  const sinCambio = nombre.trim() === (mesa.numero ?? '')
+
   async function handleConfirm() {
-    if (!numero.trim()) return
+    if (!nombre.trim() || sinCambio) return
     setEnviando(true)
     setError(null)
-    const { error } = await onConfirm(numero.trim(), meseroId || null)
+    const { error } = await onConfirm(nombre.trim())
     if (error) {
       setError(error)
       setEnviando(false)
@@ -37,9 +41,10 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
         }}
       >
         <div className="flex items-center justify-between">
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: 'var(--jb-ink)' }}>Agregar mesa</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: 'var(--jb-ink)' }}>Cambiar nombre</h2>
           <button
             onClick={onClose}
+            aria-label="Cerrar"
             style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 12, width: 36, height: 36, fontSize: 16, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
           >
             ✕
@@ -50,8 +55,9 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Nombre de la mesa</p>
           <input
             autoFocus
-            value={numero}
-            onChange={(e) => setNumero(e.target.value)}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm() }}
             maxLength={24}
             placeholder="Ej. 16 o Terraza 1"
             style={{
@@ -61,29 +67,12 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
           />
         </div>
 
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Asignar a un mesero (opcional)</p>
-          <select
-            value={meseroId}
-            onChange={(e) => setMeseroId(e.target.value)}
-            style={{
-              width: '100%', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: '14px 16px',
-              fontFamily: "'Inter Tight', sans-serif", fontSize: 16, outline: 'none', background: '#fff', boxSizing: 'border-box',
-            }}
-          >
-            <option value="">Sin asignar</option>
-            {meseros.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-        </div>
-
         {error && (
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#A83232' }}>{error}</p>
         )}
 
-        <Button onClick={handleConfirm} disabled={!numero.trim() || enviando} style={{ width: '100%' }}>
-          {enviando ? 'Creando…' : 'Crear mesa'}
+        <Button onClick={handleConfirm} disabled={!nombre.trim() || sinCambio || enviando} style={{ width: '100%' }}>
+          {enviando ? 'Guardando…' : 'Guardar nombre'}
         </Button>
       </div>
     </div>
