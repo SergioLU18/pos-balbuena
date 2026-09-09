@@ -21,6 +21,15 @@ export function uid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`
 }
 
+/** Texto para encabezados: "Mesa 5", "Mesa Terraza 2". El nombre lo pone el admin en
+ *  Ajustes → Mesas y puede traer letras, así que se pinta tal cual.
+ *
+ *  Los pedidos PARA LLEVAR no pasan por aquí: no son una mesa con nombre especial sino
+ *  una orden propia, colgada del cliente y no de una mesa (ver src/hooks/useLlevar.js). */
+export function etiquetaMesa(numero) {
+  return `Mesa ${numero}`
+}
+
 /** Minutos transcurridos desde una fecha ISO, como texto corto ("ahora", "7 min"). */
 export function minutosTranscurridos(iso) {
   if (!iso) return ''

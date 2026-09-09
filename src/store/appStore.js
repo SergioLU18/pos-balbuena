@@ -171,21 +171,6 @@ export const usePosStore = create(
   ),
 )
 
-// posiciones: mesaId -> { x, y } en fracción (0–1) del área de piso disponible,
-// para que el mesero pueda acomodar el mapa como el salón real y no como una
-// lista. Persistido para que sobreviva recargas y se comparta entre dispositivos
-// igual que las órdenes.
-export const useMesaLayoutStore = create(
-  persist(
-    (set) => ({
-      posiciones: {},
-      setPosicion: (mesaId, x, y) =>
-        set((s) => ({ posiciones: { ...s.posiciones, [mesaId]: { x, y } } })),
-    }),
-    { name: 'pos-balbuena-mesa-layout', storage: safeStorage },
-  ),
-)
-
 // Mesas recién pagadas (el pago ocurre en tali; aquí solo se refleja). A propósito NO
 // se persiste: es una señal efímera de sesión — la tarjeta muestra "Pagada" hasta que
 // el mesero recarga la página o abre una cuenta nueva (agrega un producto). usePosData

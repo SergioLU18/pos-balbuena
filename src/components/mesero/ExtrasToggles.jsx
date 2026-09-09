@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { f } from '../../lib/utils'
 import { Chip } from '../ui/Chip'
+import { chipGrid } from '../ui/chipStyles'
 
 /** Extras de pago a nivel platillo. `seleccionados` es un arreglo de { nombre, precio }
  *  (el precio se guarda en el renglón para que el total no dependa del catálogo).
@@ -59,10 +60,13 @@ export function ExtrasToggles({ extras, seleccionados, onChange }) {
 
   return (
     <div>
-      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Extras</p>
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Extras</p>
 
+      {/* Los libres van en la MISMA rejilla que los del catálogo: son la misma clase de
+          cosa para el mesero, y separarlos en dos filas de distinto ancho se leía como si
+          fueran dos controles distintos. */}
       {(extras.length > 0 || seleccionados.length > 0) && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <div style={{ ...chipGrid, marginBottom: 12 }}>
           {extras.map((ex) => (
             <Chip
               key={ex.nombre}

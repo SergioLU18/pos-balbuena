@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { usePosStore, usePedidosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
+import { etiquetaMesa, uid } from '../../lib/utils'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
 import { PlatilloCard } from '../../components/mesero/PlatilloCard'
 import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlatilloModal'
@@ -17,10 +18,12 @@ export default function MeseroOrdenPage() {
   // null = paso 1 (categorías a pantalla completa); string = paso 2 (platillos de esa categoría)
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
+  // Renglón del ticket que se está reeditando: { tipo: 'draft'|'enviado', platillo, item, pedidoId?, pedidoItemId? }
+  const [editando, setEditando] = useState(null)
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
-    agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina,
+    agregarItemConstruido, reemplazarItem, cambiarCantidad, quitarItem, enviarACocina,
     fijarCantidadEnviado, quitarItemEnviado, cerrarMesa,
   } = useOrderDraft(mesaId)
 
@@ -42,6 +45,31 @@ export default function MeseroOrdenPage() {
     setPlatilloEnConfig(null)
   }
 
+  // "Editar" en un renglón del ticket. Un platillo borrado del menú ya no se puede
+  // reeditar (no hay tiers/variantes de dónde reconstruir): en ese caso no se abre.
+  function editarRenglonDraft(item) {
+    const platillo = menu.find((p) => p.id === item.platilloId)
+    if (platillo) setEditando({ tipo: 'draft', platillo, item })
+  }
+
+  function editarRenglonEnviado(pedido, pedidoItemId, itemRico) {
+    const platillo = menu.find((p) => p.id === itemRico.platilloId)
+    if (platillo) setEditando({ tipo: 'enviado', platillo, item: itemRico, pedidoId: pedido.id, pedidoItemId })
+  }
+
+  // Guardar cambios: un renglón del draft se reemplaza en su lugar; uno ya enviado a
+  // cocina se retira del pedido y vuelve al draft ya modificado, para que el mesero lo
+  // reenvíe (así el cambio llega a la comanda de cocina de forma explícita).
+  function confirmarEdicion(nuevoItem) {
+    if (editando.tipo === 'draft') {
+      reemplazarItem(editando.item.id, nuevoItem)
+    } else {
+      quitarItemEnviado(editando.pedidoId, editando.pedidoItemId)
+      agregarItemConstruido({ ...nuevoItem, id: uid('item') })
+    }
+    setEditando(null)
+  }
+
   // Enviar a cocina no saca al mesero de la mesa: el ticket se actualiza en su lugar
   // (los renglones pasan a "Enviado a cocina") para que pueda seguir agregando platillos
   // o revisar la orden. Vuelve al mapa de mesas con la flecha de atrás cuando termina.
@@ -52,7 +80,7 @@ export default function MeseroOrdenPage() {
   // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
   // desde la app de pagos. Se quitará cuando esa integración esté lista.
   function handleCerrarMesa() {
-    if (!window.confirm(`¿Cerrar la Mesa ${mesa?.numero}? Esto libera la mesa para una nueva cuenta.`)) return
+    if (!window.confirm(`¿Cerrar ${etiquetaMesa(mesa?.numero)}? Esto libera la mesa para una nueva cuenta.`)) return
     cerrarMesa()
     navigate('/mesero')
   }
@@ -70,7 +98,7 @@ export default function MeseroOrdenPage() {
           ←
         </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)', flex: 1 }}>
-          Mesa {mesa?.numero ?? '—'}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
+          {mesa ? etiquetaMesa(mesa.numero) : '—'}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
         </h1>
 
         {cuenta && (
@@ -121,8 +149,11 @@ export default function MeseroOrdenPage() {
           pedidos={pedidosMesa}
           subtotalDraft={subtotalDraft}
           subtotalCuenta={subtotalCuenta}
+          puedeEditarPlatillo={(id) => menu.some((p) => p.id === id)}
           onQty={cambiarCantidad}
           onRemove={quitarItem}
+          onEditarDraft={editarRenglonDraft}
+          onEditarEnviado={editarRenglonEnviado}
           onFijarEnviado={fijarCantidadEnviado}
           onRemoveEnviado={quitarItemEnviado}
           onEnviar={handleEnviarACocina}
@@ -137,6 +168,18 @@ export default function MeseroOrdenPage() {
           extras={extras}
           onConfirm={confirmarPlatillo}
           onClose={() => setPlatilloEnConfig(null)}
+        />
+      )}
+
+      {editando && (
+        <ConfigurarPlatilloModal
+          platillo={editando.platillo}
+          itemInicial={editando.item}
+          ingredientes={ingredientes}
+          modificadores={modificadores}
+          extras={extras}
+          onConfirm={confirmarEdicion}
+          onClose={() => setEditando(null)}
         />
       )}
     </div>

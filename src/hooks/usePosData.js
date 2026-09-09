@@ -12,8 +12,12 @@ import {
 import { sumaCuenta } from './useOrderDraft'
 import { mapCliente, mapOrden } from './useLlevar'
 
-// Ordena números como texto ('2' antes que '10') para el mapa del piso.
-const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
+// Orden del listado de mesas: primero la columna `orden` (la ajusta el admin en
+// Ajustes), y como desempate el nombre en modo natural ('2' antes que '10', 'Terraza'
+// después de los números).
+const porOrdenMesa = (a, b) =>
+  (a.orden ?? 0) - (b.orden ?? 0) ||
+  String(a.numero).localeCompare(String(b.numero), 'es', { numeric: true })
 
 // Cuentas de tali → mapa mesaId -> { cuentaId, items[], createdAt }.
 // cuenta_items es PLANO (nombre, precio_unitario, cantidad): así lo modela tali y
@@ -150,6 +154,8 @@ export async function cargarTodo(rid) {
   // Ventana de pagos recientes que miramos para detectar "Pagada" (12 h cubre un turno).
   const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
   const [mesasRes, meserosRes, asignacionesRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes, clientesRes, llevarRes] = await Promise.all([
+    // El orden final lo aplica porOrdenMesa en el cliente (usa `orden ?? 0`, así que
+    // funciona aunque la columna `orden` todavía no exista en la base).
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
     // mesa_meseros no tiene restaurante_id propio: se acota con un inner join contra
@@ -179,7 +185,7 @@ export async function cargarTodo(rid) {
   ])
 
   const { setMesas, setMeseros, setAsignaciones, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
-  setMesas((mesasRes.data ?? []).slice().sort(porNumero))
+  setMesas((mesasRes.data ?? []).slice().sort(porOrdenMesa))
 
   const meseros = mapMeseros(meserosRes.data)
   setMeseros(meseros)

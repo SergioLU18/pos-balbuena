@@ -33,22 +33,29 @@ const ESTADO_LABEL = {
   entregado: { texto: 'Entregado', color: 'var(--jb-gray)' },
 }
 
-function CantidadControles({ cantidad, onDec, onInc, onRemove }) {
+function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove }) {
   return (
-    <div className="flex items-center justify-between" style={{ marginTop: 8 }}>
+    <div className="flex items-center justify-between" style={{ marginTop: 8, gap: 8 }}>
       <div className="flex items-center" style={{ gap: 0, border: '2px solid var(--jb-line)', borderRadius: 10, overflow: 'hidden' }}>
         <button onClick={onDec} style={{ width: 34, height: 34, border: 'none', background: 'var(--jb-cream)', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>−</button>
         <span style={{ width: 30, textAlign: 'center', fontSize: 14, fontWeight: 800 }}>{cantidad}</span>
         <button onClick={onInc} style={{ width: 34, height: 34, border: 'none', background: 'var(--jb-cream)', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>+</button>
       </div>
-      <button onClick={onRemove} style={{ background: 'none', border: 'none', color: '#C24A4A', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-        Quitar
-      </button>
+      <div className="flex items-center" style={{ gap: 14 }}>
+        {onEdit && (
+          <button onClick={onEdit} style={{ background: 'none', border: 'none', color: 'var(--jb-pink-dark)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+            Editar
+          </button>
+        )}
+        <button onClick={onRemove} style={{ background: 'none', border: 'none', color: '#C24A4A', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          Quitar
+        </button>
+      </div>
     </div>
   )
 }
 
-function DraftRow({ item, onQty, onRemove }) {
+function DraftRow({ item, onQty, onEdit, onRemove }) {
   const precio = calcItemPrecio(item)
   return (
     <div className="jb-fade-up" style={{ padding: '12px 0', borderBottom: '1.5px solid var(--jb-line)' }}>
@@ -66,13 +73,14 @@ function DraftRow({ item, onQty, onRemove }) {
         cantidad={item.cantidad}
         onDec={() => onQty(item.id, -1)}
         onInc={() => onQty(item.id, 1)}
+        onEdit={onEdit ? () => onEdit(item) : undefined}
         onRemove={() => onRemove(item.id)}
       />
     </div>
   )
 }
 
-function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onRemove }) {
+function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove }) {
   // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
   // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
@@ -81,6 +89,10 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onR
   // Editable mientras su comanda siga en Nuevo. Si no se encuentra el pedido de origen
   // (caso legado, o cuenta_items sin pedido asociado), se trata como no editable.
   const editable = pedido?.estado === 'pendiente'
+  // El renglón "rico" completo vive en pedidos.items (no en cuenta_items). Solo se puede
+  // reeditar si ese renglón existe y su platillo sigue en el menú.
+  const itemRico = pedido?.items?.find((it) => it.id === pedidoItemId)
+  const puedeEditar = editable && itemRico?.tier != null && !!puedeEditarPlatillo?.(itemRico.platilloId)
   const estadoLabel = pedido ? ESTADO_LABEL[pedido.estado] : null
   const [confirmando, setConfirmando] = useState(false)
 
@@ -118,6 +130,7 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onR
           cantidad={cantidad}
           onDec={() => onStage(pedidoItemId, cantidad - 1)}
           onInc={() => onStage(pedidoItemId, cantidad + 1)}
+          onEdit={puedeEditar ? () => onEdit(pedido, pedidoItemId, itemRico) : undefined}
           onRemove={() => setConfirmando(true)}
         />
       )}
@@ -146,9 +159,10 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onR
 }
 
 // `clave` decide con qué se casa un renglón mostrado contra el renglón de la comanda que
-// lo originó — de eso dependen los −/+ y el "Quitar" de un renglón ya enviado. El default
-// es el de las cuentas de mesa; la orden para llevar pasa el suyo (ver src/lib/renglones.js).
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, onQty, onRemove, onFijarEnviado, onRemoveEnviado, onEnviar, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+// lo originó — de eso dependen los −/+, el "Editar" y el "Quitar" de un renglón ya
+// enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
+// (ver src/lib/renglones.js).
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
   // si un renglón ya enviado sigue editable (su pedido en 'pendiente'/Nuevo) o ya lo tomó
   // cocina, y para pasarle a la RPC el item id del pedido (no el de cuenta_items). Se
@@ -215,8 +229,10 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
               pedido={origen?.pedido}
               pedidoItemId={origen?.itemId}
               staged={origen ? edits[origen.itemId] : undefined}
+              puedeEditarPlatillo={puedeEditarPlatillo}
               onStage={stageQty}
               onRevert={revertQty}
+              onEdit={onEditarEnviado}
               onRemove={quitarEnviado}
             />
           )
@@ -227,7 +243,15 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
             Toca un platillo para agregarlo a la orden.
           </p>
         ) : (
-          draft.map((item) => <DraftRow key={item.id} item={item} onQty={onQty} onRemove={onRemove} />)
+          draft.map((item) => (
+            <DraftRow
+              key={item.id}
+              item={item}
+              onQty={onQty}
+              onEdit={puedeEditarPlatillo?.(item.platilloId) ? onEditarDraft : undefined}
+              onRemove={onRemove}
+            />
+          ))
         )}
       </div>
 
@@ -236,7 +260,12 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>Total</span>
           <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{f(totalGeneral)}</span>
         </div>
-        <Button onClick={enviarTodo} disabled={!puedeEnviar} style={{ width: '100%' }}>
+        <Button
+          onClick={enviarTodo}
+          disabled={!puedeEnviar}
+          className={puedeEnviar ? 'jb-cta-pulse' : undefined}
+          style={{ width: '100%' }}
+        >
           {draft.length > 0
             ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
             : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}

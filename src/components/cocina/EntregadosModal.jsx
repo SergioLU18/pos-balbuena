@@ -1,4 +1,4 @@
-import { duracionMin } from '../../lib/utils'
+import { duracionMin, etiquetaMesa } from '../../lib/utils'
 import { ItemLine } from './PedidoCard'
 
 function TiempoTag({ label, valor }) {
@@ -59,7 +59,7 @@ export function EntregadosModal({ pedidos, onClose }) {
                   <div className="flex items-baseline" style={{ gap: 10 }}>
                     {/* Sin mesa = comanda para llevar; se identifica por el cliente. */}
                     <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>
-                      {p.tipo === 'llevar' ? `🥡 ${p.clienteNombre ?? 'Para llevar'}` : `Mesa ${p.mesaNumero}`}
+                      {p.tipo === 'llevar' ? `🥡 ${p.clienteNombre ?? 'Para llevar'}` : etiquetaMesa(p.mesaNumero)}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{p.meseroNombre}</span>
                   </div>

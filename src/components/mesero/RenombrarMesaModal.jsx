@@ -1,25 +1,21 @@
 import { useState } from 'react'
 import { Button } from '../ui/Button'
-import { Chip } from '../ui/Chip'
 
-// Los meseros se eligen en plural: una mesa puede repartirse entre varios desde que
-// se crea (ver src/lib/asignaciones.js). Dejarla sin nadie también es válido — el
-// primero que le mande una orden queda atendiéndola.
-export function CrearMesaModal({ meseros, onConfirm, onClose }) {
-  const [numero, setNumero] = useState('')
-  const [meseroIds, setMeseroIds] = useState([])
+/** Cambia el nombre de una mesa (acepta letras y números). La validación real
+ *  —único, sin prefijo "PL-", longitud— la hace `onConfirm` (useMesaAdmin) y su
+ *  mensaje de error se muestra aquí. */
+export function RenombrarMesaModal({ mesa, onConfirm, onClose }) {
+  const [nombre, setNombre] = useState(mesa.numero ?? '')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState(null)
 
-  function toggleMesero(id) {
-    setMeseroIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
+  const sinCambio = nombre.trim() === (mesa.numero ?? '')
 
   async function handleConfirm() {
-    if (!numero.trim()) return
+    if (!nombre.trim() || sinCambio) return
     setEnviando(true)
     setError(null)
-    const { error } = await onConfirm(numero.trim(), meseroIds)
+    const { error } = await onConfirm(nombre.trim())
     if (error) {
       setError(error)
       setEnviando(false)
@@ -45,9 +41,10 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
         }}
       >
         <div className="flex items-center justify-between">
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: 'var(--jb-ink)' }}>Agregar mesa</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: 'var(--jb-ink)' }}>Cambiar nombre</h2>
           <button
             onClick={onClose}
+            aria-label="Cerrar"
             style={{ background: 'var(--jb-pink-light)', border: 'none', borderRadius: 12, width: 36, height: 36, fontSize: 16, fontWeight: 800, color: 'var(--jb-pink-dark)', cursor: 'pointer' }}
           >
             ✕
@@ -58,8 +55,9 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Nombre de la mesa</p>
           <input
             autoFocus
-            value={numero}
-            onChange={(e) => setNumero(e.target.value)}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm() }}
             maxLength={24}
             placeholder="Ej. 16 o Terraza 1"
             style={{
@@ -69,30 +67,12 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
           />
         </div>
 
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>
-            ¿Quién la atiende? (opcional, pueden ser varios)
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {meseros.map((m) => (
-              <Chip key={m.id} active={meseroIds.includes(m.id)} onClick={() => toggleMesero(m.id)}>
-                {m.nombre}
-              </Chip>
-            ))}
-          </div>
-          {meseroIds.length === 0 && (
-            <p style={{ fontSize: 12, color: 'var(--jb-gray)', margin: '8px 0 0' }}>
-              Sin asignar: quedará a nombre del primero que le mande una orden.
-            </p>
-          )}
-        </div>
-
         {error && (
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#A83232' }}>{error}</p>
         )}
 
-        <Button onClick={handleConfirm} disabled={!numero.trim() || enviando} style={{ width: '100%' }}>
-          {enviando ? 'Creando…' : 'Crear mesa'}
+        <Button onClick={handleConfirm} disabled={!nombre.trim() || sinCambio || enviando} style={{ width: '100%' }}>
+          {enviando ? 'Guardando…' : 'Guardar nombre'}
         </Button>
       </div>
     </div>

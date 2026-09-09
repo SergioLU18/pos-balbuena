@@ -340,10 +340,15 @@ begin
 end;
 $$;
 
+-- ── Orden del listado de mesas (compartido, lo ajusta el admin en Ajustes) ──
+-- Igual que platillos.orden: menor = primero. Es una columna del POS sobre la
+-- tabla `mesas` de tali (que la ignora); default 0 para las filas que ya existen.
+alter table mesas add column if not exists orden int not null default 0;
+
 -- ============================================================================
--- RPC: crear mesa. Se usa desde el modo "Mover mesas" del mapa del piso. Acepta
--- VARIOS meseros (p_mesero_ids) porque una mesa se puede repartir entre más de uno
--- desde el momento en que se crea.
+-- RPC: crear mesa. La usa el admin desde Ajustes → Mesas. Acepta VARIOS meseros
+-- (p_mesero_ids) porque una mesa se puede repartir entre más de uno desde el momento
+-- en que se crea. La mesa nueva se coloca al final del listado (orden = máximo + 1).
 -- ============================================================================
 drop function if exists pos_crear_mesa(uuid, text, uuid);
 create or replace function pos_crear_mesa(
@@ -356,10 +361,24 @@ security definer
 set search_path = public
 as $$
 declare
-  v_mesa uuid;
+  v_mesa   uuid;
+  v_numero text := btrim(coalesce(p_numero, ''));
 begin
-  insert into mesas (numero, restaurante_id, activo)
-  values (p_numero, p_restaurante_id, true)
+  if length(v_numero) = 0 then
+    raise exception 'El nombre de la mesa no puede estar vacío.';
+  end if;
+  if exists (
+    select 1 from mesas
+    where restaurante_id = p_restaurante_id and activo and lower(numero) = lower(v_numero)
+  ) then
+    raise exception 'Ya existe una mesa llamada "%".', v_numero;
+  end if;
+
+  insert into mesas (numero, restaurante_id, activo, orden)
+  values (
+    v_numero, p_restaurante_id, true,
+    coalesce((select max(orden) + 1 from mesas where restaurante_id = p_restaurante_id and activo), 0)
+  )
   returning id into v_mesa;
 
   insert into mesa_meseros (mesa_id, mesero_id)
@@ -428,6 +447,51 @@ end;
 $$;
 
 -- ============================================================================
+-- RPC: renombrar mesa. El nombre acepta letras y números y debe ser único entre las
+-- mesas activas del restaurante (sin distinguir mayúsculas).
+--
+-- Quién atiende la mesa NO se toca: `mesa_meseros` guarda ids, no nombres — que es
+-- justo el motivo por el que se dejó de guardar el número (renombrar una mesa
+-- reasignaba en silencio la que tuviera ese número). Lo que sí guarda el NOMBRE es la
+-- copia denormalizada de la comanda, así que esa sí se actualiza en cascada o la
+-- cocina seguiría cantando el nombre viejo.
+-- ============================================================================
+create or replace function pos_renombrar_mesa(p_mesa_id uuid, p_numero text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_restaurante uuid;
+  v_nuevo       text := btrim(coalesce(p_numero, ''));
+begin
+  if length(v_nuevo) = 0 then
+    raise exception 'El nombre de la mesa no puede estar vacío.';
+  end if;
+  if length(v_nuevo) > 24 then
+    raise exception 'El nombre de la mesa es demasiado largo (máx. 24 caracteres).';
+  end if;
+
+  select restaurante_id into v_restaurante from mesas where id = p_mesa_id;
+  if not found then
+    raise exception 'La mesa no existe.';
+  end if;
+
+  if exists (
+    select 1 from mesas
+    where restaurante_id = v_restaurante and id <> p_mesa_id and activo
+      and lower(numero) = lower(v_nuevo)
+  ) then
+    raise exception 'Ya existe una mesa llamada "%".', v_nuevo;
+  end if;
+
+  update mesas  set numero = v_nuevo where id = p_mesa_id;
+  update pedidos set mesa_numero = v_nuevo where mesa_id = p_mesa_id;
+end;
+$$;
+
+-- ============================================================================
 -- RPC: dar de baja a un mesero. La baja es lógica (activo=false) para no perder la
 -- referencia en los pedidos históricos, y de paso lo suelta de todas sus mesas: un
 -- mesero que ya no está en el turno no puede seguir figurando como quien las atiende.
@@ -442,6 +506,27 @@ as $$
 begin
   update meseros set activo = false where id = p_mesero_id;
   delete from mesa_meseros where mesero_id = p_mesero_id;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: reordenar mesas. Recibe los ids en el orden deseado y les asigna
+-- orden = posición (0,1,2,…). Es el listado compartido que ve todo mesero; solo
+-- el admin lo cambia (flechas ▲▼ en Ajustes → Mesas).
+-- ============================================================================
+create or replace function pos_reordenar_mesas(p_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update mesas m
+  set orden = pos.idx
+  from (
+    select unnest(p_ids) as id, generate_subscripts(p_ids, 1) - 1 as idx
+  ) pos
+  where m.id = pos.id;
 end;
 $$;
 
@@ -471,6 +556,8 @@ grant execute on function pos_crear_mesa(uuid, text, uuid[])          to anon, a
 grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
 grant execute on function pos_set_mesas_mesero(uuid, uuid[])          to anon, authenticated;
 grant execute on function pos_borrar_mesero(uuid)                     to anon, authenticated;
+grant execute on function pos_renombrar_mesa(uuid, text)              to anon, authenticated;
+grant execute on function pos_reordenar_mesas(uuid[])                 to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

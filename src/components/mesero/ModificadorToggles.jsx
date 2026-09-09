@@ -1,4 +1,5 @@
 import { Chip } from '../ui/Chip'
+import { chipGrid } from '../ui/chipStyles'
 
 /** Modificadores de remoción (Sin Crema, Sin Frijol, ...) — selección libre, sin tope. */
 export function ModificadorToggles({ modificadores, seleccionados, onChange }) {
@@ -12,8 +13,8 @@ export function ModificadorToggles({ modificadores, seleccionados, onChange }) {
 
   return (
     <div>
-      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>Personaliza</p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Personaliza</p>
+      <div style={chipGrid}>
         {modificadores.map((mod) => (
           <Chip key={mod} active={seleccionados.includes(mod)} onClick={() => toggle(mod)}>
             {mod}

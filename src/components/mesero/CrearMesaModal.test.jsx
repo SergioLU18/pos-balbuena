@@ -15,7 +15,7 @@ function abrir() {
 describe('CrearMesaModal — a quién se le asigna la mesa nueva', () => {
   it('deja elegir VARIOS meseros y los manda todos', async () => {
     const onConfirm = abrir()
-    await userEvent.type(screen.getByPlaceholderText('Ej. 16'), '16')
+    await userEvent.type(screen.getByPlaceholderText(/^Ej. 16/), '16')
     await userEvent.click(screen.getByText(ROSA.nombre))
     await userEvent.click(screen.getByText(BETO.nombre))
     await userEvent.click(screen.getByText('Crear mesa'))
@@ -25,7 +25,7 @@ describe('CrearMesaModal — a quién se le asigna la mesa nueva', () => {
   it('se puede crear sin nadie: la mesa queda a nombre del primero que le mande una orden', async () => {
     const onConfirm = abrir()
     expect(screen.getByText(/quedará a nombre del primero/i)).toBeInTheDocument()
-    await userEvent.type(screen.getByPlaceholderText('Ej. 16'), '16')
+    await userEvent.type(screen.getByPlaceholderText(/^Ej. 16/), '16')
     await userEvent.click(screen.getByText('Crear mesa'))
     expect(onConfirm).toHaveBeenCalledWith('16', [])
   })

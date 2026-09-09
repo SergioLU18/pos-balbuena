@@ -1,10 +1,9 @@
 import { f } from '../../lib/utils'
 import { JbFlor } from '../ui/JbFlor'
 
-// Dimensión fija: todas las mesas se ven igual de grandes sin importar su
-// estado, y el mapa del piso (MeseroFloorPage) reusa estas mismas medidas
-// para calcular posiciones. La altura subió de 140 a 158 para que quepa el
-// renglón de quién atiende la mesa sin apretar el total.
+// MESA_CARD_W es el ancho MÍNIMO de la tarjeta: el listado del piso usa una
+// cuadrícula que estira las tarjetas para llenar el espacio disponible según
+// cuántas mesas haya. La altura sí es fija para que el listado quede parejo.
 export const MESA_CARD_W = 180
 export const MESA_CARD_H = 158
 
@@ -57,7 +56,7 @@ export function MesaCard({ mesa, meseroActualId, onClick }) {
         cursor: 'pointer',
         textAlign: 'left',
         fontFamily: "'Inter Tight', sans-serif",
-        width: MESA_CARD_W,
+        width: '100%',
         height: MESA_CARD_H,
         transition: 'transform 0.1s ease',
       }}
@@ -73,7 +72,13 @@ export function MesaCard({ mesa, meseroActualId, onClick }) {
       )}
 
       <div className="flex items-center justify-between w-full">
-        <span style={{ fontSize: 30, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1 }}>
+        {/* El nombre de la mesa puede traer letras ("Terraza 2"), así que se encoge
+            cuando es largo en vez de desbordarse. */}
+        <span style={{
+          fontSize: mesa.numero.length > 4 ? 19 : 30,
+          fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.1,
+          overflowWrap: 'anywhere',
+        }}>
           {mesa.numero}
         </span>
         <JbFlor size={22} color={theme.border} />
