@@ -70,6 +70,13 @@ export function MeseroGate({ children }) {
     setError(false)
   }
 
+  function abrirCambioMesero() {
+    setEligiendo(true)
+    setTarget(null)
+    setEntered('')
+    setError(false)
+  }
+
   return (
     <div
       className="h-dvh w-full flex flex-col items-center justify-center"
@@ -112,6 +119,18 @@ export function MeseroGate({ children }) {
           </>
         ) : (
           <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <button
+                onClick={abrirCambioMesero}
+                style={{
+                  fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 800,
+                  padding: '10px 16px', minHeight: 44, borderRadius: 999, cursor: 'pointer',
+                  border: '2.5px solid var(--jb-pink)', background: '#fff', color: 'var(--jb-pink-dark)',
+                }}
+              >
+                ⇄ Cambiar de mesero
+              </button>
+            </div>
             <PinPad
               titulo={`Hola, ${quien.nombre}`}
               subtitulo="Ingresa tu PIN para entrar"
@@ -119,18 +138,8 @@ export function MeseroGate({ children }) {
               error={error}
               onDigit={teclear}
               onBack={borrar}
-              onCancel={() => { setEligiendo(true); setTarget(null); setEntered(''); setError(false) }}
+              onCancel={abrirCambioMesero}
             />
-            <button
-              onClick={() => { setEligiendo(true); setTarget(null); setEntered(''); setError(false) }}
-              style={{
-                marginTop: 18, width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                fontFamily: "'Inter Tight', sans-serif", fontSize: 15, fontWeight: 700,
-                color: 'var(--jb-ink-soft)', textDecoration: 'underline',
-              }}
-            >
-              ¿No eres tú? Cambiar de mesero
-            </button>
           </>
         )}
       </div>
