@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
 import { useMesaLayout } from '../../hooks/useMesaLayout'
 import { useMesaAdmin } from '../../hooks/useMesaAdmin'
-import { useMeseroStore } from '../../store/appStore'
+import { useLlevarStore, useMeseroStore } from '../../store/appStore'
 import { MesaCard, MESA_CARD_W, MESA_CARD_H } from '../../components/mesero/MesaCard'
 import { CrearMesaModal } from '../../components/mesero/CrearMesaModal'
 
@@ -32,6 +32,10 @@ export default function MeseroFloorPage() {
   const misMesas = mesas.filter((m) => m.esMia).length
   const { crearMesa, borrarMesa } = useMesaAdmin()
   const [creandoMesa, setCreandoMesa] = useState(false)
+  // Las órdenes para llevar no viven en el mapa del piso (no tienen mesa que pintar),
+  // así que el mapa solo lleva la cuenta: el badge es lo que evita que una orden de
+  // mostrador se quede olvidada porque nada en esta pantalla la menciona.
+  const llevarAbiertas = useLlevarStore((s) => s.ordenes).filter((o) => o.estado === 'abierta').length
 
   const containerRef = useRef(null)
   const dragRef = useRef(null)
@@ -113,6 +117,31 @@ export default function MeseroFloorPage() {
           </p>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
+          {!moviendo && (
+            <button
+              onClick={() => navigate('/mesero/llevar')}
+              style={{
+                position: 'relative',
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 16, fontWeight: 800,
+                padding: '14px 22px', borderRadius: 16, cursor: 'pointer',
+                border: '2.5px solid var(--jb-pink-light)', background: 'var(--jb-pink-tint)',
+                color: 'var(--jb-pink-dark)',
+              }}
+            >
+              🥡 Para llevar
+              {llevarAbiertas > 0 && (
+                <span
+                  style={{
+                    position: 'absolute', top: -8, right: -8, minWidth: 24, height: 24, borderRadius: 12,
+                    background: 'var(--jb-pink)', color: '#fff', fontSize: 13, fontWeight: 900,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px',
+                  }}
+                >
+                  {llevarAbiertas}
+                </span>
+              )}
+            </button>
+          )}
           {!moviendo && (
             <button
               onClick={toggleSoloMisMesas}

@@ -10,7 +10,7 @@
 -- (add_or_update_cuenta_item, recalculate_subtotal), así que una cuenta abierta
 -- por el mesero es la misma que el cliente divide y paga en tali.
 --
--- Orden de ejecución:  cleanup.sql  →  schema.sql  →  seed.sql
+-- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → llevar.sql → seed.sql
 -- ============================================================================
 
 create extension if not exists pgcrypto;

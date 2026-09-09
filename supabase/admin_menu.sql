@@ -2,7 +2,7 @@
 -- pos-balbuena · Fase ADMIN: mesero administrador + menú editable
 -- ----------------------------------------------------------------------------
 -- Se corre sobre el MISMO proyecto Supabase que comparten pos-balbuena y tali.
--- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → seed.sql
+-- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → llevar.sql → seed.sql
 --
 -- Dos decisiones de diseño clave:
 --

@@ -4,6 +4,7 @@ import { describirMitades, extrasTexto } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
+import { claveRenglonPorNombre } from '../../lib/renglones'
 
 function DescripcionItem({ item }) {
   const extras = extrasTexto(item)
@@ -144,14 +145,10 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, onStage, onRevert, onR
   )
 }
 
-// Clave para casar un renglón de la cuenta (cuenta_items) con el renglón que lo
-// originó dentro de un pedido (pedidos.items). En backend ambos comparten `nombre`
-// (cuenta_items es plano y se agrega por nombre), pero NO el id: cuenta_items trae su
-// propio id de fila. En mock los objetos son los mismos y sí comparten id, y no tienen
-// `nombre`. `nombre ?? id` sirve para los dos casos.
-const claveRenglon = (it) => it.nombre ?? it.id
-
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, onQty, onRemove, onFijarEnviado, onRemoveEnviado, onEnviar }) {
+// `clave` decide con qué se casa un renglón mostrado contra el renglón de la comanda que
+// lo originó — de eso dependen los −/+ y el "Quitar" de un renglón ya enviado. El default
+// es el de las cuentas de mesa; la orden para llevar pasa el suyo (ver src/lib/renglones.js).
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, onQty, onRemove, onFijarEnviado, onRemoveEnviado, onEnviar, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
   // si un renglón ya enviado sigue editable (su pedido en 'pendiente'/Nuevo) o ya lo tomó
   // cocina, y para pasarle a la RPC el item id del pedido (no el de cuenta_items). Se
@@ -159,10 +156,10 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
   const origenPorClave = new Map()
   for (const p of pedidos ?? []) {
     for (const it of p.items) {
-      const clave = claveRenglon(it)
-      const prev = origenPorClave.get(clave)
+      const k = clave(it)
+      const prev = origenPorClave.get(k)
       if (!prev || (p.estado === 'pendiente' && prev.pedido.estado !== 'pendiente')) {
-        origenPorClave.set(clave, { pedido: p, itemId: it.id })
+        origenPorClave.set(k, { pedido: p, itemId: it.id })
       }
     }
   }
@@ -180,7 +177,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
   const editsPendientes = []
   let editDelta = 0
   for (const item of cuenta?.items ?? []) {
-    const origen = origenPorClave.get(claveRenglon(item))
+    const origen = origenPorClave.get(clave(item))
     if (!origen) continue
     const staged = edits[origen.itemId]
     if (staged == null || staged === item.cantidad) continue
@@ -205,12 +202,12 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
       style={{ background: '#fff', borderRadius: 24, border: '2.5px solid var(--jb-line)', overflow: 'hidden' }}
     >
       <div style={{ padding: '18px 22px', borderBottom: '2px solid var(--jb-line)' }}>
-        <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>Comanda</h3>
+        <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>{titulo}</h3>
       </div>
 
       <div className="flex-1 no-scrollbar" style={{ overflowY: 'auto', padding: '4px 22px' }}>
         {cuenta?.items?.length > 0 && cuenta.items.map((item) => {
-          const origen = origenPorClave.get(claveRenglon(item))
+          const origen = origenPorClave.get(clave(item))
           return (
             <EnviadoRow
               key={item.id}

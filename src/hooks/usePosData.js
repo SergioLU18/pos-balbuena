@@ -7,8 +7,10 @@ import {
   usePedidosStore,
   useMeseroStore,
   useMesaPagadaStore,
+  useLlevarStore,
 } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
+import { mapCliente, mapOrden } from './useLlevar'
 
 // Ordena números como texto ('2' antes que '10') para el mapa del piso.
 const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
@@ -80,8 +82,13 @@ function mapExtras(rows) {
 function mapPedidos(pedidos) {
   return (pedidos ?? []).map((p) => ({
     id: p.id,
+    // Sin `tipo` (comandas creadas antes de que existieran los pedidos para llevar) es
+    // de mesa. Un pedido 'llevar' no trae mesa: cuelga de una orden de mostrador.
+    tipo: p.tipo ?? 'mesa',
     mesaId: p.mesa_id,
     mesaNumero: p.mesa_numero,
+    ordenLlevarId: p.orden_llevar_id ?? null,
+    clienteNombre: p.cliente_nombre ?? null,
     meseroId: p.mesero_id ?? null,
     meseroNombre: p.mesero_nombre,
     items: p.items ?? [],
@@ -142,7 +149,7 @@ async function refrescarCuentas(rid) {
 export async function cargarTodo(rid) {
   // Ventana de pagos recientes que miramos para detectar "Pagada" (12 h cubre un turno).
   const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-  const [mesasRes, meserosRes, asignacionesRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes] = await Promise.all([
+  const [mesasRes, meserosRes, asignacionesRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes, clientesRes, llevarRes] = await Promise.all([
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
     // mesa_meseros no tiene restaurante_id propio: se acota con un inner join contra
@@ -162,6 +169,13 @@ export async function cargarTodo(rid) {
     // Se usan solo para encender el badge "Pagada" del lado del mesero (ver detectarPagadas).
     sb.from('cuentas').select('id, mesa_id, closed_at, cuenta_items(precio_unitario, cantidad)')
       .eq('restaurante_id', rid).eq('estado', 'pagada').gte('closed_at', desdePagos),
+    // Padrón de clientes para llevar. Se trae completo (es del tamaño de la clientela de
+    // un restaurante, no de un catálogo) para que la búsqueda por teléfono responda al
+    // instante en la tablet; el historial de compras sí se pide por cliente y bajo demanda.
+    sb.from('clientes').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
+    // Solo las órdenes para llevar ABIERTAS: son las del turno. Las cerradas se leen por
+    // cliente cuando se abre su ficha (ver historialCliente en useLlevar).
+    sb.from('ordenes_llevar').select('*').eq('restaurante_id', rid).eq('estado', 'abierta'),
   ])
 
   const { setMesas, setMeseros, setAsignaciones, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
@@ -187,6 +201,10 @@ export async function cargarTodo(rid) {
   useOrderStore.getState().setCuentas(activas)
   usePedidosStore.getState().setPedidos(mapPedidos(pedidosRes.data))
   detectarPagadas(pagadasRes.data, activas)
+
+  const { setClientes, setOrdenes } = useLlevarStore.getState()
+  setClientes((clientesRes.data ?? []).map(mapCliente))
+  setOrdenes((llevarRes.data ?? []).map(mapOrden))
 }
 
 // Carga inicial + suscripción en tiempo real. Se monta una sola vez en la raíz de la app
@@ -246,6 +264,10 @@ export function usePosData() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_modificadores', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_extras', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_categorias', filter: `restaurante_id=eq.${rid}` }, recargar)
+        // Para llevar: una orden abierta desde otra tablet (o un cliente dado de alta en
+        // ella) tiene que aparecer aquí, igual que pasa con las mesas.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ordenes_llevar', filter: `restaurante_id=eq.${rid}` }, recargar)
         .subscribe()
 
       // El pago se hace en tali, NO en el POS. tali no depende de postgres_changes sobre

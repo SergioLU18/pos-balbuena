@@ -203,6 +203,49 @@ export const useMesaPagadaStore = create((set) => ({
     }),
 }))
 
+// Para llevar: padrón de clientes del restaurante y órdenes de mostrador/teléfono.
+//
+// Una orden para llevar es la contraparte de una cuenta de mesa cuando NO hay mesa: se
+// identifica por el cliente (que se busca por teléfono) y por un folio corto. Vive en su
+// propio store —y en sus propias tablas— porque `cuentas` es de tali y todo su flujo de
+// dividir y pagar está anclado a una mesa; una orden de mostrador se cobra en caja.
+//
+// El total de una orden ABIERTA no se guarda: se deriva de sus pedidos (usePedidosStore),
+// que es donde ya viven los renglones con su precio. Solo al cerrarla se congelan `total`
+// e `items` en la fila, y eso es lo que sostiene el historial de compras del cliente
+// aunque después se limpien los pedidos de cocina.
+//
+// Persistido igual que el resto: en modo mock es el único "backend" que hay, y en backend
+// usePosData lo pisa al cargar.
+export const useLlevarStore = create(
+  persist(
+    (set) => ({
+      clientes: [], // { id, telefono (solo dígitos), nombre, direccion, nota }
+      // { id, folio, clienteId, clienteNombre, clienteTelefono, direccion, meseroId,
+      //   meseroNombre, estado: 'abierta'|'entregada'|'cancelada', total, items, createdAt, closedAt }
+      ordenes: [],
+
+      setClientes: (clientes) => set({ clientes }),
+      setOrdenes: (ordenes) => set({ ordenes }),
+
+      // Alta o edición por id. El teléfono ya viene normalizado por quien llama
+      // (useLlevar), que es también quien evita dar de alta dos veces el mismo número.
+      guardarClienteLocal: (cliente) =>
+        set((s) => ({
+          clientes: s.clientes.some((c) => c.id === cliente.id)
+            ? s.clientes.map((c) => (c.id === cliente.id ? { ...c, ...cliente } : c))
+            : [...s.clientes, cliente],
+        })),
+
+      agregarOrdenLocal: (orden) => set((s) => ({ ordenes: [...s.ordenes, orden] })),
+
+      actualizarOrdenLocal: (ordenId, patch) =>
+        set((s) => ({ ordenes: s.ordenes.map((o) => (o.id === ordenId ? { ...o, ...patch } : o)) })),
+    }),
+    { name: 'pos-balbuena-llevar', storage: safeStorage },
+  ),
+)
+
 // Avisos del turno: la contraparte VISIBLE de los sonidos. El tono dice "algo pasó",
 // pero no qué ni en qué mesa, y si el mesero traía la tablet lejos puede que ni lo haya
 // oído. Aquí queda el registro para consultarlo cuando pueda. NO se persiste: es
@@ -210,7 +253,9 @@ export const useMesaPagadaStore = create((set) => ({
 const MAX_AVISOS = 30
 
 export const useAvisosStore = create((set) => ({
-  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, at, leido }
+  // `ruta` es a dónde lleva tocar el aviso. Existe porque no todo aviso es de una mesa:
+  // los de una orden PARA LLEVAR apuntan a la orden del cliente, que no tiene mesaId.
+  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, ruta, at, leido }
   agregarAviso: (aviso) =>
     set((s) => ({
       avisos: [
@@ -325,7 +370,9 @@ export const usePedidosStore = create(
       // meseroId: quién mandó ESTE pedido. Una mesa puede tener varios meseros, así que
       // la mesa ya no basta para saber a quién avisarle que su platillo está listo.
       // meseroNombre se queda al lado, denormalizado, para el ticket de cocina.
-      pedidos: [], // { id, mesaId, mesaNumero, meseroId, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
+      // Un pedido para llevar (tipo: 'llevar') no trae mesa: en su lugar apunta a la orden
+      // de mostrador (ordenLlevarId) y carga el nombre del cliente para la comanda.
+      pedidos: [], // { id, tipo: 'mesa'|'llevar', mesaId, mesaNumero, ordenLlevarId, clienteNombre, meseroId, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
 
       // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
       setPedidos: (pedidos) => set({ pedidos }),
@@ -347,6 +394,11 @@ export const usePedidosStore = create(
 
       eliminarPedidosDeMesa: (mesaId) =>
         set((s) => ({ pedidos: s.pedidos.filter((p) => p.mesaId !== mesaId) })),
+
+      // La contraparte para una orden PARA LLEVAR, que no tiene mesa por la cual filtrar:
+      // al cerrarla sus comandas salen del tablero, igual que al cerrar una mesa.
+      eliminarPedidosDeOrdenLlevar: (ordenId) =>
+        set((s) => ({ pedidos: s.pedidos.filter((p) => p.ordenLlevarId !== ordenId) })),
 
       // Solo mutan un pedido que sigue 'pendiente' (Nuevo) — mismo guard que el RPC
       // pos_editar_item_pedido/pos_eliminar_item_pedido del modo backend. Fuera de esa
@@ -381,5 +433,6 @@ if (IS_MOCK && typeof window !== 'undefined') {
     if (e.key === 'pos-balbuena-orders') useOrderStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-pedidos') usePedidosStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-catalogo') usePosStore.persist.rehydrate()
+    if (e.key === 'pos-balbuena-llevar') useLlevarStore.persist.rehydrate()
   })
 }

@@ -26,6 +26,17 @@ const RECORDATORIO_MS = 90_000
 let estadoVisto = new Map() // pedidoId -> estado
 const recordatorios = new Map() // pedidoId -> id de setTimeout
 
+// Quién es el destinatario del pedido, tal como se lee en el aviso: la mesa, o el cliente
+// cuando es para llevar (esas comandas no tienen mesa).
+const dueño = (p) => (p.tipo === 'llevar' ? `Para llevar · ${p.clienteNombre ?? 'Cliente'}` : `Mesa ${p.mesaNumero}`)
+
+// A dónde lleva tocar el aviso en la campana. Sin esto, un aviso de una comanda para
+// llevar mandaba a /mesero/orden/null.
+const rutaDelPedido = (p) =>
+  p.tipo === 'llevar'
+    ? (p.ordenLlevarId ? `/mesero/llevar/orden/${p.ordenLlevarId}` : '/mesero/llevar')
+    : (p.mesaId ? `/mesero/orden/${p.mesaId}` : null)
+
 function cancelarRecordatorio(pedidoId) {
   const t = recordatorios.get(pedidoId)
   if (t) { clearTimeout(t); recordatorios.delete(pedidoId) }
@@ -45,9 +56,10 @@ function programarRecordatorio(pedidoId) {
       sonarListo()
       useAvisosStore.getState().agregarAviso({
         tipo: 'listo',
-        titulo: `Mesa ${p.mesaNumero} · sigue esperando`,
+        titulo: `${dueño(p)} · sigue esperando`,
         detalle: 'El pedido lleva rato listo y nadie lo ha recogido',
         mesaId: p.mesaId,
+        ruta: rutaDelPedido(p),
       })
     }, RECORDATORIO_MS),
   )
@@ -87,6 +99,10 @@ export function useAvisoListo() {
     const esMio = (p) => {
       if (p.meseroId) return p.meseroId === currentMeseroId
       if (p.meseroNombre && nombresConocidos.has(p.meseroNombre)) return p.meseroNombre === mesero?.nombre
+      // Una comanda para llevar sin dueño reconocible no tiene mesa contra la cual
+      // preguntar, así que suena para todos — mismo criterio que abajo: más vale avisar
+      // de más que dejar un pedido enfriándose sin que nadie lo recoja.
+      if (p.tipo === 'llevar') return true
       return atiende(asignaciones, p.mesaId, currentMeseroId)
     }
 
@@ -102,9 +118,10 @@ export function useAvisoListo() {
       sonarListo()
       useAvisosStore.getState().agregarAviso({
         tipo: 'listo',
-        titulo: `Mesa ${p.mesaNumero} · pedido listo`,
+        titulo: `${dueño(p)} · pedido listo`,
         detalle: 'Cocina lo dejó listo para recoger',
         mesaId: p.mesaId,
+        ruta: rutaDelPedido(p),
       })
       programarRecordatorio(p.id)
     }

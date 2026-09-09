@@ -52,6 +52,9 @@ export function PedidoCard({ pedido, onAvanzar }) {
   const inicio = inicioColumna(pedido)
   const u = urgencia(inicio)
   const accion = SIGUIENTE[pedido.estado]
+  // `tipo` puede faltar en comandas creadas antes de que existieran los pedidos para
+  // llevar: sin tipo, es de mesa.
+  const esLlevar = pedido.tipo === 'llevar'
 
   return (
     <div
@@ -63,8 +66,27 @@ export function PedidoCard({ pedido, onAvanzar }) {
       }}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-baseline" style={{ gap: 10 }}>
-          <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {pedido.mesaNumero}</span>
+        {/* Una comanda para llevar no tiene mesa: se identifica por el cliente. Se pinta
+            distinto —etiqueta rosa en vez de "Mesa N"— porque en cocina la diferencia
+            importa: un pedido para llevar se empaca, no se sirve en plato. */}
+        <div className="flex items-baseline" style={{ gap: 10, minWidth: 0 }}>
+          {esLlevar ? (
+            <>
+              <span
+                style={{
+                  fontSize: 15, fontWeight: 900, color: '#fff', background: 'var(--jb-pink)',
+                  borderRadius: 999, padding: '5px 12px', flexShrink: 0,
+                }}
+              >
+                🥡 Para llevar
+              </span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>
+                {pedido.clienteNombre ?? 'Cliente'}
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesa {pedido.mesaNumero}</span>
+          )}
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>{pedido.meseroNombre}</span>
         </div>
         <span

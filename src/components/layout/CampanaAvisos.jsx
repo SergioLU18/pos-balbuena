@@ -27,9 +27,13 @@ export function CampanaAvisos() {
     marcarTodosLeidos()
   }
 
+  // `ruta` es la que manda: un aviso de una orden PARA LLEVAR no tiene mesa a la cual
+  // saltar. mesaId se conserva como respaldo para los avisos del turno en curso que se
+  // hayan generado antes de que existiera `ruta`.
   function irAlAviso(aviso) {
     setOpen(false)
-    if (aviso.mesaId) navigate(`/mesero/orden/${aviso.mesaId}`)
+    const destino = aviso.ruta ?? (aviso.mesaId ? `/mesero/orden/${aviso.mesaId}` : null)
+    if (destino) navigate(destino)
   }
 
   return (
