@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom'
 import { useMeseroStore, usePosStore } from '../../store/appStore'
 import AdminMeserosPage from './AdminMeserosPage'
 import AdminMenuPage from './AdminMenuPage'
+import AdminMesasPage from './AdminMesasPage'
 
 // Panel de administración. Solo accesible para un mesero esAdmin que ya confirmó su
 // PIN (adminUnlocked, ver AdminEntry). El gate es client-side — misma postura
@@ -36,6 +37,7 @@ export default function AdminApp() {
           <nav className="flex items-center" style={{ gap: 8 }}>
             <TabLink to="/admin/menu">Menú</TabLink>
             <TabLink to="/admin/meseros">Meseros</TabLink>
+            <TabLink to="/admin/mesas">Mesas</TabLink>
           </nav>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
@@ -57,6 +59,7 @@ export default function AdminApp() {
           <Route index element={<Navigate to="/admin/menu" replace />} />
           <Route path="menu" element={<AdminMenuPage />} />
           <Route path="meseros" element={<AdminMeserosPage />} />
+          <Route path="mesas" element={<AdminMesasPage />} />
           <Route path="*" element={<Navigate to="/admin/menu" replace />} />
         </Routes>
       </main>
