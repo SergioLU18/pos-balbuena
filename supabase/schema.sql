@@ -10,7 +10,7 @@
 -- (add_or_update_cuenta_item, recalculate_subtotal), así que una cuenta abierta
 -- por el mesero es la misma que el cliente divide y paga en tali.
 --
--- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → llevar.sql → seed.sql
+-- Orden de ejecución:  cleanup.sql → schema.sql → bitacora.sql → admin_menu.sql → llevar.sql → seed.sql
 -- ============================================================================
 
 create extension if not exists pgcrypto;
@@ -152,6 +152,8 @@ declare
   v_cuenta uuid;
   v_numero text;
   v_item   jsonb;
+  v_pedido uuid;
+  v_total  numeric;
 begin
   if p_items is null or jsonb_array_length(p_items) = 0 then
     return null;
@@ -189,7 +191,25 @@ begin
   end if;
 
   insert into pedidos (restaurante_id, mesa_id, cuenta_id, mesa_numero, mesero_id, mesero_nombre, items, estado, enviado_at)
-  values (v_rest, p_mesa_id, v_cuenta, v_numero, p_mesero_id, p_mesero_nombre, p_items, 'pendiente', now());
+  values (v_rest, p_mesa_id, v_cuenta, v_numero, p_mesero_id, p_mesero_nombre, p_items, 'pendiente', now())
+  returning id into v_pedido;
+
+  -- Bitácora. El importe se calcula sobre p_items y no se lee de la cuenta porque la
+  -- cuenta ya trae lo de comandas anteriores: aquí se registra lo que se mandó AHORA.
+  select coalesce(sum((r->>'precio_unitario')::numeric * (r->>'cantidad')::integer), 0)
+  into v_total from jsonb_array_elements(p_items) as r;
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'orden.enviar', 'mesa', p_mesa_id, v_numero,
+    jsonb_build_object(
+      'pedido_id',  v_pedido,
+      'cuenta_id',  v_cuenta,
+      'renglones',  jsonb_array_length(p_items),
+      'importe',    v_total,
+      'items',      p_items
+    )
+  );
 
   return v_cuenta;
 end;
@@ -204,10 +224,16 @@ $$;
 -- total de tali), ubicada por (cuenta_id, nombre) — la misma clave que usa
 -- add_or_update_cuenta_item para crearla en pos_enviar_orden.
 -- ============================================================================
+-- El actor viaja como parámetro porque no hay auth (ver bitacora.sql). Va con default
+-- null para no romper una llamada vieja, y la firma anterior se tira explícitamente:
+-- dejar las dos vivas le deja a PostgREST un overload ambiguo que resolver.
+drop function if exists pos_editar_item_pedido(uuid, text, integer);
 create or replace function pos_editar_item_pedido(
-  p_pedido_id uuid,
-  p_item_id   text,
-  p_cantidad  integer
+  p_pedido_id     uuid,
+  p_item_id       text,
+  p_cantidad      integer,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
 ) returns void
 language plpgsql
 security definer
@@ -258,6 +284,21 @@ begin
 
     perform recalculate_subtotal(v_pedido.cuenta_id);
   end if;
+
+  perform pos_log(
+    v_pedido.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'item.editar', 'pedido', p_pedido_id,
+    coalesce(v_pedido.mesa_numero, v_pedido.cliente_nombre),
+    jsonb_build_object(
+      'platillo',  v_item->>'nombre',
+      'de',        (v_item->>'cantidad')::integer,
+      'a',         p_cantidad,
+      'delta',     v_delta,
+      'tipo',      v_pedido.tipo,
+      'cuenta_id', v_pedido.cuenta_id,
+      'item',      v_item
+    )
+  );
 end;
 $$;
 
@@ -267,9 +308,12 @@ $$;
 -- pedido, se borra el pedido completo (una comanda sin platillos no debe
 -- seguir apareciendo en el tablero de cocina).
 -- ============================================================================
+drop function if exists pos_eliminar_item_pedido(uuid, text);
 create or replace function pos_eliminar_item_pedido(
-  p_pedido_id uuid,
-  p_item_id   text
+  p_pedido_id     uuid,
+  p_item_id       text,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
 ) returns void
 language plpgsql
 security definer
@@ -319,6 +363,24 @@ begin
   else
     update pedidos set items = v_items_nuevo where id = p_pedido_id;
   end if;
+
+  -- Al detalle va el renglón COMPLETO, no solo su nombre: quien reclama pregunta por
+  -- el platillo tal como se pidió (con sus mitades, sus ingredientes y su nota), y
+  -- para cuando alguien lea esta línea la fila de pedidos ya no va a existir.
+  perform pos_log(
+    v_pedido.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'item.eliminar', 'pedido', p_pedido_id,
+    coalesce(v_pedido.mesa_numero, v_pedido.cliente_nombre),
+    jsonb_build_object(
+      'platillo',      v_item->>'nombre',
+      'cantidad',      (v_item->>'cantidad')::integer,
+      'importe',       (v_item->>'precio_unitario')::numeric * (v_item->>'cantidad')::integer,
+      'tipo',          v_pedido.tipo,
+      'cuenta_id',     v_pedido.cuenta_id,
+      'comanda_vacia', jsonb_array_length(v_items_nuevo) = 0,
+      'item',          v_item
+    )
+  );
 end;
 $$;
 
@@ -327,16 +389,69 @@ $$;
 -- Marca la cuenta activa como cerrada — igual que tali (activa=false,
 -- estado='cerrada', closed_at=now()) — y borra los pedidos de cocina de la mesa.
 -- ============================================================================
-create or replace function pos_cerrar_mesa(p_mesa_id uuid)
-returns void
+drop function if exists pos_cerrar_mesa(uuid);
+create or replace function pos_cerrar_mesa(
+  p_mesa_id       uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_rest     uuid;
+  v_numero   text;
+  v_cuenta   uuid;
+  v_total    numeric;
+  v_items    jsonb;
+  v_comandas integer;
 begin
+  -- Candado sobre la mesa: el cierre por pago en tali llega a TODAS las tablets a la
+  -- vez (es un broadcast) y cada una llama a esta función. Con el candado se forman:
+  -- la primera cierra y registra, y las demás, al tomar su turno, encuentran la mesa
+  -- ya cerrada y salen abajo sin dejar un "Cerró la cuenta" repetido en la bitácora.
+  select restaurante_id, numero into v_rest, v_numero from mesas where id = p_mesa_id for update;
+  select id, subtotal into v_cuenta, v_total
+  from cuentas where mesa_id = p_mesa_id and activa limit 1;
+
+  -- El ticket se congela ANTES de borrar las comandas. cuenta_items sí sobrevive al
+  -- cierre (nombre, precio y cantidad, que es de lo que vive tali), pero el detalle
+  -- de cocina — tier, mitades, ingredientes quitados, notas — y QUIÉN mandó cada
+  -- comanda viven solo en pedidos.items, y hasta ahora se iban con la mesa. Es justo
+  -- el detalle que hace falta cuando alguien reclama al día siguiente.
+  select coalesce(jsonb_agg(renglon), '[]'::jsonb) into v_items
+  from pedidos p, jsonb_array_elements(p.items) as renglon
+  where p.mesa_id = p_mesa_id;
+
+  -- Aparte y no con un count(distinct) sobre el join de arriba: una comanda con items
+  -- vacío no produce renglones y quedaría fuera de la cuenta.
+  select count(*) into v_comandas from pedidos where mesa_id = p_mesa_id;
+
+  -- Nada que cerrar: otra tablet ya lo hizo. No hay operación, así que no hay evento.
+  if v_cuenta is null and v_comandas = 0 then
+    return;
+  end if;
+
   update cuentas set activa = false, estado = 'cerrada', closed_at = now()
   where mesa_id = p_mesa_id and activa;
   delete from pedidos where mesa_id = p_mesa_id;
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'mesa.cerrar', 'mesa', p_mesa_id, v_numero,
+    jsonb_build_object(
+      'cuenta_id', v_cuenta,
+      -- Si tali ya cobró, su cuenta ya no está activa y el subtotal no se ve desde
+      -- aquí; en ese caso el total sale del ticket que se acaba de congelar.
+      'total',     coalesce(v_total, (
+        select coalesce(sum((r->>'precio_unitario')::numeric * (r->>'cantidad')::integer), 0)
+        from jsonb_array_elements(v_items) as r
+      )),
+      'comandas',  v_comandas,
+      'items',     v_items
+    )
+  );
 end;
 $$;
 
@@ -351,10 +466,13 @@ alter table mesas add column if not exists orden int not null default 0;
 -- en que se crea. La mesa nueva se coloca al final del listado (orden = máximo + 1).
 -- ============================================================================
 drop function if exists pos_crear_mesa(uuid, text, uuid);
+drop function if exists pos_crear_mesa(uuid, text, uuid[]);
 create or replace function pos_crear_mesa(
   p_restaurante_id uuid,
   p_numero         text,
-  p_mesero_ids     uuid[] default '{}'
+  p_mesero_ids     uuid[] default '{}',
+  p_mesero_id      uuid default null,
+  p_mesero_nombre  text default null
 ) returns uuid
 language plpgsql
 security definer
@@ -386,6 +504,12 @@ begin
   from unnest(coalesce(p_mesero_ids, '{}'::uuid[])) as elegidos(mesero_id)
   on conflict do nothing;
 
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    'mesa.crear', 'mesa', v_mesa, v_numero,
+    jsonb_build_object('meseros', coalesce(p_mesero_ids, '{}'::uuid[]))
+  );
+
   return v_mesa;
 end;
 $$;
@@ -395,25 +519,38 @@ $$;
 -- pedidos/cuentas que ya la referencian). Bloqueada si la mesa tiene una cuenta
 -- abierta — borrarla a medio servicio dejaría la cuenta huérfana.
 -- ============================================================================
-create or replace function pos_borrar_mesa(p_mesa_id uuid)
-returns void
+drop function if exists pos_borrar_mesa(uuid);
+create or replace function pos_borrar_mesa(
+  p_mesa_id       uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   v_tiene_cuenta  boolean;
+  v_rest          uuid;
+  v_numero        text;
 begin
   select exists(select 1 from cuentas where mesa_id = p_mesa_id and activa) into v_tiene_cuenta;
   if v_tiene_cuenta then
     raise exception 'No se puede borrar una mesa con cuenta abierta.';
   end if;
 
+  select restaurante_id, numero into v_rest, v_numero from mesas where id = p_mesa_id;
+
   update mesas set activo = false where id = p_mesa_id;
 
   -- La baja es lógica (activo=false), así que el on delete cascade de mesa_meseros
   -- no dispara: hay que soltar a mano a los meseros que la atendían.
   delete from mesa_meseros where mesa_id = p_mesa_id;
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'mesa.borrar', 'mesa', p_mesa_id, v_numero, '{}'::jsonb
+  );
 end;
 $$;
 
@@ -426,15 +563,29 @@ $$;
 -- Solo toca las filas de ESTE mesero: las de los demás meseros de esas mismas mesas
 -- se quedan como están, que es justo lo que permite que una mesa tenga varios.
 -- ============================================================================
+drop function if exists pos_set_mesas_mesero(uuid, uuid[]);
 create or replace function pos_set_mesas_mesero(
-  p_mesero_id uuid,
-  p_mesa_ids  uuid[]
+  p_mesero_id     uuid,
+  p_mesa_ids      uuid[],
+  p_actor_id      uuid default null,
+  p_actor_nombre  text default null
 ) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_rest    uuid;
+  v_nombre  text;
+  v_previas uuid[];
 begin
+  select restaurante_id, nombre into v_rest, v_nombre from meseros where id = p_mesero_id;
+
+  -- Se leen ANTES del delete: sin esto la bitácora solo diría cómo quedó, y la
+  -- pregunta que llega es "¿desde cuándo dejó de traer la 7?".
+  select coalesce(array_agg(mesa_id), '{}'::uuid[]) into v_previas
+  from mesa_meseros where mesero_id = p_mesero_id;
+
   delete from mesa_meseros
   where mesero_id = p_mesero_id
     and not (mesa_id = any(coalesce(p_mesa_ids, '{}'::uuid[])));
@@ -443,6 +594,12 @@ begin
   select elegidas.mesa_id, p_mesero_id
   from unnest(coalesce(p_mesa_ids, '{}'::uuid[])) as elegidas(mesa_id)
   on conflict do nothing;
+
+  perform pos_log(
+    v_rest, p_actor_id, p_actor_nombre,
+    'mesero.mesas', 'mesero', p_mesero_id, v_nombre,
+    jsonb_build_object('antes', v_previas, 'despues', coalesce(p_mesa_ids, '{}'::uuid[]))
+  );
 end;
 $$;
 
@@ -456,8 +613,13 @@ $$;
 -- copia denormalizada de la comanda, así que esa sí se actualiza en cascada o la
 -- cocina seguiría cantando el nombre viejo.
 -- ============================================================================
-create or replace function pos_renombrar_mesa(p_mesa_id uuid, p_numero text)
-returns void
+drop function if exists pos_renombrar_mesa(uuid, text);
+create or replace function pos_renombrar_mesa(
+  p_mesa_id       uuid,
+  p_numero        text,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
@@ -465,6 +627,7 @@ as $$
 declare
   v_restaurante uuid;
   v_nuevo       text := btrim(coalesce(p_numero, ''));
+  v_viejo       text;
 begin
   if length(v_nuevo) = 0 then
     raise exception 'El nombre de la mesa no puede estar vacío.';
@@ -473,7 +636,7 @@ begin
     raise exception 'El nombre de la mesa es demasiado largo (máx. 24 caracteres).';
   end if;
 
-  select restaurante_id into v_restaurante from mesas where id = p_mesa_id;
+  select restaurante_id, numero into v_restaurante, v_viejo from mesas where id = p_mesa_id;
   if not found then
     raise exception 'La mesa no existe.';
   end if;
@@ -488,6 +651,14 @@ begin
 
   update mesas  set numero = v_nuevo where id = p_mesa_id;
   update pedidos set mesa_numero = v_nuevo where mesa_id = p_mesa_id;
+
+  -- La etiqueta guarda el nombre NUEVO y el detalle el viejo: si mañana alguien busca
+  -- "PL-3" en la bitácora, lo que encuentra es la mesa que hoy se llama así.
+  perform pos_log(
+    v_restaurante, p_mesero_id, p_mesero_nombre,
+    'mesa.renombrar', 'mesa', p_mesa_id, v_nuevo,
+    jsonb_build_object('de', v_viejo, 'a', v_nuevo)
+  );
 end;
 $$;
 
@@ -497,15 +668,29 @@ $$;
 -- mesero que ya no está en el turno no puede seguir figurando como quien las atiende.
 -- Las dos cosas van juntas en una transacción para que no quede a medias.
 -- ============================================================================
-create or replace function pos_borrar_mesero(p_mesero_id uuid)
-returns void
+drop function if exists pos_borrar_mesero(uuid);
+create or replace function pos_borrar_mesero(
+  p_mesero_id     uuid,
+  p_actor_id      uuid default null,
+  p_actor_nombre  text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_rest   uuid;
+  v_nombre text;
 begin
+  select restaurante_id, nombre into v_rest, v_nombre from meseros where id = p_mesero_id;
+
   update meseros set activo = false where id = p_mesero_id;
   delete from mesa_meseros where mesero_id = p_mesero_id;
+
+  perform pos_log(
+    v_rest, p_actor_id, p_actor_nombre,
+    'mesero.baja', 'mesero', p_mesero_id, v_nombre, '{}'::jsonb
+  );
 end;
 $$;
 
@@ -514,12 +699,18 @@ $$;
 -- orden = posición (0,1,2,…). Es el listado compartido que ve todo mesero; solo
 -- el admin lo cambia (flechas ▲▼ en Ajustes → Mesas).
 -- ============================================================================
-create or replace function pos_reordenar_mesas(p_ids uuid[])
-returns void
+drop function if exists pos_reordenar_mesas(uuid[]);
+create or replace function pos_reordenar_mesas(
+  p_ids           uuid[],
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_rest uuid;
 begin
   update mesas m
   set orden = pos.idx
@@ -527,6 +718,138 @@ begin
     select unnest(p_ids) as id, generate_subscripts(p_ids, 1) - 1 as idx
   ) pos
   where m.id = pos.id;
+
+  select restaurante_id into v_rest from mesas where id = p_ids[1];
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'mesa.reordenar', null, null, null,
+    jsonb_build_object('mesas', coalesce(array_length(p_ids, 1), 0))
+  );
+end;
+$$;
+
+-- ============================================================================
+-- RPC: mover una comanda de columna en el tablero de cocina. Antes era un update
+-- directo desde el cliente; pasa por aquí para que quede quién la marcó "lista" —
+-- la pregunta típica cuando un platillo salió frío o nunca llegó a la mesa.
+--
+-- Estampa la misma columna de tiempo por etapa que estampaba el cliente
+-- (preparando_at / listo_at / entregado_at), pero con now() del servidor: el reloj
+-- de cada tablet puede andar desfasado y los reportes de tiempos de cocina se
+-- comparan entre tablets.
+--
+-- Es el evento más frecuente de toda la bitácora (3 por comanda). Por eso el detalle
+-- es mínimo — de/a y quién mandó la comanda —, sin copiar los renglones: ya quedaron
+-- registrados completos en el `orden.enviar` de esa misma comanda.
+-- ============================================================================
+create or replace function pos_avanzar_pedido(
+  p_pedido_id     uuid,
+  p_estado        text,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pedido pedidos%rowtype;
+begin
+  if p_estado not in ('pendiente','preparando','listo','entregado') then
+    raise exception 'Estado de pedido inválido: %', p_estado;
+  end if;
+
+  select * into v_pedido from pedidos where id = p_pedido_id for update;
+  if not found then
+    raise exception 'Pedido % no existe.', p_pedido_id;
+  end if;
+
+  update pedidos set
+    estado                = p_estado,
+    estado_actualizado_at = now(),
+    preparando_at         = case when p_estado = 'preparando' then now() else preparando_at end,
+    listo_at              = case when p_estado = 'listo'      then now() else listo_at      end,
+    entregado_at          = case when p_estado = 'entregado'  then now() else entregado_at  end
+  where id = p_pedido_id;
+
+  perform pos_log(
+    v_pedido.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'cocina.estado', 'pedido', p_pedido_id,
+    coalesce(v_pedido.mesa_numero, v_pedido.cliente_nombre),
+    jsonb_build_object(
+      'tipo',             v_pedido.tipo,
+      'de',               v_pedido.estado,
+      'a',                p_estado,
+      'mesero_comanda',   v_pedido.mesero_nombre
+    )
+  );
+end;
+$$;
+
+-- ============================================================================
+-- RPC: alta o edición de un mesero (panel de admin). También era escritura directa.
+-- Devuelve el id porque el alta lo necesita en el acto para fijarle sus mesas con
+-- pos_set_mesas_mesero.
+--
+-- El PIN NUNCA va a la bitácora, ni en claro ni enmascarado: la bitácora la puede
+-- leer cualquier tablet con la anon key. Solo se registra SI cambió.
+--
+-- Usa meseros.es_admin, que lo agrega admin_menu.sql: corre después de este archivo,
+-- pero plpgsql resuelve columnas al ejecutar y no al crear, así que no truena.
+--
+-- Mismo caso que pos_set_mesas_mesero/pos_borrar_mesero: `p_mesero_*` no sirve para
+-- el actor porque aquí el mesero es el objeto que se edita. El actor es p_actor_*.
+-- ============================================================================
+create or replace function pos_guardar_mesero(
+  p_id             uuid,
+  p_restaurante_id uuid,
+  p_nombre         text,
+  p_pin            text    default null,
+  p_es_admin       boolean default false,
+  p_activo         boolean default true,
+  p_actor_id       uuid    default null,
+  p_actor_nombre   text    default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id    uuid := p_id;
+  v_antes meseros%rowtype;
+begin
+  if coalesce(btrim(p_nombre), '') = '' then
+    raise exception 'El nombre del mesero es obligatorio.';
+  end if;
+
+  if v_id is null then
+    insert into meseros (restaurante_id, nombre, pin, es_admin, activo)
+    values (p_restaurante_id, btrim(p_nombre), nullif(p_pin, ''), coalesce(p_es_admin, false), coalesce(p_activo, true))
+    returning id into v_id;
+  else
+    select * into v_antes from meseros where id = v_id;
+    update meseros
+    set nombre = btrim(p_nombre), pin = nullif(p_pin, ''),
+        es_admin = coalesce(p_es_admin, false), activo = coalesce(p_activo, true)
+    where id = v_id;
+  end if;
+
+  perform pos_log(
+    p_restaurante_id, p_actor_id, p_actor_nombre,
+    case when p_id is null then 'mesero.crear' else 'mesero.editar' end,
+    'mesero', v_id, btrim(p_nombre),
+    case when p_id is null
+      then jsonb_build_object('es_admin', coalesce(p_es_admin, false))
+      else jsonb_build_object(
+        'antes',      jsonb_build_object('nombre', v_antes.nombre, 'es_admin', v_antes.es_admin, 'activo', v_antes.activo),
+        'despues',    jsonb_build_object('nombre', btrim(p_nombre), 'es_admin', coalesce(p_es_admin, false), 'activo', coalesce(p_activo, true)),
+        'cambio_pin', v_antes.pin is distinct from nullif(p_pin, '')
+      )
+    end
+  );
+
+  return v_id;
 end;
 $$;
 
@@ -539,25 +862,36 @@ alter table meseros enable row level security;
 alter table mesa_meseros enable row level security;
 alter table pedidos enable row level security;
 
+-- SOLO LECTURA. Antes eran "total" (anon podía escribir directo) porque el mesero y
+-- la cocina escribían estas tablas sin pasar por RPC. Ahora toda escritura va por una
+-- RPC que deja su línea en la bitácora (ver bitacora.sql), y dejar la política abierta
+-- sería dejar una puerta para cambiar cosas sin rastro. Las RPCs son SECURITY DEFINER,
+-- así que a ellas RLS no les aplica. Las políticas "total" viejas se tiran por nombre
+-- porque reaplicar este archivo sobre una base existente las dejaría vivas.
 drop policy if exists "pos meseros total" on meseros;
-create policy "pos meseros total" on meseros for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos meseros lectura" on meseros;
+create policy "pos meseros lectura" on meseros for select to anon, authenticated using (true);
 
 drop policy if exists "pos mesa_meseros total" on mesa_meseros;
-create policy "pos mesa_meseros total" on mesa_meseros for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos mesa_meseros lectura" on mesa_meseros;
+create policy "pos mesa_meseros lectura" on mesa_meseros for select to anon, authenticated using (true);
 
 drop policy if exists "pos pedidos total" on pedidos;
-create policy "pos pedidos total" on pedidos for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos pedidos lectura" on pedidos;
+create policy "pos pedidos lectura" on pedidos for select to anon, authenticated using (true);
 
-grant execute on function pos_enviar_orden(uuid, text, jsonb, uuid)   to anon, authenticated;
-grant execute on function pos_editar_item_pedido(uuid, text, integer) to anon, authenticated;
-grant execute on function pos_eliminar_item_pedido(uuid, text)        to anon, authenticated;
-grant execute on function pos_cerrar_mesa(uuid)                       to anon, authenticated;
-grant execute on function pos_crear_mesa(uuid, text, uuid[])          to anon, authenticated;
-grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
-grant execute on function pos_set_mesas_mesero(uuid, uuid[])          to anon, authenticated;
-grant execute on function pos_borrar_mesero(uuid)                     to anon, authenticated;
-grant execute on function pos_renombrar_mesa(uuid, text)              to anon, authenticated;
-grant execute on function pos_reordenar_mesas(uuid[])                 to anon, authenticated;
+grant execute on function pos_enviar_orden(uuid, text, jsonb, uuid)                 to anon, authenticated;
+grant execute on function pos_editar_item_pedido(uuid, text, integer, uuid, text)   to anon, authenticated;
+grant execute on function pos_eliminar_item_pedido(uuid, text, uuid, text)          to anon, authenticated;
+grant execute on function pos_cerrar_mesa(uuid, uuid, text)                         to anon, authenticated;
+grant execute on function pos_crear_mesa(uuid, text, uuid[], uuid, text)            to anon, authenticated;
+grant execute on function pos_borrar_mesa(uuid, uuid, text)                         to anon, authenticated;
+grant execute on function pos_set_mesas_mesero(uuid, uuid[], uuid, text)            to anon, authenticated;
+grant execute on function pos_borrar_mesero(uuid, uuid, text)                       to anon, authenticated;
+grant execute on function pos_renombrar_mesa(uuid, text, uuid, text)                to anon, authenticated;
+grant execute on function pos_reordenar_mesas(uuid[], uuid, text)                   to anon, authenticated;
+grant execute on function pos_avanzar_pedido(uuid, text, uuid, text)                to anon, authenticated;
+grant execute on function pos_guardar_mesero(uuid, uuid, text, text, boolean, boolean, uuid, text) to anon, authenticated;
 
 -- ============================================================================
 -- Realtime · cuentas y cuenta_items ya están en la publicación de tali; solo

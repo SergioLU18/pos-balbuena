@@ -2,6 +2,7 @@ import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { uid } from '../lib/utils'
 import { normalizarTelefono } from '../lib/telefono'
+import { firma } from '../lib/bitacora'
 import { useLlevarStore, useMeseroStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
 
@@ -87,6 +88,7 @@ export function useLlevar() {
     }
 
     const { data, error } = await sb.rpc('pos_guardar_cliente', {
+      ...firma(),
       p_restaurante_id: restauranteId,
       p_telefono: tel,
       p_nombre: nombre,

@@ -1,6 +1,7 @@
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { uid } from '../lib/utils'
+import { firma } from '../lib/bitacora'
 import { usePosStore, useOrderStore, usePedidosStore } from '../store/appStore'
 
 /** Valida un nombre de mesa: no vacío, ≤ 24 caracteres y único entre las mesas activas
@@ -47,7 +48,7 @@ export function useMesaAdmin() {
       return Promise.resolve({ error: null, id: mesa.id })
     }
     return sb
-      .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: nombre, p_mesero_ids: ids })
+      .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: nombre, p_mesero_ids: ids, ...firma() })
       .then(({ data, error }) => ({ error: error?.message ?? null, id: data ?? null }))
   }
 
@@ -71,7 +72,7 @@ export function useMesaAdmin() {
       return Promise.resolve({ error: null })
     }
     return sb
-      .rpc('pos_renombrar_mesa', { p_mesa_id: mesaId, p_numero: nombre })
+      .rpc('pos_renombrar_mesa', { p_mesa_id: mesaId, p_numero: nombre, ...firma() })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
@@ -88,7 +89,7 @@ export function useMesaAdmin() {
       return Promise.resolve({ error: null })
     }
     return sb
-      .rpc('pos_reordenar_mesas', { p_ids: idsEnOrden })
+      .rpc('pos_reordenar_mesas', { p_ids: idsEnOrden, ...firma() })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
@@ -104,7 +105,7 @@ export function useMesaAdmin() {
       soltarMesa(mesaId) // deja de estar atendida por nadie
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_borrar_mesa', { p_mesa_id: mesaId }).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_mesa', { p_mesa_id: mesaId, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   return { crearMesa, renombrarMesa, reordenarMesas, borrarMesa }

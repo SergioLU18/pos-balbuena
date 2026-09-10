@@ -4,6 +4,7 @@ import { IS_MOCK } from '../lib/config'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
+import { firma } from '../lib/bitacora'
 import { cargarTodo } from './usePosData'
 
 // Recargo de un ingrediente: se lee del catálogo vivo (store), no de una lista estática,
@@ -258,7 +259,7 @@ export function useOrderDraft(mesaId) {
       if (ci) actualizarCantidadItemCuenta(mesaId, ci.id, ci.cantidad + aplicado)
       actualizarCantidadItemPedido(pedidoId, itemId, cantidad)
 
-      sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad })
+      sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad, ...firma() })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] cambiarCantidadEnviado falló:', error)
@@ -304,7 +305,7 @@ export function useOrderDraft(mesaId) {
         quitarItemPedido(pedidoId, itemId)
       }
 
-      sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
+      sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] quitarItemEnviado falló:', error)
@@ -326,7 +327,7 @@ export function useOrderDraft(mesaId) {
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
   function cerrarMesa() {
     if (!IS_MOCK) {
-      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
+      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId, ...firma() })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] cerrarMesa falló:', error)

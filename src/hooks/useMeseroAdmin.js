@@ -1,13 +1,14 @@
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { uid } from '../lib/utils'
+import { firmaActor } from '../lib/bitacora'
 import { usePosStore } from '../store/appStore'
 
 /** Alta, edición y baja de meseros desde el panel de admin. Un mesero puede ser
  *  administrador (esAdmin) — puede editar a los demás y el menú. Sigue el mismo
- *  patrón que useMesaAdmin: en modo mock muta el store; en backend escribe directo
- *  a la tabla `meseros` (RLS abierta, igual que pedidos). El store no se toca en
- *  backend: usePosData recarga por Realtime tras cada cambio.
+ *  patrón que useMesaAdmin: en modo mock muta el store; en backend pasa por RPCs
+ *  (pos_guardar_mesero y compañía) para que cada cambio quede en la bitácora. El
+ *  store no se toca en backend: usePosData recarga por Realtime tras cada cambio.
  *
  *  Las mesas que atiende NO son una columna del mesero: viven en `mesa_meseros`,
  *  porque una mesa puede tener varios. Por eso guardar un mesero son dos escrituras
@@ -34,22 +35,21 @@ export function useMeseroAdmin() {
       fijarMesasDeMesero(id, mesaIds)
       return Promise.resolve({ error: null })
     }
-    const row = {
-      nombre: m.nombre?.trim(),
-      pin: m.pin || null,
-      es_admin: !!m.esAdmin,
-      activo: m.activo !== false,
-      restaurante_id: restauranteId,
-    }
-    // En el alta hay que recuperar el id generado para poder asignarle sus mesas:
-    // el reparto vive en otra tabla y no puede viajar en el mismo insert.
-    const q = m.id
-      ? sb.from('meseros').update(row).eq('id', m.id).select('id').single()
-      : sb.from('meseros').insert(row).select('id').single()
-    return q.then(({ data, error }) => {
+    // La RPC devuelve el id: en el alta hace falta en el acto para asignarle sus
+    // mesas, que viven en otra tabla y no pueden viajar en la misma llamada.
+    const q = sb.rpc('pos_guardar_mesero', {
+      p_id: m.id ?? null,
+      p_restaurante_id: restauranteId,
+      p_nombre: m.nombre?.trim(),
+      p_pin: m.pin || null,
+      p_es_admin: !!m.esAdmin,
+      p_activo: m.activo !== false,
+      ...firmaActor(),
+    })
+    return q.then(({ data: meseroId, error }) => {
       if (error) return { error: error.message }
       return sb
-        .rpc('pos_set_mesas_mesero', { p_mesero_id: data.id, p_mesa_ids: mesaIds })
+        .rpc('pos_set_mesas_mesero', { p_mesero_id: meseroId, p_mesa_ids: mesaIds, ...firmaActor() })
         .then(({ error: errMesas }) => ({ error: errMesas?.message ?? null }))
     })
   }
@@ -64,7 +64,7 @@ export function useMeseroAdmin() {
       soltarMesero(id)
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_borrar_mesero', { p_mesero_id: id }).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_mesero', { p_mesero_id: id, ...firmaActor() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   return { guardarMesero, borrarMesero }
