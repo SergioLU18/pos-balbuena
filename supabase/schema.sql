@@ -322,19 +322,24 @@ begin
 end;
 $$;
 
+-- ── Método de pago con el que el mesero cerró la mesa (tali no tiene esta columna) ──
+alter table cuentas add column if not exists metodo_pago text;
+
 -- ============================================================================
 -- RPC: cerrar mesa (temporal, mientras el cierre real lo hará la app de pagos).
 -- Marca la cuenta activa como cerrada — igual que tali (activa=false,
--- estado='cerrada', closed_at=now()) — y borra los pedidos de cocina de la mesa.
+-- estado='cerrada', closed_at=now()) — guarda el método de pago elegido por el
+-- mesero, y borra los pedidos de cocina de la mesa.
 -- ============================================================================
-create or replace function pos_cerrar_mesa(p_mesa_id uuid)
+drop function if exists pos_cerrar_mesa(uuid);
+create or replace function pos_cerrar_mesa(p_mesa_id uuid, p_metodo_pago text default null)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  update cuentas set activa = false, estado = 'cerrada', closed_at = now()
+  update cuentas set activa = false, estado = 'cerrada', closed_at = now(), metodo_pago = p_metodo_pago
   where mesa_id = p_mesa_id and activa;
   delete from pedidos where mesa_id = p_mesa_id;
 end;
@@ -551,7 +556,7 @@ create policy "pos pedidos total" on pedidos for all to anon, authenticated usin
 grant execute on function pos_enviar_orden(uuid, text, jsonb, uuid)   to anon, authenticated;
 grant execute on function pos_editar_item_pedido(uuid, text, integer) to anon, authenticated;
 grant execute on function pos_eliminar_item_pedido(uuid, text)        to anon, authenticated;
-grant execute on function pos_cerrar_mesa(uuid)                       to anon, authenticated;
+grant execute on function pos_cerrar_mesa(uuid, text)                 to anon, authenticated;
 grant execute on function pos_crear_mesa(uuid, text, uuid[])          to anon, authenticated;
 grant execute on function pos_borrar_mesa(uuid)                       to anon, authenticated;
 grant execute on function pos_set_mesas_mesero(uuid, uuid[])          to anon, authenticated;

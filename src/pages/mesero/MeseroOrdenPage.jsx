@@ -8,6 +8,8 @@ import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
 import { PlatilloCard } from '../../components/mesero/PlatilloCard'
 import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlatilloModal'
 import { OrderTicket } from '../../components/mesero/OrderTicket'
+import { ConfirmModal } from '../../components/ui/ConfirmModal'
+import { MetodoPagoModal } from '../../components/mesero/MetodoPagoModal'
 
 export default function MeseroOrdenPage() {
   const { mesaId } = useParams()
@@ -20,6 +22,8 @@ export default function MeseroOrdenPage() {
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
   // Renglón del ticket que se está reeditando: { tipo: 'draft'|'enviado', platillo, item, pedidoId?, pedidoItemId? }
   const [editando, setEditando] = useState(null)
+  // Paso del cierre de mesa: null (nada abierto) → 'confirmar' → 'metodoPago'.
+  const [pasoCierre, setPasoCierre] = useState(null)
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
@@ -80,8 +84,12 @@ export default function MeseroOrdenPage() {
   // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
   // desde la app de pagos. Se quitará cuando esa integración esté lista.
   function handleCerrarMesa() {
-    if (!window.confirm(`¿Cerrar ${etiquetaMesa(mesa?.numero)}? Esto libera la mesa para una nueva cuenta.`)) return
-    cerrarMesa()
+    setPasoCierre('confirmar')
+  }
+
+  function handleSeleccionarMetodoPago(metodo) {
+    setPasoCierre(null)
+    cerrarMesa(metodo)
     navigate('/mesero')
   }
 
@@ -180,6 +188,24 @@ export default function MeseroOrdenPage() {
           extras={extras}
           onConfirm={confirmarEdicion}
           onClose={() => setEditando(null)}
+        />
+      )}
+
+      {pasoCierre === 'confirmar' && (
+        <ConfirmModal
+          titulo={`¿Cerrar ${etiquetaMesa(mesa?.numero)}?`}
+          mensaje="Esto libera la mesa para una nueva cuenta."
+          confirmarLabel="Sí, cerrar"
+          danger
+          onConfirm={() => setPasoCierre('metodoPago')}
+          onClose={() => setPasoCierre(null)}
+        />
+      )}
+
+      {pasoCierre === 'metodoPago' && (
+        <MetodoPagoModal
+          onSelect={handleSeleccionarMetodoPago}
+          onClose={() => setPasoCierre(null)}
         />
       )}
     </div>

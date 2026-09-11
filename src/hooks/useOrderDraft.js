@@ -324,9 +324,9 @@ export function useOrderDraft(mesaId) {
   // TEMPORAL: en la integración real, la cuenta se cierra desde la app de pagos
   // (cuando se liquida por completo). Mientras no exista esa conexión, esto le da
   // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
-  function cerrarMesa() {
+  function cerrarMesa(metodoPago) {
     if (!IS_MOCK) {
-      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId })
+      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId, p_metodo_pago: metodoPago })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] cerrarMesa falló:', error)
