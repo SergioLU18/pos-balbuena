@@ -28,4 +28,7 @@ drop table if exists pos_cuentas      cascade;
 drop table if exists pos_mesas        cascade;
 drop table if exists pos_meseros      cascade;
 drop table if exists pedidos          cascade;
+-- mesa_meseros antes que meseros: `drop table meseros cascade` solo tumbaría su FK,
+-- dejando la tabla de unión viva con filas huérfanas.
+drop table if exists mesa_meseros     cascade;
 drop table if exists meseros          cascade;

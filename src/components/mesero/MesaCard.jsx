@@ -1,11 +1,11 @@
-import { f, esParaLlevar } from '../../lib/utils'
+import { f } from '../../lib/utils'
 import { JbFlor } from '../ui/JbFlor'
 
 // MESA_CARD_W es el ancho MÍNIMO de la tarjeta: el listado del piso usa una
 // cuadrícula que estira las tarjetas para llenar el espacio disponible según
 // cuántas mesas haya. La altura sí es fija para que el listado quede parejo.
 export const MESA_CARD_W = 180
-export const MESA_CARD_H = 140
+export const MESA_CARD_H = 158
 
 // Cada estado visual tiene su propio color, distinto de los demás para que se distingan
 // de un vistazo: ámbar = el mesero está armando el pedido (antes de enviarlo), naranja =
@@ -24,7 +24,7 @@ const THEME = {
   pagada:     { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: '✓ Pagada', labelColor: '#2C7A50' },
 }
 
-export function MesaCard({ mesa, onClick }) {
+export function MesaCard({ mesa, meseroActualId, onClick }) {
   // Prioridad: pagada (recién cobrada, señal efímera) manda sobre cualquier estado de
   // cocina que hubiera quedado pintado. Luego: listo > cocinando > pendiente (esperando a
   // que cocina empiece) > lo que diga mesa.estado (abierta/preparando/libre). mesa.estado
@@ -72,19 +72,15 @@ export function MesaCard({ mesa, onClick }) {
       )}
 
       <div className="flex items-center justify-between w-full">
-        {esParaLlevar(mesa.numero) ? (
-          <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.2 }}>
-            Para llevar<br />#{mesa.numero.slice(3)}
-          </span>
-        ) : (
-          <span style={{
-            fontSize: mesa.numero.length > 4 ? 19 : 30,
-            fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.1,
-            overflowWrap: 'anywhere',
-          }}>
-            {mesa.numero}
-          </span>
-        )}
+        {/* El nombre de la mesa puede traer letras ("Terraza 2"), así que se encoge
+            cuando es largo en vez de desbordarse. */}
+        <span style={{
+          fontSize: mesa.numero.length > 4 ? 19 : 30,
+          fontWeight: 900, color: 'var(--jb-ink)', lineHeight: 1.1,
+          overflowWrap: 'anywhere',
+        }}>
+          {mesa.numero}
+        </span>
         <JbFlor size={22} color={theme.border} />
       </div>
 
@@ -101,6 +97,29 @@ export function MesaCard({ mesa, onClick }) {
       )}
       {mesa.estado === 'pagada' && mesa.total > 0 && (
         <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
+      )}
+
+      {/* Quién atiende la mesa. Pueden ser varios: dos meseros que se reparten el
+          salón, o uno que le cubre la mesa a otro. El propio nombre va resaltado para
+          poder barrer el mapa y ubicar las suyas sin leer nombre por nombre.
+          marginTop:auto lo ancla abajo, tenga o no total arriba. */}
+      {mesa.meseros?.length > 0 && (
+        <span
+          style={{
+            marginTop: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--jb-gray)',
+            maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          {mesa.meseros.map((w, i) => (
+            <span
+              key={w.id}
+              style={w.id === meseroActualId ? { fontWeight: 800, color: 'var(--jb-pink-dark)' } : undefined}
+            >
+              {i > 0 && <span style={{ color: 'var(--jb-line)' }}> · </span>}
+              {w.nombre}
+            </span>
+          ))}
+        </span>
       )}
     </button>
   )

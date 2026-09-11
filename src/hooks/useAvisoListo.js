@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { usePedidosStore, useMeseroStore, usePosStore, useAvisosStore } from '../store/appStore'
+import { atiende } from '../lib/asignaciones'
 import { sonarListo } from '../lib/sonidos'
 
 // Cuánto tiempo después de que cocina marcó "listo" seguimos considerando oportuno el
@@ -25,6 +26,17 @@ const RECORDATORIO_MS = 90_000
 let estadoVisto = new Map() // pedidoId -> estado
 const recordatorios = new Map() // pedidoId -> id de setTimeout
 
+// Quién es el destinatario del pedido, tal como se lee en el aviso: la mesa, o el cliente
+// cuando es para llevar (esas comandas no tienen mesa).
+const dueño = (p) => (p.tipo === 'llevar' ? `Para llevar · ${p.clienteNombre ?? 'Cliente'}` : `Mesa ${p.mesaNumero}`)
+
+// A dónde lleva tocar el aviso en la campana. Sin esto, un aviso de una comanda para
+// llevar mandaba a /mesero/orden/null.
+const rutaDelPedido = (p) =>
+  p.tipo === 'llevar'
+    ? (p.ordenLlevarId ? `/mesero/llevar/orden/${p.ordenLlevarId}` : '/mesero/llevar')
+    : (p.mesaId ? `/mesero/orden/${p.mesaId}` : null)
+
 function cancelarRecordatorio(pedidoId) {
   const t = recordatorios.get(pedidoId)
   if (t) { clearTimeout(t); recordatorios.delete(pedidoId) }
@@ -44,15 +56,20 @@ function programarRecordatorio(pedidoId) {
       sonarListo()
       useAvisosStore.getState().agregarAviso({
         tipo: 'listo',
-        titulo: `Mesa ${p.mesaNumero} · sigue esperando`,
+        titulo: `${dueño(p)} · sigue esperando`,
         detalle: 'El pedido lleva rato listo y nadie lo ha recogido',
         mesaId: p.mesaId,
+        ruta: rutaDelPedido(p),
       })
     }, RECORDATORIO_MS),
   )
 }
 
-/** Suena cuando cocina marca "listo" un pedido de las mesas del mesero actual.
+/** Suena cuando cocina marca "listo" un pedido QUE MANDÓ el mesero actual.
+ *
+ *  Se sigue el pedido y no la mesa: una mesa puede tener varios meseros, y sonarles a
+ *  todos por el mismo plato dejaba a nadie sabiendo si le tocaba ir por él. El pedido,
+ *  en cambio, siempre tiene un dueño — el que lo envió.
  *
  *  Se monta en TabletShell, que es el primer punto donde la app ya pasó el gate del PIN
  *  y que sigue montado en las dos rutas del mesero. Lo primero evita que el aviso suene
@@ -62,6 +79,7 @@ export function useAvisoListo() {
   const pedidos = usePedidosStore((s) => s.pedidos)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const meseros = usePosStore((s) => s.meseros)
+  const asignaciones = usePosStore((s) => s.asignaciones)
 
   // Los recordatorios viven en el módulo, así que sobrevivirían a que la app se vuelva a
   // bloquear (cambio de mesero) y sonarían encima del teclado del PIN. Se cancelan al
@@ -72,11 +90,21 @@ export function useAvisoListo() {
 
   useEffect(() => {
     const mesero = meseros.find((m) => m.id === currentMeseroId) ?? null
-    // Un mesero sin mesas asignadas oye todas: más vale avisar de más que dejar un plato
-    // enfriándose porque la mesa no figuraba a nombre de nadie. Se comparan como texto
-    // porque `mesas` viene como arreglo de strings y mesa_numero podría llegar numérico.
-    const asignadas = (mesero?.mesas ?? []).map(String)
-    const esMia = (p) => asignadas.length === 0 || asignadas.includes(String(p.mesaNumero))
+    const nombresConocidos = new Set(meseros.map((m) => m.nombre))
+    // Por id, que es la referencia real. El nombre es el respaldo para los pedidos
+    // creados antes de que existiera pedidos.mesero_id, y solo cuenta si identifica a
+    // un mesero del catálogo: si el pedido no tiene dueño reconocible (base vieja, o el
+    // mesero se dio de baja) suena para todos los que atienden la mesa — más vale
+    // avisar de más que dejar un plato enfriándose sin dueño.
+    const esMio = (p) => {
+      if (p.meseroId) return p.meseroId === currentMeseroId
+      if (p.meseroNombre && nombresConocidos.has(p.meseroNombre)) return p.meseroNombre === mesero?.nombre
+      // Una comanda para llevar sin dueño reconocible no tiene mesa contra la cual
+      // preguntar, así que suena para todos — mismo criterio que abajo: más vale avisar
+      // de más que dejar un pedido enfriándose sin que nadie lo recoja.
+      if (p.tipo === 'llevar') return true
+      return atiende(asignaciones, p.mesaId, currentMeseroId)
+    }
 
     const ahora = Date.now()
     for (const p of pedidos) {
@@ -84,15 +112,16 @@ export function useAvisoListo() {
       estadoVisto.set(p.id, p.estado)
       if (p.estado !== 'listo') { cancelarRecordatorio(p.id); continue }
       if (previo === 'listo') continue // ya lo anunciamos en una vuelta anterior
-      if (!esMia(p)) continue
+      if (!esMio(p)) continue
       const marca = p.listoAt ?? p.estadoActualizadoAt
       if (marca && ahora - new Date(marca).getTime() > RECIENTE_MS) continue
       sonarListo()
       useAvisosStore.getState().agregarAviso({
         tipo: 'listo',
-        titulo: `Mesa ${p.mesaNumero} · pedido listo`,
+        titulo: `${dueño(p)} · pedido listo`,
         detalle: 'Cocina lo dejó listo para recoger',
         mesaId: p.mesaId,
+        ruta: rutaDelPedido(p),
       })
       programarRecordatorio(p.id)
     }
@@ -103,5 +132,5 @@ export function useAvisoListo() {
     for (const id of [...estadoVisto.keys()]) {
       if (!vivos.has(id)) { estadoVisto.delete(id); cancelarRecordatorio(id) }
     }
-  }, [pedidos, currentMeseroId, meseros])
+  }, [pedidos, currentMeseroId, meseros, asignaciones])
 }

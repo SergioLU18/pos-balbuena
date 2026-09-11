@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usePosStore, useMeseroStore } from '../../store/appStore'
+import { atiende, mesasDeMesero, meserosDeMesa } from '../../lib/asignaciones'
 import { useMeseroAdmin } from '../../hooks/useMeseroAdmin'
 import { Button } from '../../components/ui/Button'
 import { Chip } from '../../components/ui/Chip'
@@ -7,23 +8,44 @@ import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
 
-const porNumero = (a, b) => Number(a) - Number(b)
+const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
 
-// Gestión de meseros: alta, edición (nombre, PIN, mesas asignadas, rol admin,
+/** El reparto de un mesero: las mesas que atiende, y de esas, cuáles comparte y con
+ *  quién. Una mesa puede tener varios meseros, así que "sus" mesas no son exclusivas
+ *  y conviene que el admin vea el traslape antes de mover nada. */
+function repartoDeMesero(meseroId, mesas, meseros, asignaciones) {
+  const suyas = mesas.filter((m) => atiende(asignaciones, m.id, meseroId)).sort(porNumero)
+  const compartidas = suyas
+    .map((m) => ({
+      numero: m.numero,
+      con: meserosDeMesa(asignaciones, m.id)
+        .filter((id) => id !== meseroId)
+        .map((id) => meseros.find((w) => w.id === id)?.nombre)
+        .filter(Boolean),
+    }))
+    .filter((x) => x.con.length > 0)
+  return { suyas, compartidas }
+}
+
+// Gestión de meseros: alta, edición (nombre, PIN, mesas que atiende, rol admin,
 // activo) y baja. Guardas para no quedarse sin admin: no puedes borrarte a ti
 // mismo, ni dejar al restaurante sin ningún mesero administrador.
 export default function AdminMeserosPage() {
   const meseros = usePosStore((s) => s.meseros)
   const mesas = usePosStore((s) => s.mesas)
+  const asignaciones = usePosStore((s) => s.asignaciones)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const { guardarMesero, borrarMesero } = useMeseroAdmin()
 
   const [editando, setEditando] = useState(null) // mesero en edición, o {} para nuevo
   const [borrando, setBorrando] = useState(null) // mesero a confirmar borrado
 
-  const numerosMesa = mesas.map((m) => m.numero).sort(porNumero)
+  const mesasOrdenadas = [...mesas].sort(porNumero)
   const adminsActivos = meseros.filter((m) => m.esAdmin && m.activo !== false)
   const esUltimoAdmin = (m) => m.esAdmin && adminsActivos.length <= 1
+  // Mesas que atiende más de un mesero. Se muestra arriba porque es lo que distingue
+  // este reparto del de antes, cuando una mesa era de un solo mesero.
+  const compartidas = mesas.filter((m) => meserosDeMesa(asignaciones, m.id).length > 1).length
 
   async function confirmarBorrado() {
     const m = borrando
@@ -38,6 +60,7 @@ export default function AdminMeserosPage() {
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Meseros</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>
             {meseros.length} {meseros.length === 1 ? 'mesero' : 'meseros'} · {adminsActivos.length} admin
+            {compartidas > 0 && ` · ${compartidas} ${compartidas === 1 ? 'mesa compartida' : 'mesas compartidas'}`}
           </p>
         </div>
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo mesero</Button>
@@ -48,6 +71,7 @@ export default function AdminMeserosPage() {
           <MeseroCard
             key={m.id}
             mesero={m}
+            reparto={repartoDeMesero(m.id, mesas, meseros, asignaciones)}
             esActual={m.id === currentMeseroId}
             onEdit={() => setEditando(m)}
             onDelete={() => setBorrando(m)}
@@ -58,7 +82,9 @@ export default function AdminMeserosPage() {
       {editando && (
         <MeseroModal
           mesero={editando}
-          numerosMesa={numerosMesa}
+          mesas={mesasOrdenadas}
+          meseros={meseros}
+          asignaciones={asignaciones}
           esUltimoAdmin={editando.id ? esUltimoAdmin(editando) : false}
           onGuardar={guardarMesero}
           onClose={() => setEditando(null)}
@@ -79,7 +105,7 @@ export default function AdminMeserosPage() {
   )
 }
 
-function MeseroCard({ mesero, esActual, onEdit, onDelete }) {
+function MeseroCard({ mesero, reparto, esActual, onEdit, onDelete }) {
   const inactivo = mesero.activo === false
   return (
     <div
@@ -96,8 +122,15 @@ function MeseroCard({ mesero, esActual, onEdit, onDelete }) {
         </div>
       </div>
       <div style={{ fontSize: 13, color: 'var(--jb-ink-soft)' }}>
-        {mesero.mesas?.length ? `Mesas: ${[...mesero.mesas].sort(porNumero).join(', ')}` : 'Sin mesas asignadas'}
+        {reparto.suyas.length
+          ? `Mesas: ${reparto.suyas.map((m) => m.numero).join(', ')}`
+          : 'Sin mesas asignadas'}
       </div>
+      {reparto.compartidas.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>
+          Comparte {reparto.compartidas.map((c) => `${c.numero} (${c.con.join(', ')})`).join(' · ')}
+        </div>
+      )}
       <div style={{ fontSize: 13, color: 'var(--jb-gray)' }}>
         PIN: {mesero.pin ? '••••' : 'sin PIN'}
       </div>
@@ -128,18 +161,28 @@ function Badge({ color, children }) {
   )
 }
 
-function MeseroModal({ mesero, numerosMesa, esUltimoAdmin, onGuardar, onClose }) {
+function MeseroModal({ mesero, mesas, meseros, asignaciones, esUltimoAdmin, onGuardar, onClose }) {
   const esNuevo = !mesero.id
   const [nombre, setNombre] = useState(mesero.nombre ?? '')
   const [pin, setPin] = useState(mesero.pin ?? '')
-  const [mesasSel, setMesasSel] = useState(mesero.mesas ?? [])
+  // Ids de mesa, no números: el número es editable y reciclable (ver asignaciones.js).
+  const [mesasSel, setMesasSel] = useState(() => mesasDeMesero(asignaciones, mesero.id))
   const [esAdmin, setEsAdmin] = useState(!!mesero.esAdmin)
   const [activo, setActivo] = useState(mesero.activo !== false)
   const [error, setError] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
-  function toggleMesa(n) {
-    setMesasSel((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+  function toggleMesa(mesaId) {
+    setMesasSel((prev) => (prev.includes(mesaId) ? prev.filter((x) => x !== mesaId) : [...prev, mesaId]))
+  }
+
+  // Quién MÁS atiende una mesa. Se muestra bajo cada chip para que quede claro que
+  // marcarla no se la quita a nadie: el mesero se suma a los que ya estaban.
+  function otrosEn(mesaId) {
+    return meserosDeMesa(asignaciones, mesaId)
+      .filter((id) => id !== mesero.id)
+      .map((id) => meseros.find((w) => w.id === id)?.nombre)
+      .filter(Boolean)
   }
 
   async function guardar() {
@@ -191,15 +234,30 @@ function MeseroModal({ mesero, numerosMesa, esUltimoAdmin, onGuardar, onClose })
         />
       </Campo>
 
-      <Campo label="Mesas asignadas">
-        {numerosMesa.length === 0 ? (
+      <Campo label="Mesas que atiende">
+        {mesas.length === 0 ? (
           <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay mesas creadas todavía.</span>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {numerosMesa.map((n) => (
-              <Chip key={n} active={mesasSel.includes(n)} onClick={() => toggleMesa(n)}>{n}</Chip>
-            ))}
-          </div>
+          <>
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--jb-gray)' }}>
+              Una mesa puede tener varios meseros: marcarla aquí no se la quita a nadie.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {mesas.map((m) => {
+                const otros = otrosEn(m.id)
+                return (
+                  <Chip
+                    key={m.id}
+                    active={mesasSel.includes(m.id)}
+                    onClick={() => toggleMesa(m.id)}
+                    sublabel={otros.length ? `con ${otros.join(', ')}` : undefined}
+                  >
+                    {m.numero}
+                  </Chip>
+                )
+              })}
+            </div>
+          </>
         )}
       </Campo>
 

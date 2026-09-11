@@ -7,8 +7,10 @@ import {
   usePedidosStore,
   useMeseroStore,
   useMesaPagadaStore,
+  useLlevarStore,
 } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
+import { mapCliente, mapOrden } from './useLlevar'
 
 // Orden del listado de mesas: primero la columna `orden` (la ajusta el admin en
 // Ajustes), y como desempate el nombre en modo natural ('2' antes que '10', 'Terraza'
@@ -33,8 +35,16 @@ function mapCuentas(cuentas) {
 
 // meseros de Supabase → forma de la app (es_admin snake_case → esAdmin camelCase,
 // como lo usa el mock y el gate de admin). El resto de columnas pasa igual.
+// Qué mesas atiende NO viene aquí: viene de mesa_meseros (ver mapAsignaciones).
 function mapMeseros(rows) {
   return (rows ?? []).map((m) => ({ ...m, esAdmin: m.es_admin ?? false }))
+}
+
+// mesa_meseros → pares { mesaId, meseroId }. Es una lista plana, no un arreglo
+// colgado del mesero, porque una mesa puede tener VARIOS meseros y hay que poder
+// recorrerla desde los dos lados (ver src/lib/asignaciones.js).
+function mapAsignaciones(rows) {
+  return (rows ?? []).map((a) => ({ mesaId: a.mesa_id, meseroId: a.mesero_id }))
 }
 
 // platillos (tabla compartida con tali) → forma que consume el flujo de orden.
@@ -76,8 +86,14 @@ function mapExtras(rows) {
 function mapPedidos(pedidos) {
   return (pedidos ?? []).map((p) => ({
     id: p.id,
+    // Sin `tipo` (comandas creadas antes de que existieran los pedidos para llevar) es
+    // de mesa. Un pedido 'llevar' no trae mesa: cuelga de una orden de mostrador.
+    tipo: p.tipo ?? 'mesa',
     mesaId: p.mesa_id,
     mesaNumero: p.mesa_numero,
+    ordenLlevarId: p.orden_llevar_id ?? null,
+    clienteNombre: p.cliente_nombre ?? null,
+    meseroId: p.mesero_id ?? null,
     meseroNombre: p.mesero_nombre,
     items: p.items ?? [],
     enviadoAt: p.enviado_at,
@@ -137,11 +153,15 @@ async function refrescarCuentas(rid) {
 export async function cargarTodo(rid) {
   // Ventana de pagos recientes que miramos para detectar "Pagada" (12 h cubre un turno).
   const desdePagos = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-  const [mesasRes, meserosRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes] = await Promise.all([
+  const [mesasRes, meserosRes, asignacionesRes, cuentasRes, pedidosRes, platillosRes, ingredientesRes, modificadoresRes, extrasRes, categoriasRes, pagadasRes, clientesRes, llevarRes] = await Promise.all([
     // El orden final lo aplica porOrdenMesa en el cliente (usa `orden ?? 0`, así que
     // funciona aunque la columna `orden` todavía no exista en la base).
     sb.from('mesas').select('*').eq('restaurante_id', rid).eq('activo', true),
     sb.from('meseros').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
+    // mesa_meseros no tiene restaurante_id propio: se acota con un inner join contra
+    // `meseros`, para no arrastrar asignaciones de otros restaurantes del proyecto.
+    sb.from('mesa_meseros').select('mesa_id, mesero_id, meseros!inner(restaurante_id)')
+      .eq('meseros.restaurante_id', rid),
     sb.from('cuentas').select('*, cuenta_items(*)').eq('restaurante_id', rid).eq('activa', true),
     sb.from('pedidos').select('*').eq('restaurante_id', rid),
     // Menú: se cargan TODOS (incluidos inactivos) para que el admin los vea; el flujo
@@ -155,13 +175,21 @@ export async function cargarTodo(rid) {
     // Se usan solo para encender el badge "Pagada" del lado del mesero (ver detectarPagadas).
     sb.from('cuentas').select('id, mesa_id, closed_at, cuenta_items(precio_unitario, cantidad)')
       .eq('restaurante_id', rid).eq('estado', 'pagada').gte('closed_at', desdePagos),
+    // Padrón de clientes para llevar. Se trae completo (es del tamaño de la clientela de
+    // un restaurante, no de un catálogo) para que la búsqueda por teléfono responda al
+    // instante en la tablet; el historial de compras sí se pide por cliente y bajo demanda.
+    sb.from('clientes').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
+    // Solo las órdenes para llevar ABIERTAS: son las del turno. Las cerradas se leen por
+    // cliente cuando se abre su ficha (ver historialCliente en useLlevar).
+    sb.from('ordenes_llevar').select('*').eq('restaurante_id', rid).eq('estado', 'abierta'),
   ])
 
-  const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
+  const { setMesas, setMeseros, setAsignaciones, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()
   setMesas((mesasRes.data ?? []).slice().sort(porOrdenMesa))
 
   const meseros = mapMeseros(meserosRes.data)
   setMeseros(meseros)
+  setAsignaciones(mapAsignaciones(asignacionesRes.data))
 
   setPlatillos(mapPlatillos(platillosRes.data))
   setIngredientes(mapIngredientes(ingredientesRes.data))
@@ -179,6 +207,10 @@ export async function cargarTodo(rid) {
   useOrderStore.getState().setCuentas(activas)
   usePedidosStore.getState().setPedidos(mapPedidos(pedidosRes.data))
   detectarPagadas(pagadasRes.data, activas)
+
+  const { setClientes, setOrdenes } = useLlevarStore.getState()
+  setClientes((clientesRes.data ?? []).map(mapCliente))
+  setOrdenes((llevarRes.data ?? []).map(mapOrden))
 }
 
 // Carga inicial + suscripción en tiempo real. Se monta una sola vez en la raíz de la app
@@ -225,6 +257,10 @@ export function usePosData() {
         .channel('pos-balbuena-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'meseros', filter: `restaurante_id=eq.${rid}` }, recargar)
+        // Sin filtro por restaurante: mesa_meseros no tiene la columna (igual que
+        // cuenta_items). Un mesero que se suma a una mesa desde otra tablet tiene que
+        // aparecer aquí — de eso depende el filtro "solo mis mesas" y la tarjeta del piso.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mesa_meseros' }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cuenta_items' }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `restaurante_id=eq.${rid}` }, recargar)
@@ -234,6 +270,10 @@ export function usePosData() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_modificadores', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_extras', filter: `restaurante_id=eq.${rid}` }, recargar)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_categorias', filter: `restaurante_id=eq.${rid}` }, recargar)
+        // Para llevar: una orden abierta desde otra tablet (o un cliente dado de alta en
+        // ella) tiene que aparecer aquí, igual que pasa con las mesas.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `restaurante_id=eq.${rid}` }, recargar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ordenes_llevar', filter: `restaurante_id=eq.${rid}` }, recargar)
         .subscribe()
 
       // El pago se hace en tali, NO en el POS. tali no depende de postgres_changes sobre

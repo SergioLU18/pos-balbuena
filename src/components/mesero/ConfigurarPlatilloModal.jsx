@@ -86,10 +86,12 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
 
   const precio = calcItemPrecio(item)
 
-  // Solo los modificadores y extras que este platillo declara (el sitio real los
-  // asocia por platillo: una quesadilla no tiene frijol que quitar, una bebida no
+  // Solo los modificadores y extras de CATÁLOGO que este platillo declara (el sitio real
+  // los asocia por platillo: una quesadilla no tiene frijol que quitar, una bebida no
   // lleva extras de comida). modificadores == null => todos (platillo heredado sin
   // lista); extras == null => ninguno (evita mostrar extras de comida donde no aplican).
+  // El campo de extra libre que trae ExtrasToggles no pasa por esta allowlist: se ofrece
+  // en todos los platillos, incluidos los que no tienen ningún extra de catálogo.
   const modsAplicables = platillo.modificadores == null
     ? modificadores
     : modificadores.filter((m) => platillo.modificadores.includes(m))

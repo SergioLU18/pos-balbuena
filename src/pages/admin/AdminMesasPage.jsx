@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMesas } from '../../hooks/useMesas'
 import { useMesaAdmin } from '../../hooks/useMesaAdmin'
-import { f, esParaLlevar } from '../../lib/utils'
+import { f } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { CrearMesaModal } from '../../components/mesero/CrearMesaModal'
@@ -42,8 +42,7 @@ export default function AdminMesasPage() {
   const [renombrando, setRenombrando] = useState(null)
   const [borrando, setBorrando] = useState(null)
 
-  // Las mesas "Para llevar" se crean y cierran solas desde el flujo de pedidos.
-  const listaStore = mesas.filter((m) => !esParaLlevar(m.numero))
+  const listaStore = mesas
   const idsStore = listaStore.map((m) => m.id).join(',')
 
   // Orden optimista: cada clic en ▲▼ reacomoda esta copia local al instante (varios
@@ -119,9 +118,8 @@ export default function AdminMesasPage() {
     const nuevo = lista.map((m) => m.id)
     ;[nuevo[idx], nuevo[destino]] = [nuevo[destino], nuevo[idx]]
     setOrdenOpt(nuevo)
-    const idsPL = mesas.filter((m) => esParaLlevar(m.numero)).map((m) => m.id)
     clearTimeout(rpcTimer.current)
-    rpcTimer.current = setTimeout(() => reordenarMesas([...nuevo, ...idsPL]), 250)
+    rpcTimer.current = setTimeout(() => reordenarMesas(nuevo), 250)
   }
 
   async function confirmarBorrado() {

@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { IS_MOCK } from '../lib/config'
-import { MESEROS } from '../lib/mockMeseros'
+import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
 import { MESAS } from '../lib/mockMesas'
 import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
+import * as asig from '../lib/asignaciones'
 
 // Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
 // (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
@@ -80,6 +81,11 @@ export const usePosStore = create(
     (set) => ({
       mesas: IS_MOCK ? MESAS : [],
       meseros: IS_MOCK ? MESEROS : [],
+      // Quién atiende qué mesa, como pares { mesaId, meseroId }. Vive aparte del
+      // mesero (y no como un arreglo dentro de él) porque una mesa puede tener
+      // VARIOS meseros y hay que poder preguntarlo desde los dos lados — ver
+      // src/lib/asignaciones.js.
+      asignaciones: IS_MOCK ? ASIGNACIONES : [],
       // Menú: en mock arranca del catálogo estático; en backend lo rellena usePosData
       // desde Supabase (tabla compartida `platillos` + pos_ingredientes/pos_modificadores).
       platillos: IS_MOCK ? MOCK_PLATILLOS : [],
@@ -90,6 +96,16 @@ export const usePosStore = create(
       restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
+      setAsignaciones: (asignaciones) => set({ asignaciones }),
+      // Los mutadores solo se usan en modo mock: en backend la fuente de verdad es
+      // `mesa_meseros` y usePosData vuelve a bajar la lista completa por Realtime.
+      atenderMesa: (mesaId, meseroId) =>
+        set((s) => ({ asignaciones: asig.conMesero(s.asignaciones, mesaId, meseroId) })),
+      soltarMesa: (mesaId) => set((s) => ({ asignaciones: asig.sinMesa(s.asignaciones, mesaId) })),
+      soltarMesero: (meseroId) =>
+        set((s) => ({ asignaciones: asig.sinMeseroEnTodas(s.asignaciones, meseroId) })),
+      fijarMesasDeMesero: (meseroId, mesaIds) =>
+        set((s) => ({ asignaciones: asig.fijarMesasDeMesero(s.asignaciones, meseroId, mesaIds) })),
       setPlatillos: (platillos) => set({ platillos }),
       setIngredientes: (ingredientes) => set({ ingredientes }),
       setModificadores: (modificadores) => set({ modificadores }),
@@ -100,17 +116,20 @@ export const usePosStore = create(
     {
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
-      version: 5,
+      version: 6,
       // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
       // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agregó las
       // allowlists por platillo. v4 agrega el orden de categorías y `orden` en platillos.
       // v5: Bebidas pasa a elegir SABOR como variante (Refresco con tortillas/sabores).
+      // v6: la asignación mesa↔mesero sale de `mesero.mesas` y pasa a `asignaciones`.
       // En cada salto se re-siembran meseros y menú del mock, conservando las mesas que el
       // usuario creó. En backend no importa: usePosData pisa todo al cargar.
       migrate: (persisted, version) => {
-        if (version < 5 && IS_MOCK) {
-          return {
-            ...persisted,
+        if (!IS_MOCK) return persisted
+        let next = persisted
+        if (version < 5) {
+          next = {
+            ...next,
             meseros: MESEROS,
             platillos: MOCK_PLATILLOS,
             ingredientes: MOCK_INGREDIENTES,
@@ -119,10 +138,32 @@ export const usePosStore = create(
             categoriasOrden: MOCK_CATEGORIAS_ORDEN,
           }
         }
-        return persisted
+        // v6: `mesero.mesas` era un arreglo de NÚMEROS de mesa; ahora la relación es
+        // muchos-a-muchos y vive en pares por id. Se traduce lo que el usuario tuviera
+        // (resolviendo cada número contra el catálogo de mesas persistido) en vez de
+        // re-sembrar, para no borrarle el reparto del salón; solo si no quedó nada que
+        // traducir se cae al reparto del mock. La columna vieja se tira del mesero.
+        if (version < 6) {
+          const mesas = next.mesas ?? []
+          const traducidas = (next.meseros ?? []).flatMap((m) =>
+            (m.mesas ?? []).flatMap((numero) => {
+              const mesa = mesas.find((x) => x.numero === numero)
+              return mesa ? [{ mesaId: mesa.id, meseroId: m.id }] : []
+            }),
+          )
+          next = {
+            ...next,
+            asignaciones: traducidas.length ? traducidas : ASIGNACIONES,
+            meseros: (next.meseros ?? []).map((m) => {
+              const { mesas: _viejas, ...resto } = m
+              return resto
+            }),
+          }
+        }
+        return next
       },
       partialize: (s) => ({
-        mesas: s.mesas, meseros: s.meseros,
+        mesas: s.mesas, meseros: s.meseros, asignaciones: s.asignaciones,
         platillos: s.platillos, ingredientes: s.ingredientes,
         modificadores: s.modificadores, extras: s.extras, categoriasOrden: s.categoriasOrden,
       }),
@@ -147,6 +188,49 @@ export const useMesaPagadaStore = create((set) => ({
     }),
 }))
 
+// Para llevar: padrón de clientes del restaurante y órdenes de mostrador/teléfono.
+//
+// Una orden para llevar es la contraparte de una cuenta de mesa cuando NO hay mesa: se
+// identifica por el cliente (que se busca por teléfono) y por un folio corto. Vive en su
+// propio store —y en sus propias tablas— porque `cuentas` es de tali y todo su flujo de
+// dividir y pagar está anclado a una mesa; una orden de mostrador se cobra en caja.
+//
+// El total de una orden ABIERTA no se guarda: se deriva de sus pedidos (usePedidosStore),
+// que es donde ya viven los renglones con su precio. Solo al cerrarla se congelan `total`
+// e `items` en la fila, y eso es lo que sostiene el historial de compras del cliente
+// aunque después se limpien los pedidos de cocina.
+//
+// Persistido igual que el resto: en modo mock es el único "backend" que hay, y en backend
+// usePosData lo pisa al cargar.
+export const useLlevarStore = create(
+  persist(
+    (set) => ({
+      clientes: [], // { id, telefono (solo dígitos), nombre, direccion, nota }
+      // { id, folio, clienteId, clienteNombre, clienteTelefono, direccion, meseroId,
+      //   meseroNombre, estado: 'abierta'|'entregada'|'cancelada', total, items, createdAt, closedAt }
+      ordenes: [],
+
+      setClientes: (clientes) => set({ clientes }),
+      setOrdenes: (ordenes) => set({ ordenes }),
+
+      // Alta o edición por id. El teléfono ya viene normalizado por quien llama
+      // (useLlevar), que es también quien evita dar de alta dos veces el mismo número.
+      guardarClienteLocal: (cliente) =>
+        set((s) => ({
+          clientes: s.clientes.some((c) => c.id === cliente.id)
+            ? s.clientes.map((c) => (c.id === cliente.id ? { ...c, ...cliente } : c))
+            : [...s.clientes, cliente],
+        })),
+
+      agregarOrdenLocal: (orden) => set((s) => ({ ordenes: [...s.ordenes, orden] })),
+
+      actualizarOrdenLocal: (ordenId, patch) =>
+        set((s) => ({ ordenes: s.ordenes.map((o) => (o.id === ordenId ? { ...o, ...patch } : o)) })),
+    }),
+    { name: 'pos-balbuena-llevar', storage: safeStorage },
+  ),
+)
+
 // Avisos del turno: la contraparte VISIBLE de los sonidos. El tono dice "algo pasó",
 // pero no qué ni en qué mesa, y si el mesero traía la tablet lejos puede que ni lo haya
 // oído. Aquí queda el registro para consultarlo cuando pueda. NO se persiste: es
@@ -154,7 +238,9 @@ export const useMesaPagadaStore = create((set) => ({
 const MAX_AVISOS = 30
 
 export const useAvisosStore = create((set) => ({
-  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, at, leido }
+  // `ruta` es a dónde lleva tocar el aviso. Existe porque no todo aviso es de una mesa:
+  // los de una orden PARA LLEVAR apuntan a la orden del cliente, que no tiene mesaId.
+  avisos: [], // { id, tipo: 'listo'|'error', titulo, detalle, mesaId, ruta, at, leido }
   agregarAviso: (aviso) =>
     set((s) => ({
       avisos: [
@@ -266,7 +352,12 @@ const COLUMNA_TIEMPO = { preparando: 'preparandoAt', listo: 'listoAt', entregado
 export const usePedidosStore = create(
   persist(
     (set) => ({
-      pedidos: [], // { id, mesaId, mesaNumero, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
+      // meseroId: quién mandó ESTE pedido. Una mesa puede tener varios meseros, así que
+      // la mesa ya no basta para saber a quién avisarle que su platillo está listo.
+      // meseroNombre se queda al lado, denormalizado, para el ticket de cocina.
+      // Un pedido para llevar (tipo: 'llevar') no trae mesa: en su lugar apunta a la orden
+      // de mostrador (ordenLlevarId) y carga el nombre del cliente para la comanda.
+      pedidos: [], // { id, tipo: 'mesa'|'llevar', mesaId, mesaNumero, ordenLlevarId, clienteNombre, meseroId, meseroNombre, items, enviadoAt, estado, estadoActualizadoAt, preparandoAt, listoAt, entregadoAt }
 
       // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
       setPedidos: (pedidos) => set({ pedidos }),
@@ -288,6 +379,11 @@ export const usePedidosStore = create(
 
       eliminarPedidosDeMesa: (mesaId) =>
         set((s) => ({ pedidos: s.pedidos.filter((p) => p.mesaId !== mesaId) })),
+
+      // La contraparte para una orden PARA LLEVAR, que no tiene mesa por la cual filtrar:
+      // al cerrarla sus comandas salen del tablero, igual que al cerrar una mesa.
+      eliminarPedidosDeOrdenLlevar: (ordenId) =>
+        set((s) => ({ pedidos: s.pedidos.filter((p) => p.ordenLlevarId !== ordenId) })),
 
       // Solo mutan un pedido que sigue 'pendiente' (Nuevo) — mismo guard que el RPC
       // pos_editar_item_pedido/pos_eliminar_item_pedido del modo backend. Fuera de esa
@@ -322,5 +418,6 @@ if (IS_MOCK && typeof window !== 'undefined') {
     if (e.key === 'pos-balbuena-orders') useOrderStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-pedidos') usePedidosStore.persist.rehydrate()
     if (e.key === 'pos-balbuena-catalogo') usePosStore.persist.rehydrate()
+    if (e.key === 'pos-balbuena-llevar') useLlevarStore.persist.rehydrate()
   })
 }
