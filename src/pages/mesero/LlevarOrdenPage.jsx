@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrdenLlevar } from '../../hooks/useOrdenLlevar'
+import { useVertical } from '../../hooks/useVertical'
 import { formatearTelefono } from '../../lib/telefono'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
 import { PlatilloCard } from '../../components/mesero/PlatilloCard'
@@ -17,6 +18,7 @@ import { ConfirmModal } from '../../components/ui/ConfirmModal'
 export default function LlevarOrdenPage() {
   const { ordenId } = useParams()
   const navigate = useNavigate()
+  const vertical = useVertical()
   const { menu, categorias, ingredientes, modificadores, extras } = useMenu()
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
@@ -61,7 +63,7 @@ export default function LlevarOrdenPage() {
   const cocinando = pedidos.some((p) => p.estado === 'pendiente' || p.estado === 'preparando')
 
   return (
-    <div className="h-full flex flex-col" style={{ padding: '20px 28px' }}>
+    <div className="h-full flex flex-col" style={{ padding: vertical ? '16px 20px' : '20px 28px' }}>
       <div className="flex items-center flex-shrink-0" style={{ gap: 14, marginBottom: 16 }}>
         <button
           onClick={() => (categoriaActiva ? setCategoriaActiva(null) : navigate('/mesero/llevar'))}
@@ -98,7 +100,16 @@ export default function LlevarOrdenPage() {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) 380px', gap: 20 }}>
+      <div
+        className="flex-1 min-h-0"
+        style={{
+          display: 'grid', gap: vertical ? 16 : 20,
+          // Mismo reacomodo que la orden de mesa: en vertical el ticket baja debajo del menú.
+          ...(vertical
+            ? { gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1.4fr) minmax(0, 1fr)' }
+            : { gridTemplateColumns: 'minmax(0, 1.5fr) 380px' }),
+        }}
+      >
         <div className="flex flex-col min-h-0 min-w-0" style={{ gap: 4 }}>
           <div className={categoriaActiva === null ? 'flex-1 min-h-0' : 'flex-shrink-0'}>
             <CategoriaGrid

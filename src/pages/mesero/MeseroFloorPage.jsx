@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
+import { useVertical } from '../../hooks/useVertical'
 import { useLlevarStore, useMeseroStore } from '../../store/appStore'
 import { MesaCard, MESA_CARD_W } from '../../components/mesero/MesaCard'
 
 export default function MeseroFloorPage() {
   const navigate = useNavigate()
+  const vertical = useVertical()
   const { mesas, mesero } = useMesas()
   const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
   const toggleSoloMisMesas = useMeseroStore((s) => s.toggleSoloMisMesas)
@@ -17,8 +19,8 @@ export default function MeseroFloorPage() {
   const llevarAbiertas = useLlevarStore((s) => s.ordenes).filter((o) => o.estado === 'abierta').length
 
   return (
-    <div className="h-full flex flex-col" style={{ padding: '24px 32px' }}>
-      <div className="flex items-center justify-between flex-shrink-0" style={{ marginBottom: 20, gap: 16 }}>
+    <div className="h-full flex flex-col" style={{ padding: vertical ? '20px 20px' : '24px 32px' }}>
+      <div className="flex items-center justify-between flex-shrink-0" style={{ marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesas</h1>
           <p style={{ margin: '4px 0 0', fontSize: 15, color: 'var(--jb-ink-soft)' }}>
