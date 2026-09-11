@@ -163,15 +163,30 @@ function MeseroModal({ mesero, numerosMesa, esUltimoAdmin, onGuardar, onClose })
   return (
     <ModalShell onClose={onClose} titulo={esNuevo ? 'Nuevo mesero' : `Editar ${mesero.nombre}`}>
       <Campo label="Nombre">
-        <input value={nombre} onChange={(e) => setNombre(e.target.value)} style={inputStyle} placeholder="Ej. Doña Rosa" />
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          name="jb-mesero-nombre"
+          autoComplete="off"
+          style={inputStyle}
+          placeholder="Ej. Doña Rosa"
+        />
       </Campo>
 
+      {/* type/name "raros" + autoComplete off: el AutoFill de iOS y los gestores de
+          contraseñas bloqueaban el tecleo al creer que era un campo de contraseña. */}
       <Campo label="PIN (4 dígitos, opcional)">
         <input
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          type="text"
           inputMode="numeric"
-          style={inputStyle}
+          maxLength={4}
+          name="jb-mesero-pin"
+          autoComplete="off"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          style={{ ...inputStyle, letterSpacing: 4 }}
           placeholder="1234"
         />
       </Campo>
