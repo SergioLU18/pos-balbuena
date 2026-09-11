@@ -1,20 +1,31 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { usePosStore, usePedidosStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
+import { useMesasUnidas } from '../../hooks/useMesasUnidas'
 import { useVertical } from '../../hooks/useVertical'
 import { etiquetaMesa, uid } from '../../lib/utils'
+import { secundariasDe, nombreGrupo } from '../../lib/mesasUnidas'
 import { CategoriaGrid } from '../../components/mesero/CategoriaGrid'
 import { PlatilloCard } from '../../components/mesero/PlatilloCard'
 import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlatilloModal'
 import { OrderTicket } from '../../components/mesero/OrderTicket'
+import { ConfirmModal } from '../../components/ui/ConfirmModal'
 
 export default function MeseroOrdenPage() {
   const { mesaId } = useParams()
   const navigate = useNavigate()
   const vertical = useVertical()
-  const mesa = usePosStore((s) => s.mesas).find((m) => m.id === mesaId)
+  const mesas = usePosStore((s) => s.mesas)
+  const mesa = mesas.find((m) => m.id === mesaId)
+  // Mesa unida a otra: no tiene cuenta propia, así que su pantalla es la de la principal.
+  // Cubre los caminos que no pasan por el piso — un aviso de la campana, un link viejo,
+  // o una tablet que tenía la secundaria abierta cuando otra la unió.
+  const principalId = mesa?.joined_to && mesas.some((m) => m.id === mesa.joined_to) ? mesa.joined_to : null
+  const secundarias = secundariasDe(mesas, mesaId)
+  const nombre = mesa ? etiquetaMesa(nombreGrupo(mesa.numero, secundarias)) : '—'
+  const { separarMesa } = useMesasUnidas()
   const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
   const { menu, categorias, ingredientes, modificadores, extras } = useMenu()
   // null = paso 1 (categorías a pantalla completa); string = paso 2 (platillos de esa categoría)
@@ -22,6 +33,9 @@ export default function MeseroOrdenPage() {
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
   // Renglón del ticket que se está reeditando: { tipo: 'draft'|'enviado', platillo, item, pedidoId?, pedidoItemId? }
   const [editando, setEditando] = useState(null)
+  // Confirmaciones en modal: cerrar la mesa, o la secundaria que se va a separar.
+  const [confirmandoCierre, setConfirmandoCierre] = useState(false)
+  const [separando, setSeparando] = useState(null)
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
@@ -82,10 +96,18 @@ export default function MeseroOrdenPage() {
   // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
   // desde la app de pagos. Se quitará cuando esa integración esté lista.
   function handleCerrarMesa() {
-    if (!window.confirm(`¿Cerrar ${etiquetaMesa(mesa?.numero)}? Esto libera la mesa para una nueva cuenta.`)) return
+    setConfirmandoCierre(false)
     cerrarMesa()
     navigate('/mesero')
   }
+
+  function handleSeparar() {
+    const secundaria = separando
+    setSeparando(null)
+    separarMesa(secundaria.id)
+  }
+
+  if (principalId) return <Navigate to={`/mesero/orden/${principalId}`} replace />
 
   return (
     <div className="h-full flex flex-col" style={{ padding: vertical ? '16px 20px' : '20px 28px' }}>
@@ -100,12 +122,26 @@ export default function MeseroOrdenPage() {
           ←
         </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)', flex: 1 }}>
-          {mesa ? etiquetaMesa(mesa.numero) : '—'}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
+          {nombre}{categoriaActiva ? ` · ${categoriaActiva}` : ''}
         </h1>
+
+        {secundarias.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSeparando(s)}
+            style={{
+              fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
+              padding: '10px 16px', borderRadius: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: '#fff', border: '2px dashed var(--jb-gray)', color: 'var(--jb-ink-soft)',
+            }}
+          >
+            Separar Mesa {s.numero}
+          </button>
+        ))}
 
         {cuenta && (
           <button
-            onClick={handleCerrarMesa}
+            onClick={() => setConfirmandoCierre(true)}
             title="Temporal: cerrará cuando exista el cierre real desde la app de pagos"
             style={{
               fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
@@ -192,6 +228,29 @@ export default function MeseroOrdenPage() {
           extras={extras}
           onConfirm={confirmarEdicion}
           onClose={() => setEditando(null)}
+        />
+      )}
+
+      {confirmandoCierre && (
+        <ConfirmModal
+          titulo={`¿Cerrar ${nombre}?`}
+          mensaje="Esto libera la mesa para una nueva cuenta."
+          confirmarLabel="Cerrar mesa"
+          cancelarLabel="Volver"
+          danger
+          onConfirm={handleCerrarMesa}
+          onClose={() => setConfirmandoCierre(false)}
+        />
+      )}
+
+      {separando && (
+        <ConfirmModal
+          titulo={`¿Separar la Mesa ${separando.numero}?`}
+          mensaje={`Lo que ya se pidió se queda en la cuenta de la Mesa ${mesa?.numero}. La Mesa ${separando.numero} vuelve a quedar libre para su propia cuenta.`}
+          confirmarLabel="Separar"
+          cancelarLabel="Volver"
+          onConfirm={handleSeparar}
+          onClose={() => setSeparando(null)}
         />
       )}
     </div>

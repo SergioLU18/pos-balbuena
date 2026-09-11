@@ -337,6 +337,27 @@ export const useOrderStore = create(
           const { [mesaId]: _omit, ...rest } = s.cuentas
           return { cuentas: rest }
         }),
+
+      // Unir mesas: lo que traían las secundarias pasa a la principal. Los drafts se
+      // mueven siempre (solo existen en esta tablet); las cuentas solo en mock — en
+      // backend las mueve pos_unir_mesas y llegan por Realtime.
+      juntarEnMesa: (deIds, aId, { moverCuentas = false } = {}) =>
+        set((s) => {
+          const drafts = { ...s.drafts }
+          const cuentas = { ...s.cuentas }
+          for (const id of deIds) {
+            if (drafts[id]?.length) drafts[aId] = [...(drafts[aId] ?? []), ...drafts[id]]
+            delete drafts[id]
+            if (moverCuentas && cuentas[id]) {
+              cuentas[aId] = {
+                items: [...(cuentas[aId]?.items ?? []), ...cuentas[id].items],
+                createdAt: cuentas[aId]?.createdAt ?? cuentas[id].createdAt,
+              }
+              delete cuentas[id]
+            }
+          }
+          return { drafts, cuentas }
+        }),
     }),
     { name: 'pos-balbuena-orders', storage: safeStorage },
   ),

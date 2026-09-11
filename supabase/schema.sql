@@ -148,6 +148,7 @@ security definer
 set search_path = public
 as $$
 declare
+  v_mesa   uuid;
   v_rest   uuid;
   v_cuenta uuid;
   v_numero text;
@@ -159,12 +160,17 @@ begin
     return null;
   end if;
 
-  select restaurante_id, numero into v_rest, v_numero from mesas where id = p_mesa_id;
+  -- Una mesa unida a otra no tiene cuenta propia: la orden va a su PRINCIPAL (ver
+  -- pos_unir_mesas). El `for share` espera a una unión en curso y relee joined_to ya
+  -- comiteado, así que una orden que cae justo mientras se juntan las mesas no deja
+  -- una cuenta suelta en la secundaria.
+  select coalesce(joined_to, id) into v_mesa from mesas where id = p_mesa_id for share;
+  select restaurante_id, numero into v_rest, v_numero from mesas where id = v_mesa for share;
 
-  select id into v_cuenta from cuentas where mesa_id = p_mesa_id and activa limit 1;
+  select id into v_cuenta from cuentas where mesa_id = v_mesa and activa limit 1;
   if v_cuenta is null then
     insert into cuentas (mesa_id, restaurante_id, estado, subtotal, activa)
-    values (p_mesa_id, v_rest, 'abierta', 0, true)
+    values (v_mesa, v_rest, 'abierta', 0, true)
     returning id into v_cuenta;
   end if;
 
@@ -186,12 +192,12 @@ begin
   -- mandando a la misma mesa al mismo tiempo desde dos tablets.
   if p_mesero_id is not null then
     insert into mesa_meseros (mesa_id, mesero_id)
-    values (p_mesa_id, p_mesero_id)
+    values (v_mesa, p_mesero_id)
     on conflict do nothing;
   end if;
 
   insert into pedidos (restaurante_id, mesa_id, cuenta_id, mesa_numero, mesero_id, mesero_nombre, items, estado, enviado_at)
-  values (v_rest, p_mesa_id, v_cuenta, v_numero, p_mesero_id, p_mesero_nombre, p_items, 'pendiente', now())
+  values (v_rest, v_mesa, v_cuenta, v_numero, p_mesero_id, p_mesero_nombre, p_items, 'pendiente', now())
   returning id into v_pedido;
 
   -- Bitácora. El importe se calcula sobre p_items y no se lee de la cuenta porque la
@@ -201,7 +207,7 @@ begin
 
   perform pos_log(
     v_rest, p_mesero_id, p_mesero_nombre,
-    'orden.enviar', 'mesa', p_mesa_id, v_numero,
+    'orden.enviar', 'mesa', v_mesa, v_numero,
     jsonb_build_object(
       'pedido_id',  v_pedido,
       'cuenta_id',  v_cuenta,
@@ -455,6 +461,208 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- Mesas unidas. En el salón a veces juntan dos mesas físicas para un grupo grande.
+-- Se usa la columna de tali `mesas.joined_to`: la SECUNDARIA apunta a su PRINCIPAL,
+-- y la cuenta, las comandas y las órdenes nuevas viven todas en la principal. Es de
+-- un solo nivel — sin cadenas —, igual que en tali.
+--
+-- El POS NO usa join_mesa_to_primary de tali: esa función no mueve las comandas de
+-- cocina (quedaban colgadas de la secundaria, apuntando a una cuenta cerrada, y las
+-- ediciones de renglón ya no encontraban su fila en cuenta_items), recalcula el
+-- subtotal sin descuentos y no deja rastro en la bitácora.
+--
+-- Cerrar la cuenta NO separa las mesas: puede que el grupo se vaya y las mesas se
+-- queden juntas para el siguiente. Separar es siempre explícito.
+-- ============================================================================
+-- La columna es de tali; el `if not exists` solo cubre una base donde tali todavía no
+-- corrió su migración.
+alter table mesas add column if not exists joined_to uuid references mesas(id);
+
+-- ============================================================================
+-- RPC: unir una o varias mesas a una principal. Por cada secundaria:
+--   · su cuenta abierta pasa a la principal (se abre una si la principal no tenía).
+--     Cada renglón se funde con el de la principal que tenga el mismo nombre, precio y
+--     descuento: pos_editar_item_pedido ubica su fila por (cuenta_id, nombre), y con
+--     dos filas iguales le aplicaría el cambio a las dos. No se funden filas que tali
+--     ya tocó con un pago o una división (pago_items / cuenta_item_splits apuntan a
+--     ellas por id): esas se mueven tal cual.
+--   · su cuenta vieja se cierra como 'cerrada' — igual que tali —, no 'pagada', para
+--     que el POS no la anuncie como cobrada.
+--   · sus comandas de cocina pasan a la principal, para que editar un renglón enviado
+--     y cerrar la mesa las sigan encontrando.
+-- Bloqueado si la secundaria ya tiene pagos completados (mismo criterio que
+-- transfer_cuenta_to_mesa de tali): el pago quedaría colgado de una cuenta cerrada.
+-- ============================================================================
+drop function if exists pos_unir_mesas(uuid, uuid[], uuid, text);
+create or replace function pos_unir_mesas(
+  p_principal_id  uuid,
+  p_secundarias   uuid[],
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_principal mesas%rowtype;
+  v_sec       mesas%rowtype;
+  v_sec_id    uuid;
+  v_cuenta_p  uuid;
+  v_cuenta_s  uuid;
+  v_item      cuenta_items%rowtype;
+  v_destino   uuid;
+  v_importe   numeric;
+  v_renglones integer;
+  v_comandas  integer;
+begin
+  if coalesce(array_length(p_secundarias, 1), 0) = 0 then
+    raise exception 'Elige al menos una mesa para unir.';
+  end if;
+  if p_principal_id = any(p_secundarias) then
+    raise exception 'No se puede unir una mesa consigo misma.';
+  end if;
+
+  -- Candado sobre todas las mesas del grupo, en orden de id para que dos uniones
+  -- simultáneas no se esperen en cruz. pos_enviar_orden y pos_cerrar_mesa toman el
+  -- candado de su mesa, así que ninguna orden ni cierre cae a media mudanza.
+  perform 1 from mesas where id = p_principal_id or id = any(p_secundarias) order by id for update;
+
+  select * into v_principal from mesas where id = p_principal_id;
+  if not found or not v_principal.activo then
+    raise exception 'La mesa principal ya no existe.';
+  end if;
+  if v_principal.joined_to is not null then
+    raise exception 'La Mesa % ya está unida a otra: elige la principal de ese grupo.', v_principal.numero;
+  end if;
+
+  select id into v_cuenta_p from cuentas where mesa_id = p_principal_id and activa limit 1;
+
+  foreach v_sec_id in array p_secundarias loop
+    select * into v_sec from mesas where id = v_sec_id;
+    if not found or not v_sec.activo or v_sec.restaurante_id is distinct from v_principal.restaurante_id then
+      raise exception 'Una de las mesas ya no existe.';
+    end if;
+    if v_sec.joined_to is not null then
+      raise exception 'La Mesa % ya está unida a otra.', v_sec.numero;
+    end if;
+    if exists (select 1 from mesas where joined_to = v_sec_id and activo) then
+      raise exception 'La Mesa % ya tiene mesas unidas: úsala como principal.', v_sec.numero;
+    end if;
+
+    v_importe   := 0;
+    v_renglones := 0;
+    select id into v_cuenta_s from cuentas where mesa_id = v_sec_id and activa limit 1;
+
+    if v_cuenta_s is not null then
+      if exists (select 1 from pagos where cuenta_id = v_cuenta_s and estado = 'completado') then
+        raise exception 'La Mesa % ya tiene pagos registrados: no se puede unir.', v_sec.numero;
+      end if;
+
+      if v_cuenta_p is null then
+        insert into cuentas (mesa_id, restaurante_id, estado, subtotal, activa)
+        values (p_principal_id, v_principal.restaurante_id, 'abierta', 0, true)
+        returning id into v_cuenta_p;
+      end if;
+
+      for v_item in select * from cuenta_items where cuenta_id = v_cuenta_s order by created_at loop
+        select ci.id into v_destino
+        from cuenta_items ci
+        where ci.cuenta_id = v_cuenta_p
+          and ci.nombre = v_item.nombre
+          and ci.precio_unitario = v_item.precio_unitario
+          and ci.platillo_id is not distinct from v_item.platillo_id
+          and coalesce(ci.descuento_porcentaje, 0) = coalesce(v_item.descuento_porcentaje, 0)
+          and not exists (select 1 from pago_items pi where pi.cuenta_item_id in (ci.id, v_item.id))
+          and not exists (select 1 from cuenta_item_splits sp where sp.cuenta_item_id in (ci.id, v_item.id))
+        limit 1;
+
+        if v_destino is not null then
+          update cuenta_items set cantidad = cantidad + v_item.cantidad where id = v_destino;
+          delete from cuenta_items where id = v_item.id;
+        else
+          update cuenta_items set cuenta_id = v_cuenta_p where id = v_item.id;
+        end if;
+
+        v_importe   := v_importe + v_item.precio_unitario * v_item.cantidad;
+        v_renglones := v_renglones + 1;
+      end loop;
+
+      update cuentas set activa = false, estado = 'cerrada', closed_at = now() where id = v_cuenta_s;
+    end if;
+
+    -- mesa_numero se queda como estaba: la comanda se mandó para esa mesa y ahí está
+    -- sentado quien la pidió.
+    update pedidos set mesa_id = p_principal_id, cuenta_id = coalesce(v_cuenta_p, cuenta_id)
+    where mesa_id = v_sec_id;
+    get diagnostics v_comandas = row_count;
+
+    update mesas set joined_to = p_principal_id where id = v_sec_id;
+
+    -- Un evento por secundaria, colgado de la principal: "todo lo de la Mesa 3" trae
+    -- quién le juntó qué y cuánto dinero traía cada una.
+    perform pos_log(
+      v_principal.restaurante_id, p_mesero_id, p_mesero_nombre,
+      'mesa.unir', 'mesa', p_principal_id, v_principal.numero,
+      jsonb_build_object(
+        'secundaria_id',  v_sec_id,
+        'secundaria',     v_sec.numero,
+        'cuenta_id',      v_cuenta_p,
+        'cuenta_cerrada', v_cuenta_s,
+        'renglones',      v_renglones,
+        'importe',        v_importe,
+        'comandas',       v_comandas
+      )
+    );
+  end loop;
+
+  if v_cuenta_p is not null then
+    perform recalculate_subtotal(v_cuenta_p);
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: separar una mesa de su principal. Solo suelta el vínculo: lo que ya se pidió
+-- se queda en la cuenta de la principal (no hay forma de saber qué renglón era de
+-- quién), y la mesa vuelve a quedar libre para su propia cuenta.
+-- ============================================================================
+drop function if exists pos_separar_mesa(uuid, uuid, text);
+create or replace function pos_separar_mesa(
+  p_mesa_id       uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sec       mesas%rowtype;
+  v_principal mesas%rowtype;
+begin
+  select * into v_sec from mesas where id = p_mesa_id for update;
+  if not found then
+    raise exception 'La mesa no existe.';
+  end if;
+  -- Ya suelta: otra tablet se adelantó. No hay operación, así que no hay evento.
+  if v_sec.joined_to is null then
+    return;
+  end if;
+
+  select * into v_principal from mesas where id = v_sec.joined_to;
+
+  update mesas set joined_to = null where id = p_mesa_id;
+
+  perform pos_log(
+    v_sec.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'mesa.separar', 'mesa', v_principal.id, v_principal.numero,
+    jsonb_build_object('secundaria_id', p_mesa_id, 'secundaria', v_sec.numero)
+  );
+end;
+$$;
+
 -- ── Orden del listado de mesas (compartido, lo ajusta el admin en Ajustes) ──
 -- Igual que platillos.orden: menor = primero. Es una columna del POS sobre la
 -- tabla `mesas` de tali (que la ignora); default 0 para las filas que ya existen.
@@ -537,6 +745,14 @@ begin
   select exists(select 1 from cuentas where mesa_id = p_mesa_id and activa) into v_tiene_cuenta;
   if v_tiene_cuenta then
     raise exception 'No se puede borrar una mesa con cuenta abierta.';
+  end if;
+  -- Dada de baja, una secundaria seguiría "unida" sin que nadie la vea, y una principal
+  -- dejaría a sus secundarias apuntando a una mesa que ya no aparece.
+  if exists (
+    select 1 from mesas
+    where (id = p_mesa_id and joined_to is not null) or (joined_to = p_mesa_id and activo)
+  ) then
+    raise exception 'La mesa está unida con otra. Sepárala antes de borrarla.';
   end if;
 
   select restaurante_id, numero into v_rest, v_numero from mesas where id = p_mesa_id;
@@ -884,6 +1100,8 @@ grant execute on function pos_enviar_orden(uuid, text, jsonb, uuid)             
 grant execute on function pos_editar_item_pedido(uuid, text, integer, uuid, text)   to anon, authenticated;
 grant execute on function pos_eliminar_item_pedido(uuid, text, uuid, text)          to anon, authenticated;
 grant execute on function pos_cerrar_mesa(uuid, uuid, text)                         to anon, authenticated;
+grant execute on function pos_unir_mesas(uuid, uuid[], uuid, text)                  to anon, authenticated;
+grant execute on function pos_separar_mesa(uuid, uuid, text)                        to anon, authenticated;
 grant execute on function pos_crear_mesa(uuid, text, uuid[], uuid, text)            to anon, authenticated;
 grant execute on function pos_borrar_mesa(uuid, uuid, text)                         to anon, authenticated;
 grant execute on function pos_set_mesas_mesero(uuid, uuid[], uuid, text)            to anon, authenticated;

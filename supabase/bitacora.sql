@@ -68,6 +68,9 @@ create index if not exists pos_eventos_accion_idx       on pos_eventos (accion, 
 --   item.eliminar       se quitó un renglón YA enviado
 --   cocina.estado       una comanda cambió de columna en el tablero
 --   mesa.cerrar         se cerró la cuenta de una mesa (trae el ticket congelado)
+--   mesa.unir           se juntó una mesa a otra (sobre la principal; la cuenta de la
+--                       secundaria pasa a la principal)
+--   mesa.separar        se soltó una mesa de su principal (lo pedido se queda en la principal)
 --   mesa.crear / mesa.renombrar / mesa.borrar / mesa.reordenar
 --   mesero.mesas        se le fijaron las mesas que atiende
 --   mesero.baja         se dio de baja a un mesero

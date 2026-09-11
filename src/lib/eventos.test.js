@@ -41,6 +41,14 @@ describe('describir', () => {
     expect(describir(ev('llevar.cerrar', { estado: 'entregada' }))).toBe('Entregó la orden para llevar')
   })
 
+  it('nombra la mesa que se unió o separó, y el dinero que traía', () => {
+    expect(describir(ev('mesa.unir', { secundaria: '4', importe: 120 }))).toBe('Le unió la Mesa 4 y pasó su cuenta de $120.00')
+    expect(describir(ev('mesa.unir', { secundaria: '4', importe: 0 }))).toBe('Le unió la Mesa 4')
+    expect(describir(ev('mesa.separar', { secundaria: '4' }))).toBe('Le separó la Mesa 4')
+    // Pasar dinero de una cuenta a otra no es venta: no suma en el importe del turno.
+    expect(importe(ev('mesa.unir', { importe: 120 }))).toBeNull()
+  })
+
   it('una acción desconocida se muestra tal cual en vez de romper', () => {
     expect(describir(ev('mesa.fusionar'))).toBe('mesa.fusionar')
   })

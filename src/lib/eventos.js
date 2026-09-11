@@ -20,6 +20,8 @@ const GRUPO_DE = {
   'item.eliminar': 'operacion',
   'cocina.estado': 'operacion',
   'mesa.cerrar': 'operacion',
+  'mesa.unir': 'operacion',
+  'mesa.separar': 'operacion',
   'llevar.crear': 'operacion',
   'llevar.cerrar': 'operacion',
   'cliente.guardar': 'operacion',
@@ -127,6 +129,12 @@ export function describir(ev) {
     case 'item.eliminar': return `Quitó ${d.cantidad}× ${d.platillo} ya enviado`
     case 'cocina.estado': return `Movió la comanda de ${COLUMNA[d.de] ?? d.de} a ${COLUMNA[d.a] ?? d.a}`
     case 'mesa.cerrar': return d.comandas ? `Cerró la cuenta (${plural(d.comandas, 'comanda', 'comandas')})` : 'Cerró la cuenta'
+    // El sujeto es la principal ("Mesa 3"); la secundaria va en la frase. El dinero que
+    // pasa de una cuenta a otra no es venta nueva, por eso va aquí y no en importe().
+    case 'mesa.unir': return Number(d.importe) > 0
+      ? `Le unió la Mesa ${d.secundaria} y pasó su cuenta de ${f(d.importe)}`
+      : `Le unió la Mesa ${d.secundaria}`
+    case 'mesa.separar': return `Le separó la Mesa ${d.secundaria}`
 
     case 'mesa.crear': return 'Creó la mesa'
     case 'mesa.renombrar': return `Renombró la mesa: ${d.de} → ${d.a}`

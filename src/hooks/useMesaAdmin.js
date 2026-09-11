@@ -101,6 +101,9 @@ export function useMesaAdmin() {
       if (useOrderStore.getState().cuentas[mesaId]) {
         return Promise.resolve({ error: 'No se puede borrar una mesa con cuenta abierta.' })
       }
+      if (mesas.some((m) => (m.id === mesaId && m.joined_to) || m.joined_to === mesaId)) {
+        return Promise.resolve({ error: 'La mesa está unida con otra. Sepárala antes de borrarla.' })
+      }
       setMesas(mesas.filter((m) => m.id !== mesaId))
       soltarMesa(mesaId) // deja de estar atendida por nadie
       return Promise.resolve({ error: null })

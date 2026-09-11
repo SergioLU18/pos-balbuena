@@ -24,7 +24,7 @@ export function useMesas({ ignorarFiltro = false } = {}) {
 
   const mesero = MESEROS.find((m) => m.id === currentMeseroId) ?? null
 
-  const mesas = MESAS.map((m) => {
+  const base = MESAS.map((m) => {
     const cuenta = cuentas[m.id]
     const draft = drafts[m.id] ?? []
     const pagada = pagadas[m.id] ?? null
@@ -64,6 +64,24 @@ export function useMesas({ ignorarFiltro = false } = {}) {
       total,
       itemCount: cuenta?.items?.length ?? 0,
       createdAt: cuenta?.createdAt ?? null,
+    }
+  })
+
+  // Mesas unidas (ver src/lib/mesasUnidas.js). La secundaria trae `unidaA` (su principal)
+  // y la principal trae `unidas` (sus secundarias). Una principal que ya no está en el
+  // listado (dada de baja) se ignora: la mesa se pinta como suelta.
+  // "Mía" pasa a ser del GRUPO: si atiendo cualquiera de las mesas juntas, "solo mis
+  // mesas" me enseña todas, porque en el salón ya son una sola mesa.
+  const porId = new Map(base.map((m) => [m.id, m]))
+  const mesas = base.map((m) => {
+    const principal = m.joined_to ? porId.get(m.joined_to) ?? null : null
+    const raiz = principal ?? m
+    const grupo = base.filter((x) => x.id === raiz.id || x.joined_to === raiz.id)
+    return {
+      ...m,
+      unidaA: principal ? { id: principal.id, numero: principal.numero } : null,
+      unidas: principal ? [] : grupo.filter((x) => x.id !== m.id).map((x) => ({ id: x.id, numero: x.numero })),
+      esMia: grupo.some((x) => x.esMia),
     }
   }).filter((m) => !soloMisMesas || m.esMia)
 
