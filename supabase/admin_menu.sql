@@ -2,7 +2,7 @@
 -- pos-balbuena · Fase ADMIN: mesero administrador + menú editable
 -- ----------------------------------------------------------------------------
 -- Se corre sobre el MISMO proyecto Supabase que comparten pos-balbuena y tali.
--- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → llevar.sql → seed.sql
+-- Orden de ejecución:  cleanup.sql → schema.sql → bitacora.sql → admin_menu.sql → llevar.sql → seed.sql
 --
 -- Dos decisiones de diseño clave:
 --
@@ -16,8 +16,10 @@
 --    NO abriendo `platillos` a la anon key. `platillos` la comparte tali con una
 --    postura más estricta; abrirla a anon la debilitaría para todos. Las RPCs
 --    dejan a tali intacta y el POS (anon) solo escribe por funciones controladas.
---    (Las tablas pos_ingredientes / pos_modificadores SÍ son 100% del POS, así
---    que esas sí llevan políticas abiertas como meseros/pedidos.)
+--    (Las tablas pos_ingredientes / pos_modificadores / pos_extras / pos_categorias
+--    sí son 100% del POS. Antes llevaban políticas abiertas y se escribían directo;
+--    hoy son de solo lectura y también van por RPC, para que cada cambio quede en
+--    la bitácora — ver bitacora.sql.)
 -- ============================================================================
 
 -- ── 1. Rol admin en meseros ─────────────────────────────────────────────────
@@ -107,6 +109,7 @@ create table if not exists pos_categorias (
 -- PostgREST al resolver por nombres de argumento.
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb);
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb);
+drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int);
 create or replace function pos_guardar_platillo(
   p_id              uuid,
   p_restaurante_id  uuid,
@@ -120,7 +123,9 @@ create or replace function pos_guardar_platillo(
   p_tortillas       jsonb default null,
   p_modificadores   jsonb default '[]',
   p_extras          jsonb default '[]',
-  p_orden           int   default null
+  p_orden           int   default null,
+  p_mesero_id       uuid  default null,
+  p_mesero_nombre   text  default null
 ) returns uuid
 language plpgsql
 security definer
@@ -130,6 +135,7 @@ declare
   v_id     uuid := p_id;
   v_precio numeric;
   v_orden  int := p_orden;
+  v_antes  platillos%rowtype;
 begin
   if p_nombre is null or length(trim(p_nombre)) = 0 then
     raise exception 'El nombre del platillo es obligatorio.';
@@ -153,6 +159,12 @@ begin
               jsonb_array_elements(v->'tiers') tt)
     ), 0);
 
+  -- Foto del platillo ANTES de tocarlo: es lo que convierte la línea de bitácora en
+  -- algo útil (le subió los huaraches de 45 a 60) en vez de un genérico edito el menu.
+  if v_id is not null then
+    select * into v_antes from platillos where id = v_id;
+  end if;
+
   if v_id is null then
     insert into platillos (restaurante_id, nombre, categoria, descripcion, precio,
                            base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden)
@@ -170,6 +182,27 @@ begin
     where id = v_id;
   end if;
 
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    case when p_id is null then 'platillo.crear' else 'platillo.editar' end,
+    'platillo', v_id, p_nombre,
+    case when p_id is null then
+      jsonb_build_object('categoria', p_categoria, 'precio', v_precio, 'activo', p_activo)
+    else
+      jsonb_build_object(
+        'antes', jsonb_build_object(
+          'nombre', v_antes.nombre, 'categoria', v_antes.categoria,
+          'precio', v_antes.precio, 'activo', v_antes.activo, 'tiers', v_antes.tiers
+        ),
+        'despues', jsonb_build_object(
+          'nombre', p_nombre, 'categoria', p_categoria,
+          'precio', v_precio, 'activo', p_activo, 'tiers', coalesce(p_tiers, '[]'::jsonb)
+        ),
+        'cambio_precio', v_antes.precio is distinct from v_precio
+      )
+    end
+  );
+
   return v_id;
 end;
 $$;
@@ -179,32 +212,65 @@ $$;
 -- elimina la fila. Antes se desligan los renglones de cuentas que lo referencian
 -- (platillo_id -> null): cuenta_items ya guarda nombre y precio denormalizados, así
 -- que el historial de ventas queda intacto sin FK colgada.
-create or replace function pos_borrar_platillo(p_id uuid)
-returns void
+drop function if exists pos_borrar_platillo(uuid);
+create or replace function pos_borrar_platillo(
+  p_id            uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_antes platillos%rowtype;
 begin
+  -- El borrado sí es real (la fila se va), así que la bitácora se queda con la única
+  -- copia de lo que había. Sin esto, quien pregunte mañana por el platillo que ya no
+  -- está no tiene respuesta posible: no sobrevive ni el nombre.
+  select * into v_antes from platillos where id = p_id;
+
   update cuenta_items set platillo_id = null where platillo_id = p_id;
   delete from platillos where id = p_id;
+
+  perform pos_log(
+    v_antes.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'platillo.borrar', 'platillo', p_id, v_antes.nombre,
+    jsonb_build_object('categoria', v_antes.categoria, 'precio', v_antes.precio, 'tiers', v_antes.tiers)
+  );
 end;
 $$;
 
 -- ── RPC: reordenar platillos. Recibe los ids en el orden deseado y les asigna
 -- orden = posición (0,1,2,…). Se usa para las flechas ▲▼ del editor de menú.
 -- (platillos no es escribible por anon directo; por eso va por RPC como el resto.)
-create or replace function pos_reordenar_platillos(p_ids uuid[])
-returns void
+drop function if exists pos_reordenar_platillos(uuid[]);
+create or replace function pos_reordenar_platillos(
+  p_ids           uuid[],
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_rest      uuid;
+  v_categoria text;
 begin
   update platillos p
   set orden = pos.idx
   from (select id, (ord - 1) as idx from unnest(p_ids) with ordinality as t(id, ord)) pos
   where p.id = pos.id;
+
+  -- Se reordena una categoría a la vez, así que el primer id basta para nombrarla.
+  select restaurante_id, categoria into v_rest, v_categoria from platillos where id = p_ids[1];
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'platillo.reordenar', null, null, v_categoria,
+    jsonb_build_object('platillos', coalesce(array_length(p_ids, 1), 0))
+  );
 end;
 $$;
 
@@ -213,11 +279,14 @@ $$;
 -- sola llamada, agrega el nombre del extra a los platillos seleccionados y lo quita
 -- de los demás. p_old_extra permite renombrar: si difiere, primero se limpia el nombre
 -- viejo de todos. (jsonb `-` texto quita elementos del arreglo; `?` prueba pertenencia.)
+drop function if exists pos_set_extra_en_platillos(uuid, text, uuid[], text);
 create or replace function pos_set_extra_en_platillos(
   p_restaurante_id uuid,
   p_extra          text,
   p_platillo_ids   uuid[],
-  p_old_extra      text default null
+  p_old_extra      text default null,
+  p_mesero_id      uuid default null,
+  p_mesero_nombre  text default null
 ) returns void
 language plpgsql
 security definer
@@ -241,6 +310,277 @@ begin
     ) t
   ) sub
   where p.id = sub.id;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    'extra.platillos', 'extra', null, p_extra,
+    jsonb_build_object(
+      'platillos', coalesce(array_length(p_platillo_ids, 1), 0),
+      'nombre_anterior', p_old_extra
+    )
+  );
+end;
+$$;
+
+-- ── 5.b RPCs de los catálogos (ingredientes, modificadores, extras, categorías)
+-- ----------------------------------------------------------------------------
+-- Estas cuatro tablas se escribían DIRECTO desde el cliente (RLS abierta): era lo
+-- más rápido y no había tabla ajena de por medio. El problema es que una escritura
+-- directa no puede dejar rastro de quién la hizo — no hay auth, y si se dejara al
+-- cliente insertar en la bitácora también podría inventar eventos.
+--
+-- Así que pasan por RPC como todo lo demás, y sus políticas de RLS bajan a solo
+-- lectura (ver sección 6). El costo es más código; lo que se compra es que "quién
+-- le cambió el precio al aguacate" siempre tenga respuesta.
+--
+-- Las seis son el mismo par — guardar (alta o edición según p_id) y borrar — con la
+-- única diferencia de la columna de dinero: `extra` en ingredientes, `precio` en
+-- extras, ninguna en modificadores.
+
+create or replace function pos_guardar_ingrediente(
+  p_id             uuid,
+  p_restaurante_id uuid,
+  p_nombre         text,
+  p_extra          numeric default 0,
+  p_activo         boolean default true,
+  p_orden          int     default 0,
+  p_mesero_id      uuid    default null,
+  p_mesero_nombre  text    default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id    uuid := p_id;
+  v_antes pos_ingredientes%rowtype;
+begin
+  if coalesce(btrim(p_nombre), '') = '' then
+    raise exception 'El nombre del ingrediente es obligatorio.';
+  end if;
+
+  if v_id is null then
+    insert into pos_ingredientes (restaurante_id, nombre, extra, activo, orden)
+    values (p_restaurante_id, btrim(p_nombre), coalesce(p_extra, 0), p_activo, coalesce(p_orden, 0))
+    returning id into v_id;
+  else
+    select * into v_antes from pos_ingredientes where id = v_id;
+    update pos_ingredientes
+    set nombre = btrim(p_nombre), extra = coalesce(p_extra, 0),
+        activo = p_activo, orden = coalesce(p_orden, orden)
+    where id = v_id;
+  end if;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    case when p_id is null then 'ingrediente.crear' else 'ingrediente.editar' end,
+    'ingrediente', v_id, btrim(p_nombre),
+    case when p_id is null
+      then jsonb_build_object('extra', coalesce(p_extra, 0), 'activo', p_activo)
+      else jsonb_build_object(
+        'antes',   jsonb_build_object('nombre', v_antes.nombre, 'extra', v_antes.extra, 'activo', v_antes.activo),
+        'despues', jsonb_build_object('nombre', btrim(p_nombre), 'extra', coalesce(p_extra, 0), 'activo', p_activo)
+      )
+    end
+  );
+
+  return v_id;
+end;
+$$;
+
+create or replace function pos_borrar_ingrediente(
+  p_id            uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_antes pos_ingredientes%rowtype;
+begin
+  select * into v_antes from pos_ingredientes where id = p_id;
+  delete from pos_ingredientes where id = p_id;
+
+  perform pos_log(
+    v_antes.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'ingrediente.borrar', 'ingrediente', p_id, v_antes.nombre,
+    jsonb_build_object('extra', v_antes.extra)
+  );
+end;
+$$;
+
+create or replace function pos_guardar_modificador(
+  p_id             uuid,
+  p_restaurante_id uuid,
+  p_nombre         text,
+  p_activo         boolean default true,
+  p_orden          int     default 0,
+  p_mesero_id      uuid    default null,
+  p_mesero_nombre  text    default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id    uuid := p_id;
+  v_antes pos_modificadores%rowtype;
+begin
+  if coalesce(btrim(p_nombre), '') = '' then
+    raise exception 'El nombre del modificador es obligatorio.';
+  end if;
+
+  if v_id is null then
+    insert into pos_modificadores (restaurante_id, nombre, activo, orden)
+    values (p_restaurante_id, btrim(p_nombre), p_activo, coalesce(p_orden, 0))
+    returning id into v_id;
+  else
+    select * into v_antes from pos_modificadores where id = v_id;
+    update pos_modificadores
+    set nombre = btrim(p_nombre), activo = p_activo, orden = coalesce(p_orden, orden)
+    where id = v_id;
+  end if;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    case when p_id is null then 'modificador.crear' else 'modificador.editar' end,
+    'modificador', v_id, btrim(p_nombre),
+    case when p_id is null
+      then jsonb_build_object('activo', p_activo)
+      else jsonb_build_object(
+        'antes',   jsonb_build_object('nombre', v_antes.nombre, 'activo', v_antes.activo),
+        'despues', jsonb_build_object('nombre', btrim(p_nombre), 'activo', p_activo)
+      )
+    end
+  );
+
+  return v_id;
+end;
+$$;
+
+create or replace function pos_borrar_modificador(
+  p_id            uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_antes pos_modificadores%rowtype;
+begin
+  select * into v_antes from pos_modificadores where id = p_id;
+  delete from pos_modificadores where id = p_id;
+
+  perform pos_log(
+    v_antes.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'modificador.borrar', 'modificador', p_id, v_antes.nombre, '{}'::jsonb
+  );
+end;
+$$;
+
+create or replace function pos_guardar_extra(
+  p_id             uuid,
+  p_restaurante_id uuid,
+  p_nombre         text,
+  p_precio         numeric default 0,
+  p_activo         boolean default true,
+  p_orden          int     default 0,
+  p_mesero_id      uuid    default null,
+  p_mesero_nombre  text    default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id    uuid := p_id;
+  v_antes pos_extras%rowtype;
+begin
+  if coalesce(btrim(p_nombre), '') = '' then
+    raise exception 'El nombre del extra es obligatorio.';
+  end if;
+
+  if v_id is null then
+    insert into pos_extras (restaurante_id, nombre, precio, activo, orden)
+    values (p_restaurante_id, btrim(p_nombre), coalesce(p_precio, 0), p_activo, coalesce(p_orden, 0))
+    returning id into v_id;
+  else
+    select * into v_antes from pos_extras where id = v_id;
+    update pos_extras
+    set nombre = btrim(p_nombre), precio = coalesce(p_precio, 0),
+        activo = p_activo, orden = coalesce(p_orden, orden)
+    where id = v_id;
+  end if;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    case when p_id is null then 'extra.crear' else 'extra.editar' end,
+    'extra', v_id, btrim(p_nombre),
+    case when p_id is null
+      then jsonb_build_object('precio', coalesce(p_precio, 0), 'activo', p_activo)
+      else jsonb_build_object(
+        'antes',   jsonb_build_object('nombre', v_antes.nombre, 'precio', v_antes.precio, 'activo', v_antes.activo),
+        'despues', jsonb_build_object('nombre', btrim(p_nombre), 'precio', coalesce(p_precio, 0), 'activo', p_activo),
+        'cambio_precio', v_antes.precio is distinct from coalesce(p_precio, 0)
+      )
+    end
+  );
+
+  return v_id;
+end;
+$$;
+
+create or replace function pos_borrar_extra(
+  p_id            uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_antes pos_extras%rowtype;
+begin
+  select * into v_antes from pos_extras where id = p_id;
+  delete from pos_extras where id = p_id;
+
+  perform pos_log(
+    v_antes.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'extra.borrar', 'extra', p_id, v_antes.nombre,
+    jsonb_build_object('precio', v_antes.precio)
+  );
+end;
+$$;
+
+-- Reordenar categorías: recibe los NOMBRES en el orden deseado. Sigue siendo un
+-- upsert por (restaurante, nombre) como cuando lo hacía el cliente; lo que cambia
+-- es que ahora ocurre del lado del servidor y deja su línea en la bitácora.
+create or replace function pos_reordenar_categorias(
+  p_restaurante_id uuid,
+  p_nombres        text[],
+  p_mesero_id      uuid default null,
+  p_mesero_nombre  text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into pos_categorias (restaurante_id, nombre, orden)
+  select p_restaurante_id, t.nombre, t.ord - 1
+  from unnest(p_nombres) with ordinality as t(nombre, ord)
+  on conflict (restaurante_id, nombre) do update set orden = excluded.orden;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    'categoria.reordenar', null, null, null,
+    jsonb_build_object('categorias', coalesce(array_length(p_nombres, 1), 0))
+  );
 end;
 $$;
 
@@ -251,17 +591,24 @@ alter table pos_modificadores enable row level security;
 alter table pos_extras        enable row level security;
 alter table pos_categorias    enable row level security;
 
+-- Solo lectura: las escrituras van por las RPCs de la sección 5.b para que cada
+-- cambio quede en la bitácora. La política "total" anterior se tira explícitamente
+-- porque reaplicar este archivo sobre una base vieja la dejaría viva junto a esta.
 drop policy if exists "pos ingredientes total" on pos_ingredientes;
-create policy "pos ingredientes total" on pos_ingredientes for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos ingredientes lectura" on pos_ingredientes;
+create policy "pos ingredientes lectura" on pos_ingredientes for select to anon, authenticated using (true);
 
 drop policy if exists "pos modificadores total" on pos_modificadores;
-create policy "pos modificadores total" on pos_modificadores for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos modificadores lectura" on pos_modificadores;
+create policy "pos modificadores lectura" on pos_modificadores for select to anon, authenticated using (true);
 
 drop policy if exists "pos extras total" on pos_extras;
-create policy "pos extras total" on pos_extras for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos extras lectura" on pos_extras;
+create policy "pos extras lectura" on pos_extras for select to anon, authenticated using (true);
 
 drop policy if exists "pos categorias total" on pos_categorias;
-create policy "pos categorias total" on pos_categorias for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos categorias lectura" on pos_categorias;
+create policy "pos categorias lectura" on pos_categorias for select to anon, authenticated using (true);
 
 -- platillos (compartida): el POS solo necesita LEER con anon; las escrituras van
 -- por las RPCs de arriba (security definer). Esta política es aditiva y de solo
@@ -269,10 +616,17 @@ create policy "pos categorias total" on pos_categorias for all to anon, authenti
 drop policy if exists "pos platillos lectura anon" on platillos;
 create policy "pos platillos lectura anon" on platillos for select to anon using (true);
 
-grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int) to anon, authenticated;
-grant execute on function pos_borrar_platillo(uuid) to anon, authenticated;
-grant execute on function pos_reordenar_platillos(uuid[]) to anon, authenticated;
-grant execute on function pos_set_extra_en_platillos(uuid, text, uuid[], text) to anon, authenticated;
+grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int, uuid, text) to anon, authenticated;
+grant execute on function pos_borrar_platillo(uuid, uuid, text) to anon, authenticated;
+grant execute on function pos_reordenar_platillos(uuid[], uuid, text) to anon, authenticated;
+grant execute on function pos_set_extra_en_platillos(uuid, text, uuid[], text, uuid, text) to anon, authenticated;
+grant execute on function pos_guardar_ingrediente(uuid, uuid, text, numeric, boolean, int, uuid, text) to anon, authenticated;
+grant execute on function pos_borrar_ingrediente(uuid, uuid, text) to anon, authenticated;
+grant execute on function pos_guardar_modificador(uuid, uuid, text, boolean, int, uuid, text) to anon, authenticated;
+grant execute on function pos_borrar_modificador(uuid, uuid, text) to anon, authenticated;
+grant execute on function pos_guardar_extra(uuid, uuid, text, numeric, boolean, int, uuid, text) to anon, authenticated;
+grant execute on function pos_borrar_extra(uuid, uuid, text) to anon, authenticated;
+grant execute on function pos_reordenar_categorias(uuid, text[], uuid, text) to anon, authenticated;
 
 -- ── 7. Realtime (un cambio de menú/mesero se refleja en todas las tablets) ──
 -- meseros no estaba en la publicación; ahora el admin edita meseros y el POS se

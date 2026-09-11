@@ -20,11 +20,6 @@ export function usePedidos() {
   const pedidos = usePedidosStore((s) => s.pedidos)
   const avanzarEstadoLocal = usePedidosStore((s) => s.avanzarEstado)
 
-  // Columna de tiempo propia de cada etapa (además de estado_actualizado_at): así el
-  // cronómetro de la tarjeta se puede reiniciar por columna, y el tiempo en "listo"
-  // queda congelado en la fila al llegar a "entregado" (útil para reportes después).
-  const COLUMNA_TIEMPO = { preparando: 'preparando_at', listo: 'listo_at', entregado: 'entregado_at' }
-
   // Modo mock: muta el store local. Modo backend: mueve la tarjeta en el acto y persiste
   // en Supabase, dejando que Realtime propague el cambio a las demás pantallas.
   //
@@ -35,12 +30,17 @@ export function usePedidos() {
   // volvieran a picar. Mismo patrón optimista que cambiarCantidadEnviado en useOrderDraft.
   function avanzarEstado(pedidoId, estado) {
     if (IS_MOCK) return avanzarEstadoLocal(pedidoId, estado)
-    const ahora = new Date().toISOString()
-    const columna = COLUMNA_TIEMPO[estado]
     avanzarEstadoLocal(pedidoId, estado)
-    sb.from('pedidos')
-      .update({ estado, estado_actualizado_at: ahora, ...(columna ? { [columna]: ahora } : {}) })
-      .eq('id', pedidoId)
+    // Por RPC y no update directo: así el movimiento queda en la bitácora, y la columna
+    // de tiempo de la etapa (preparando_at / listo_at / entregado_at) la estampa el
+    // servidor con SU reloj — el de cada tablet puede andar desfasado, y los tiempos de
+    // cocina se comparan entre tablets.
+    //
+    // Se firma "Cocina" y no con firma(): este hook solo lo usa el tablero de cocina, que
+    // no tiene sesión de mesero. currentMeseroId ahí es el que casualmente quedó guardado
+    // en esa tablet, y firmar con él le atribuiría cada comanda movida a un mesero que ni
+    // estaba en la cocina.
+    sb.rpc('pos_avanzar_pedido', { p_pedido_id: pedidoId, p_estado: estado, p_mesero_nombre: 'Cocina' })
       .then(({ error }) => {
         if (error) {
           console.error('[pedidos] avanzarEstado falló:', error)

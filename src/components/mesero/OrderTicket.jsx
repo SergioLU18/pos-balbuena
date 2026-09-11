@@ -4,6 +4,7 @@ import { describirMitades, extrasTexto } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
+import { useVertical } from '../../hooks/useVertical'
 import { claveRenglonPorNombre } from '../../lib/renglones'
 
 function DescripcionItem({ item }) {
@@ -163,6 +164,8 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
 // enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
 // (ver src/lib/renglones.js).
 export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+  const vertical = useVertical()
+
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
   // si un renglón ya enviado sigue editable (su pedido en 'pendiente'/Nuevo) o ya lo tomó
   // cocina, y para pasarle a la RPC el item id del pedido (no el de cuenta_items). Se
@@ -255,8 +258,19 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
         )}
       </div>
 
-      <div style={{ padding: '18px 22px', borderTop: '2px solid var(--jb-line)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="flex items-center justify-between">
+      {/* En vertical el ticket va debajo del menú con menos alto: total y botón se ponen
+          lado a lado para dejarle más espacio a los renglones. */}
+      <div
+        style={{
+          padding: vertical ? '14px 22px' : '18px 22px', borderTop: '2px solid var(--jb-line)',
+          display: 'flex', flexDirection: vertical ? 'row' : 'column',
+          alignItems: vertical ? 'center' : 'stretch', gap: vertical ? 20 : 14,
+        }}
+      >
+        <div
+          className="flex justify-between"
+          style={vertical ? { flexDirection: 'column', flexShrink: 0 } : { alignItems: 'center' }}
+        >
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>Total</span>
           <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{f(totalGeneral)}</span>
         </div>
@@ -264,7 +278,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
           onClick={enviarTodo}
           disabled={!puedeEnviar}
           className={puedeEnviar ? 'jb-cta-pulse' : undefined}
-          style={{ width: '100%' }}
+          style={vertical ? { flex: 1 } : { width: '100%' }}
         >
           {draft.length > 0
             ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`

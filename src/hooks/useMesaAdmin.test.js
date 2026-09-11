@@ -131,4 +131,12 @@ describe('useMesaAdmin — borrar mesa', () => {
     expect(error).toMatch(/cuenta abierta/)
     expect(usePosStore.getState().mesas.some((m) => m.id === mesa1.id)).toBe(true)
   })
+
+  it('no borra una mesa unida con otra — ni la secundaria ni la principal', async () => {
+    usePosStore.setState({ mesas: MESAS.map((m) => (m.id === 'mesa-2' ? { ...m, joined_to: 'mesa-1' } : m)) })
+    const { result } = renderHook(() => useMesaAdmin())
+    expect((await result.current.borrarMesa('mesa-2')).error).toMatch(/unida/)
+    expect((await result.current.borrarMesa('mesa-1')).error).toMatch(/unida/)
+    expect(usePosStore.getState().mesas).toHaveLength(MESAS.length)
+  })
 })

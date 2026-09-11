@@ -1,19 +1,22 @@
 import { JbFlor } from '../ui/JbFlor'
+import { useVertical } from '../../hooks/useVertical'
 
 /** Antes de elegir categoría: botones grandes a pantalla completa, fáciles de tocar. */
 function CategoriaGridGrande({ categorias, onSelect }) {
+  const vertical = useVertical()
   return (
     <div
       className="jb-fade-up h-full no-scrollbar"
       style={{
         overflowY: 'auto',
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+        gridTemplateColumns: `repeat(auto-fill, minmax(${vertical ? 200 : 240}px, 1fr))`,
         // Altura fija por fila y filas ancladas arriba: sin el `1fr`, dos filas de
         // categorías se estiraban para llenar toda la pantalla y quedaban gigantes.
-        gridAutoRows: 168,
+        // En vertical el menú comparte el alto con el ticket, así que las filas bajan.
+        gridAutoRows: vertical ? 132 : 168,
         alignContent: 'start',
-        gap: 18,
+        gap: vertical ? 14 : 18,
       }}
     >
       {categorias.map((cat) => (

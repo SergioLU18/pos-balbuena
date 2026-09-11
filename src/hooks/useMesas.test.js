@@ -103,6 +103,34 @@ describe('useMesas — una mesa con varios meseros', () => {
   })
 })
 
+describe('useMesas — mesas unidas', () => {
+  // La 2 se juntó a la 1.
+  const unidas = () => MESAS.map((m) => (m.id === 'mesa-2' ? { ...m, joined_to: 'mesa-1' } : m))
+
+  it('la secundaria sabe su principal y la principal sabe sus secundarias', () => {
+    usePosStore.setState({ mesas: unidas() })
+    const { result } = renderHook(() => useMesas())
+    const uno = result.current.mesas.find((m) => m.id === 'mesa-1')
+    const dos = result.current.mesas.find((m) => m.id === 'mesa-2')
+    expect(dos.unidaA).toEqual({ id: 'mesa-1', numero: '1' })
+    expect(uno.unidaA).toBeNull()
+    expect(uno.unidas).toEqual([{ id: 'mesa-2', numero: '2' }])
+  })
+
+  it('"solo mis mesas" enseña el grupo completo si atiendo cualquiera de sus mesas', () => {
+    usePosStore.setState({ mesas: unidas(), asignaciones: [{ mesaId: 'mesa-2', meseroId: MESEROS[2].id }] })
+    useMeseroStore.setState({ currentMeseroId: MESEROS[2].id, soloMisMesas: true })
+    const { result } = renderHook(() => useMesas())
+    expect(result.current.mesas.map((m) => m.id)).toEqual(['mesa-1', 'mesa-2'])
+  })
+
+  it('una principal dada de baja deja a la secundaria como suelta', () => {
+    usePosStore.setState({ mesas: unidas().filter((m) => m.id !== 'mesa-1') })
+    const { result } = renderHook(() => useMesas())
+    expect(result.current.mesas.find((m) => m.id === 'mesa-2').unidaA).toBeNull()
+  })
+})
+
 describe('useMesas — indicador de pedido listo', () => {
   it('marca tienePedidoListo cuando cocina avanzó el pedido de la mesa a "listo"', () => {
     usePedidosStore.setState({

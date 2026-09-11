@@ -18,7 +18,7 @@
 -- Cada restaurante tiene su propio padrón de clientes: la unicidad del teléfono
 -- es por (restaurante_id, telefono), no global.
 --
--- Orden de ejecución:  cleanup.sql → schema.sql → admin_menu.sql → llevar.sql → seed.sql
+-- Orden de ejecución:  cleanup.sql → schema.sql → bitacora.sql → admin_menu.sql → llevar.sql → seed.sql
 -- ============================================================================
 
 create extension if not exists pgcrypto;
@@ -91,12 +91,15 @@ create index if not exists pedidos_orden_llevar_idx on pedidos (orden_llevar_id)
 -- al mismo cliente desde dos tablets a la vez: el segundo debe actualizar la
 -- ficha, no tronar contra el índice único.
 -- ============================================================================
+drop function if exists pos_guardar_cliente(uuid, text, text, text, text);
 create or replace function pos_guardar_cliente(
   p_restaurante_id uuid,
   p_telefono       text,
   p_nombre         text,
   p_direccion      text default null,
-  p_nota           text default null
+  p_nota           text default null,
+  p_mesero_id      uuid default null,
+  p_mesero_nombre  text default null
 ) returns uuid
 language plpgsql
 security definer
@@ -104,7 +107,8 @@ set search_path = public
 as $$
 declare
   v_tel text := regexp_replace(coalesce(p_telefono, ''), '\D', '', 'g');
-  v_id  uuid;
+  v_id    uuid;
+  v_nueva boolean;
 begin
   if v_tel = '' then
     raise exception 'El teléfono es obligatorio.';
@@ -112,6 +116,12 @@ begin
   if coalesce(btrim(p_nombre), '') = '' then
     raise exception 'El nombre es obligatorio.';
   end if;
+
+  -- Se pregunta ANTES del upsert para poder distinguir alta de edición en la bitácora:
+  -- después ya no hay cómo, el upsert devuelve el mismo id en los dos casos.
+  select not exists(
+    select 1 from clientes where restaurante_id = p_restaurante_id and telefono = v_tel
+  ) into v_nueva;
 
   insert into clientes (restaurante_id, telefono, nombre, direccion, nota)
   values (p_restaurante_id, v_tel, btrim(p_nombre), nullif(btrim(p_direccion), ''), nullif(btrim(p_nota), ''))
@@ -122,6 +132,12 @@ begin
         activo     = true,
         updated_at = now()
   returning id into v_id;
+
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    'cliente.guardar', 'cliente', v_id, btrim(p_nombre),
+    jsonb_build_object('alta', v_nueva, 'telefono', v_tel)
+  );
 
   return v_id;
 end;
@@ -170,6 +186,12 @@ begin
     p_mesero_id, p_mesero_nombre, 'abierta'
   ) returning * into v_orden;
 
+  perform pos_log(
+    p_restaurante_id, p_mesero_id, p_mesero_nombre,
+    'llevar.crear', 'orden_llevar', v_orden.id, 'L-' || v_folio,
+    jsonb_build_object('folio', v_folio, 'cliente', v_cliente.nombre, 'cliente_id', v_cliente.id)
+  );
+
   return v_orden;
 end;
 $$;
@@ -213,6 +235,20 @@ begin
     p_mesero_id, p_mesero_nombre, p_items, 'pendiente', now()
   ) returning id into v_id;
 
+  perform pos_log(
+    v_orden.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'orden.enviar', 'orden_llevar', v_orden.id, 'L-' || v_orden.folio,
+    jsonb_build_object(
+      'pedido_id', v_id,
+      'renglones', jsonb_array_length(p_items),
+      'importe', (
+        select coalesce(sum((r->>'precio_unitario')::numeric * (r->>'cantidad')::integer), 0)
+        from jsonb_array_elements(p_items) as r
+      ),
+      'items', p_items
+    )
+  );
+
   return v_id;
 end;
 $$;
@@ -223,9 +259,12 @@ $$;
 -- pedidos: el historial de compras del cliente se lee de aquí, así que tiene que
 -- sobrevivir a la limpieza del tablero de cocina.
 -- ============================================================================
+drop function if exists pos_cerrar_orden_llevar(uuid, text);
 create or replace function pos_cerrar_orden_llevar(
-  p_orden_id uuid,
-  p_estado   text default 'entregada'
+  p_orden_id      uuid,
+  p_estado        text default 'entregada',
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
 ) returns void
 language plpgsql
 security definer
@@ -234,6 +273,7 @@ as $$
 declare
   v_items jsonb;
   v_total numeric;
+  v_orden ordenes_llevar%rowtype;
 begin
   if p_estado not in ('entregada','cancelada') then
     raise exception 'Estado de cierre inválido: %', p_estado;
@@ -251,9 +291,23 @@ begin
 
   update ordenes_llevar
   set estado = p_estado, total = v_total, items_snapshot = v_items, closed_at = now()
-  where id = p_orden_id;
+  where id = p_orden_id
+  returning * into v_orden;
 
   delete from pedidos where orden_llevar_id = p_orden_id;
+
+  -- Cancelar es lo que de verdad se audita aquí: la orden se va del tablero y no deja
+  -- venta. El estado va en el detalle para poder filtrar solo las canceladas.
+  perform pos_log(
+    v_orden.restaurante_id, p_mesero_id, p_mesero_nombre,
+    'llevar.cerrar', 'orden_llevar', p_orden_id, 'L-' || v_orden.folio,
+    jsonb_build_object(
+      'estado',  p_estado,
+      'total',   v_total,
+      'cliente', v_orden.cliente_nombre,
+      'items',   v_items
+    )
+  );
 end;
 $$;
 
@@ -263,16 +317,20 @@ $$;
 alter table clientes       enable row level security;
 alter table ordenes_llevar enable row level security;
 
+-- Solo lectura, mismo criterio que schema.sql: las dos tablas ya solo se escriben por
+-- las RPCs de arriba, que dejan su línea en la bitácora.
 drop policy if exists "pos clientes total" on clientes;
-create policy "pos clientes total" on clientes for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos clientes lectura" on clientes;
+create policy "pos clientes lectura" on clientes for select to anon, authenticated using (true);
 
 drop policy if exists "pos ordenes_llevar total" on ordenes_llevar;
-create policy "pos ordenes_llevar total" on ordenes_llevar for all to anon, authenticated using (true) with check (true);
+drop policy if exists "pos ordenes_llevar lectura" on ordenes_llevar;
+create policy "pos ordenes_llevar lectura" on ordenes_llevar for select to anon, authenticated using (true);
 
-grant execute on function pos_guardar_cliente(uuid, text, text, text, text)  to anon, authenticated;
-grant execute on function pos_crear_orden_llevar(uuid, uuid, uuid, text)     to anon, authenticated;
-grant execute on function pos_enviar_orden_llevar(uuid, jsonb, uuid, text)   to anon, authenticated;
-grant execute on function pos_cerrar_orden_llevar(uuid, text)                to anon, authenticated;
+grant execute on function pos_guardar_cliente(uuid, text, text, text, text, uuid, text) to anon, authenticated;
+grant execute on function pos_crear_orden_llevar(uuid, uuid, uuid, text)                to anon, authenticated;
+grant execute on function pos_enviar_orden_llevar(uuid, jsonb, uuid, text)              to anon, authenticated;
+grant execute on function pos_cerrar_orden_llevar(uuid, text, uuid, text)               to anon, authenticated;
 
 -- ── Realtime ────────────────────────────────────────────────────────────────
 do $$ begin

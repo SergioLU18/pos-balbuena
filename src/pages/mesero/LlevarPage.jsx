@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLlevar, totalDeOrden } from '../../hooks/useLlevar'
+import { useVertical } from '../../hooks/useVertical'
 import { formatearTelefono, telefonoCompleto } from '../../lib/telefono'
 import { f, minutosTranscurridos } from '../../lib/utils'
 import { TelefonoPad } from '../../components/mesero/TelefonoPad'
@@ -18,6 +19,7 @@ const PASOS = { ordenes: 'ordenes', ficha: 'ficha', nuevo: 'nuevo', editar: 'edi
 
 export default function LlevarPage() {
   const navigate = useNavigate()
+  const vertical = useVertical()
   const { ordenesAbiertas, pedidos, buscarPorTelefono, guardarCliente, crearOrden, historialCliente } = useLlevar()
 
   const [telefono, setTelefono] = useState('')
@@ -97,7 +99,7 @@ export default function LlevarPage() {
   }
 
   return (
-    <div className="h-full flex flex-col" style={{ padding: '24px 32px' }}>
+    <div className="h-full flex flex-col" style={{ padding: vertical ? '20px 20px' : '24px 32px' }}>
       <div className="flex items-center flex-shrink-0" style={{ gap: 14, marginBottom: 20 }}>
         <button onClick={() => navigate('/mesero')} aria-label="Volver a mesas" style={botonAtras}>←</button>
         <div>
@@ -108,7 +110,13 @@ export default function LlevarPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0" style={{ display: 'grid', gridTemplateColumns: '360px minmax(0, 1fr)', gap: 24 }}>
+      {/* En vertical el teclado se angosta (sigue a un lado, no arriba: apilado, las
+          teclas quedarían enormes y el panel del cliente se iría hasta abajo) para que
+          el formulario y la ficha conserven un ancho cómodo. */}
+      <div
+        className="flex-1 min-h-0"
+        style={{ display: 'grid', gridTemplateColumns: vertical ? '300px minmax(0, 1fr)' : '360px minmax(0, 1fr)', gap: vertical ? 20 : 24 }}
+      >
         <div className="no-scrollbar" style={{ overflowY: 'auto' }}>
           <TelefonoPad
             valor={telefono}

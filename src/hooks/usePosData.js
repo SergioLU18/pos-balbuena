@@ -298,7 +298,11 @@ export function usePosData() {
               // del lado POS: pos_cerrar_mesa borra sus pedidos (la cuenta activa=false ya no
               // la toca). Optimista: también lo quitamos local para no esperar el Realtime.
               usePedidosStore.getState().eliminarPedidosDeMesa(mesaId)
-              sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId }).then(() => {})
+              // Firmado "Pago en tali" y no con el mesero de esta tablet: nadie en el POS
+              // cerró la mesa, la cerró el cobro. Como el broadcast llega a todas las
+              // tablets, firmarlo con el mesero en turno de cada una le atribuiría el
+              // cierre a quien le tocara estar logueado.
+              sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId, p_mesero_nombre: 'Pago en tali' }).then(() => {})
             }
           }
           if (vivo) refrescarCuentas(rid).catch(() => {})

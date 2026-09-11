@@ -1,14 +1,16 @@
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { uid } from '../lib/utils'
+import { firma } from '../lib/bitacora'
 import { usePosStore } from '../store/appStore'
 
 /** CRUD del menú desde el panel de admin: platillos, ingredientes y modificadores.
  *  - Platillos viven en la tabla COMPARTIDA `platillos` (con tali). Sus escrituras
  *    van por RPCs SECURITY DEFINER (pos_guardar_platillo / pos_borrar_platillo), no
  *    directo, para no abrir esa tabla a la anon key (ver supabase/admin_menu.sql).
- *  - Ingredientes y modificadores son 100% del POS (pos_ingredientes /
- *    pos_modificadores, RLS abierta) → escritura directa.
+ *  - Ingredientes, modificadores, extras y el orden de categorías son 100% del POS
+ *    (tablas pos_*). También van por RPC: la escritura directa no dejaba rastro de
+ *    quién hizo cada cambio (ver supabase/bitacora.sql), y su RLS es de solo lectura.
  *  En modo mock todo muta el store; en backend usePosData recarga por Realtime. */
 export function useMenuAdmin() {
   const platillos = usePosStore((s) => s.platillos)
@@ -52,6 +54,7 @@ export function useMenuAdmin() {
         p_modificadores: p.modificadores ?? [],
         p_extras: p.extras ?? [],
         p_orden: p.orden ?? null,
+        ...firma(),
       })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }
@@ -64,7 +67,7 @@ export function useMenuAdmin() {
       setPlatillos(platillos.map((p) => (rank.has(p.id) ? { ...p, orden: rank.get(p.id) } : p)))
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_reordenar_platillos', { p_ids: orderedIds }).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_reordenar_platillos', { p_ids: orderedIds, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // Reordenar categorías: recibe los NOMBRES en el orden deseado y persiste orden = posición.
@@ -74,8 +77,9 @@ export function useMenuAdmin() {
       setCategoriasOrden(orderedNombres.map((nombre, i) => ({ id: previa.get(nombre)?.id ?? uid('cat'), nombre, orden: i })))
       return Promise.resolve({ error: null })
     }
-    const rows = orderedNombres.map((nombre, i) => ({ restaurante_id: restauranteId, nombre, orden: i }))
-    return sb.from('pos_categorias').upsert(rows, { onConflict: 'restaurante_id,nombre' }).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb
+      .rpc('pos_reordenar_categorias', { p_restaurante_id: restauranteId, p_nombres: orderedNombres, ...firma() })
+      .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   function borrarPlatillo(id) {
@@ -83,7 +87,7 @@ export function useMenuAdmin() {
       setPlatillos(platillos.filter((x) => x.id !== id))
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_borrar_platillo', { p_id: id }).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_platillo', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // ── Ingredientes ───────────────────────────────────────────────────────────
@@ -97,15 +101,17 @@ export function useMenuAdmin() {
       }
       return Promise.resolve({ error: null })
     }
-    const row = {
-      nombre: i.nombre?.trim(),
-      extra: Number(i.extra) || 0,
-      activo: i.activo !== false,
-      orden: i.orden ?? 0,
-      restaurante_id: restauranteId,
-    }
-    const q = i.id ? sb.from('pos_ingredientes').update(row).eq('id', i.id) : sb.from('pos_ingredientes').insert(row)
-    return q.then(({ error }) => ({ error: error?.message ?? null }))
+    return sb
+      .rpc('pos_guardar_ingrediente', {
+        p_id: i.id ?? null,
+        p_restaurante_id: restauranteId,
+        p_nombre: i.nombre?.trim(),
+        p_extra: Number(i.extra) || 0,
+        p_activo: i.activo !== false,
+        p_orden: i.orden ?? null,
+        ...firma(),
+      })
+      .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   function borrarIngrediente(id) {
@@ -113,7 +119,7 @@ export function useMenuAdmin() {
       setIngredientes(ingredientes.filter((x) => x.id !== id))
       return Promise.resolve({ error: null })
     }
-    return sb.from('pos_ingredientes').delete().eq('id', id).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_ingrediente', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // ── Modificadores ──────────────────────────────────────────────────────────
@@ -127,14 +133,16 @@ export function useMenuAdmin() {
       }
       return Promise.resolve({ error: null })
     }
-    const row = {
-      nombre: m.nombre?.trim(),
-      activo: m.activo !== false,
-      orden: m.orden ?? 0,
-      restaurante_id: restauranteId,
-    }
-    const q = m.id ? sb.from('pos_modificadores').update(row).eq('id', m.id) : sb.from('pos_modificadores').insert(row)
-    return q.then(({ error }) => ({ error: error?.message ?? null }))
+    return sb
+      .rpc('pos_guardar_modificador', {
+        p_id: m.id ?? null,
+        p_restaurante_id: restauranteId,
+        p_nombre: m.nombre?.trim(),
+        p_activo: m.activo !== false,
+        p_orden: m.orden ?? null,
+        ...firma(),
+      })
+      .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   function borrarModificador(id) {
@@ -142,10 +150,10 @@ export function useMenuAdmin() {
       setModificadores(modificadores.filter((x) => x.id !== id))
       return Promise.resolve({ error: null })
     }
-    return sb.from('pos_modificadores').delete().eq('id', id).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_modificador', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
-  // ── Extras (pos_extras, RLS abierta → escritura directa) ─────────────────────
+  // ── Extras (pos_extras) ─────────────────────────────────────────────────────
   // e: { id?, nombre, precio, activo, orden }
   function guardarExtra(e) {
     if (IS_MOCK) {
@@ -156,15 +164,17 @@ export function useMenuAdmin() {
       }
       return Promise.resolve({ error: null })
     }
-    const row = {
-      nombre: e.nombre?.trim(),
-      precio: Number(e.precio) || 0,
-      activo: e.activo !== false,
-      orden: e.orden ?? 0,
-      restaurante_id: restauranteId,
-    }
-    const q = e.id ? sb.from('pos_extras').update(row).eq('id', e.id) : sb.from('pos_extras').insert(row)
-    return q.then(({ error }) => ({ error: error?.message ?? null }))
+    return sb
+      .rpc('pos_guardar_extra', {
+        p_id: e.id ?? null,
+        p_restaurante_id: restauranteId,
+        p_nombre: e.nombre?.trim(),
+        p_precio: Number(e.precio) || 0,
+        p_activo: e.activo !== false,
+        p_orden: e.orden ?? null,
+        ...firma(),
+      })
+      .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   function borrarExtra(id) {
@@ -172,7 +182,7 @@ export function useMenuAdmin() {
       setExtras(extras.filter((x) => x.id !== id))
       return Promise.resolve({ error: null })
     }
-    return sb.from('pos_extras').delete().eq('id', id).then(({ error }) => ({ error: error?.message ?? null }))
+    return sb.rpc('pos_borrar_extra', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // Fija a qué platillos aplica un extra (edición desde el lado del extra): lo agrega
@@ -196,6 +206,7 @@ export function useMenuAdmin() {
         p_extra: nombre,
         p_platillo_ids: platilloIds,
         p_old_extra: oldNombre && oldNombre !== nombre ? oldNombre : null,
+        ...firma(),
       })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }

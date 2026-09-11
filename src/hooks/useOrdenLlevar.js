@@ -1,6 +1,7 @@
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
+import { firma } from '../lib/bitacora'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import {
   useAvisosStore, useLlevarStore, useMeseroStore, useOrderStore, usePedidosStore, usePosStore,
@@ -134,7 +135,7 @@ export function useOrdenLlevar(ordenId) {
     actualizarCantidadItemPedido(pedidoId, itemId, nueva)
     if (IS_MOCK) return
 
-    sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: nueva })
+    sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: nueva, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[llevar] fijarCantidadEnviado falló:', error)
@@ -148,7 +149,7 @@ export function useOrdenLlevar(ordenId) {
     quitarItemPedido(pedidoId, itemId)
     if (IS_MOCK) return
 
-    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId })
+    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[llevar] quitarItemEnviado falló:', error)
@@ -174,7 +175,7 @@ export function useOrdenLlevar(ordenId) {
       clearDraft(ordenId)
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: estado })
+    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: estado, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[llevar] cerrarOrden falló:', error)
