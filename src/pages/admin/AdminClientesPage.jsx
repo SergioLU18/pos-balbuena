@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLlevar } from '../../hooks/useLlevar'
 import { formatearTelefono, normalizarTelefono } from '../../lib/telefono'
+import { nombreCompleto, formatearDireccion, formatearCumpleanos, formatearGenero } from '../../lib/cliente'
 import { ModalShell, Campo } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
 import { Button } from '../../components/ui/Button'
@@ -35,8 +36,8 @@ export default function AdminClientesPage() {
     const qDigitos = normalizarTelefono(busqueda)
     const base = !q
       ? clientes
-      : clientes.filter((c) => c.nombre.toLowerCase().includes(q) || (qDigitos && c.telefono.includes(qDigitos)))
-    return base.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+      : clientes.filter((c) => nombreCompleto(c).toLowerCase().includes(q) || (qDigitos && c.telefono.includes(qDigitos)))
+    return base.slice().sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b)))
   }, [clientes, busqueda])
 
   return (
@@ -64,12 +65,10 @@ export default function AdminClientesPage() {
           {filtrados.map((c) => (
             <button key={c.id} onClick={() => abrir(c)} style={filaBtn}>
               <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--jb-ink)' }}>{c.nombre}</span>
-                {c.direccion && (
-                  <span style={{ fontSize: 13, color: 'var(--jb-gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.direccion}
-                  </span>
-                )}
+                <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--jb-ink)' }}>{nombreCompleto(c)}</span>
+                <span style={{ fontSize: 13, color: 'var(--jb-gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatearDireccion(c)}
+                </span>
               </span>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--jb-pink-dark)', flexShrink: 0 }}>
                 {formatearTelefono(c.telefono)}
@@ -122,7 +121,7 @@ function ClienteModal({ cliente, historial, cargandoHistorial, onGuardar, onBorr
   }
 
   return (
-    <ModalShell width={560} titulo={datos.nombre} onClose={onClose}>
+    <ModalShell width={560} titulo={nombreCompleto(datos)} onClose={onClose}>
       {editando ? (
         <>
           <ClienteForm
@@ -140,8 +139,20 @@ function ClienteModal({ cliente, historial, cargandoHistorial, onGuardar, onBorr
             <div style={valorLeer}>{formatearTelefono(datos.telefono)}</div>
           </Campo>
           <Campo label="Dirección">
-            <div style={valorLeer}>{datos.direccion || '—'}</div>
+            <div style={valorLeer}>{formatearDireccion(datos) || '—'}</div>
           </Campo>
+          <div className="flex" style={{ gap: 14 }}>
+            <div style={{ flex: 1 }}>
+              <Campo label="Cumpleaños">
+                <div style={valorLeer}>{formatearCumpleanos(datos.cumpleanos) || '—'}</div>
+              </Campo>
+            </div>
+            <div style={{ flex: 1 }}>
+              <Campo label="Género">
+                <div style={valorLeer}>{formatearGenero(datos.genero) || '—'}</div>
+              </Campo>
+            </div>
+          </div>
           <Campo label="Nota">
             <div style={valorLeer}>{datos.nota || '—'}</div>
           </Campo>
@@ -158,7 +169,7 @@ function ClienteModal({ cliente, historial, cargandoHistorial, onGuardar, onBorr
 
       {borrando && (
         <ConfirmModal
-          titulo={`¿Borrar a ${datos.nombre}?`}
+          titulo={`¿Borrar a ${nombreCompleto(datos)}?`}
           mensaje="Deja de aparecer en el padrón. Sus pedidos anteriores conservan su historial."
           confirmarLabel="Borrar cliente"
           danger

@@ -2,6 +2,7 @@ import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { uid } from '../lib/utils'
 import { normalizarTelefono } from '../lib/telefono'
+import { nombreCompleto, formatearDireccion } from '../lib/cliente'
 import { firma } from '../lib/bitacora'
 import { useLlevarStore, useMeseroStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
@@ -69,8 +70,12 @@ export function useLlevar() {
   }
 
   /** Alta o edición de la ficha. En backend es un upsert por (restaurante, teléfono):
-   *  dos meseros pueden estar dando de alta al mismo número desde dos tablets. */
-  async function guardarCliente({ id, telefono, nombre, direccion, nota }) {
+   *  dos meseros pueden estar dando de alta al mismo número desde dos tablets.
+   *  `cruzamientos`, `cumpleanos` y `genero` son los únicos campos opcionales — el resto
+   *  (nombre, apellidos y la dirección salvo cruzamientos) se valida también en el RPC. */
+  async function guardarCliente({
+    id, telefono, nombre, apellidos, calle, numero, cruzamientos, colonia, codigoPostal, cumpleanos, genero, nota,
+  }) {
     const tel = normalizarTelefono(telefono)
 
     if (IS_MOCK) {
@@ -81,7 +86,14 @@ export function useLlevar() {
         id: existente?.id ?? uid('cliente'),
         telefono: tel,
         nombre: nombre?.trim(),
-        direccion: direccion?.trim() || null,
+        apellidos: apellidos?.trim(),
+        calle: calle?.trim(),
+        numero: numero?.trim(),
+        cruzamientos: cruzamientos?.trim() || null,
+        colonia: colonia?.trim(),
+        codigoPostal: codigoPostal?.trim(),
+        cumpleanos: cumpleanos || null,
+        genero: genero || null,
         nota: nota?.trim() || null,
       }
       guardarClienteLocal(cliente)
@@ -93,7 +105,14 @@ export function useLlevar() {
       p_restaurante_id: restauranteId,
       p_telefono: tel,
       p_nombre: nombre,
-      p_direccion: direccion ?? null,
+      p_apellidos: apellidos,
+      p_calle: calle,
+      p_numero: numero,
+      p_cruzamientos: cruzamientos || null,
+      p_colonia: colonia,
+      p_codigo_postal: codigoPostal,
+      p_cumpleanos: cumpleanos || null,
+      p_genero: genero || null,
       p_nota: nota ?? null,
     })
     if (error) {
@@ -104,7 +123,14 @@ export function useLlevar() {
       id: data,
       telefono: tel,
       nombre: nombre?.trim(),
-      direccion: direccion?.trim() || null,
+      apellidos: apellidos?.trim(),
+      calle: calle?.trim(),
+      numero: numero?.trim(),
+      cruzamientos: cruzamientos?.trim() || null,
+      colonia: colonia?.trim(),
+      codigoPostal: codigoPostal?.trim(),
+      cumpleanos: cumpleanos || null,
+      genero: genero || null,
       nota: nota?.trim() || null,
     }
     // Al padrón local en el acto, por lo mismo que la orden: la siguiente búsqueda de ese
@@ -148,9 +174,9 @@ export function useLlevar() {
         id: uid('llevar'),
         folio,
         clienteId: cliente.id,
-        clienteNombre: cliente.nombre,
+        clienteNombre: nombreCompleto(cliente),
         clienteTelefono: cliente.telefono,
-        direccion: cliente.direccion ?? null,
+        direccion: formatearDireccion(cliente),
         meseroId: mesero?.id ?? null,
         meseroNombre: mesero?.nombre ?? '—',
         estado: 'abierta',
@@ -226,7 +252,14 @@ export function mapCliente(row) {
     id: row.id,
     telefono: row.telefono,
     nombre: row.nombre,
-    direccion: row.direccion ?? null,
+    apellidos: row.apellidos ?? '',
+    calle: row.calle ?? '',
+    numero: row.numero ?? '',
+    cruzamientos: row.cruzamientos ?? null,
+    colonia: row.colonia ?? '',
+    codigoPostal: row.codigo_postal ?? '',
+    cumpleanos: row.cumpleanos ?? null,
+    genero: row.genero ?? null,
     nota: row.nota ?? null,
   }
 }

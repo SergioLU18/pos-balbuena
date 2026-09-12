@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLlevar, totalDeOrden } from '../../hooks/useLlevar'
 import { useVertical } from '../../hooks/useVertical'
 import { formatearTelefono, telefonoCompleto } from '../../lib/telefono'
+import { nombreCompleto, formatearDireccion } from '../../lib/cliente'
 import { f, minutosTranscurridos } from '../../lib/utils'
 import { TelefonoPad } from '../../components/mesero/TelefonoPad'
 import { ClienteForm } from '../../components/mesero/ClienteForm'
@@ -191,13 +192,11 @@ function FichaCliente({ cliente, historial, cargandoHistorial, ocupado, onTomarO
           <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--jb-pink-dark)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Cliente registrado
           </span>
-          <h2 style={{ margin: '4px 0 0', fontSize: 28, fontWeight: 900, color: 'var(--jb-ink)' }}>{cliente.nombre}</h2>
+          <h2 style={{ margin: '4px 0 0', fontSize: 28, fontWeight: 900, color: 'var(--jb-ink)' }}>{nombreCompleto(cliente)}</h2>
           <p style={{ margin: '6px 0 0', fontSize: 16, color: 'var(--jb-ink-soft)' }}>
             {formatearTelefono(cliente.telefono)}
           </p>
-          {cliente.direccion && (
-            <p style={{ margin: '4px 0 0', fontSize: 16, color: 'var(--jb-ink-soft)' }}>{cliente.direccion}</p>
-          )}
+          <p style={{ margin: '4px 0 0', fontSize: 16, color: 'var(--jb-ink-soft)' }}>{formatearDireccion(cliente)}</p>
           {cliente.nota && (
             <p style={{ margin: '8px 0 0', fontSize: 14, fontWeight: 700, color: 'var(--jb-pink-dark)' }}>“{cliente.nota}”</p>
           )}

@@ -27,12 +27,27 @@ create extension if not exists pgcrypto;
 -- `telefono` se guarda NORMALIZADO (solo dígitos) porque es la llave de búsqueda:
 -- el mesero lo teclea en un teclado numérico y no debe importar si alguien lo dio
 -- de alta con espacios o guiones. El formato bonito se arma al pintarlo.
+--
+-- La dirección va en columnas separadas (calle/número/cruzamientos/colonia/CP) y
+-- no como un solo texto libre: así se puede exigir completa (deja de ser
+-- opcional) sin depender de que el mesero la redacte bien. `cruzamientos` es la
+-- única parte de la dirección que sigue siendo opcional — no siempre se conoce.
+-- `direccion` (texto libre) se deja de escribir pero NO se borra: sostiene el
+-- historial de los clientes dados de alta antes de este cambio.
 create table if not exists clientes (
   id             uuid primary key default gen_random_uuid(),
   restaurante_id uuid references restaurantes(id) on delete cascade,
   telefono       text not null,
   nombre         text not null,
-  direccion      text,
+  apellidos      text not null default '',
+  direccion      text,                              -- legacy, ver comentario arriba
+  calle          text not null default '',
+  numero         text not null default '',
+  cruzamientos   text,
+  colonia        text not null default '',
+  codigo_postal  text not null default '',
+  cumpleanos     date,
+  genero         text check (genero is null or genero in ('hombre', 'mujer')),
   nota           text,                              -- referencias de entrega, alergias, etc.
   activo         boolean not null default true,
   created_at     timestamptz not null default now(),
@@ -40,6 +55,23 @@ create table if not exists clientes (
 );
 create unique index if not exists clientes_restaurante_telefono_idx
   on clientes (restaurante_id, telefono);
+
+-- Columnas para instalaciones que ya tenían la tabla `clientes` de antes de este
+-- cambio (create table if not exists no las agrega solo). El "default ''" de
+-- arriba solo aplica a filas NUEVAS; estas migran las que ya existían.
+alter table clientes add column if not exists apellidos     text not null default '';
+alter table clientes add column if not exists calle         text not null default '';
+alter table clientes add column if not exists numero        text not null default '';
+alter table clientes add column if not exists cruzamientos  text;
+alter table clientes add column if not exists colonia       text not null default '';
+alter table clientes add column if not exists codigo_postal text not null default '';
+alter table clientes add column if not exists cumpleanos    date;
+alter table clientes add column if not exists genero        text;
+alter table clientes drop constraint if exists clientes_genero_check;
+alter table clientes add constraint clientes_genero_check check (genero is null or genero in ('hombre', 'mujer'));
+-- Mejor esfuerzo para que los clientes ya existentes (dados de alta con el
+-- campo único `direccion`) no se queden con la calle vacía.
+update clientes set calle = direccion where coalesce(calle, '') = '' and coalesce(direccion, '') <> '';
 
 -- ── Orden para llevar ───────────────────────────────────────────────────────
 -- Los datos del cliente van denormalizados (nombre/teléfono/dirección) además de
@@ -92,29 +124,51 @@ create index if not exists pedidos_orden_llevar_idx on pedidos (orden_llevar_id)
 -- ficha, no tronar contra el índice único.
 -- ============================================================================
 drop function if exists pos_guardar_cliente(uuid, text, text, text, text);
+drop function if exists pos_guardar_cliente(uuid, text, text, text, text, uuid, text);
 create or replace function pos_guardar_cliente(
   p_restaurante_id uuid,
   p_telefono       text,
   p_nombre         text,
-  p_direccion      text default null,
-  p_nota           text default null,
-  p_mesero_id      uuid default null,
-  p_mesero_nombre  text default null
+  p_apellidos      text,
+  p_calle          text,
+  p_numero         text,
+  p_colonia        text,
+  p_codigo_postal  text,
+  p_cruzamientos   text    default null,
+  p_cumpleanos     date    default null,
+  p_genero         text    default null,
+  p_nota           text    default null,
+  p_mesero_id      uuid    default null,
+  p_mesero_nombre  text    default null
 ) returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_tel text := regexp_replace(coalesce(p_telefono, ''), '\D', '', 'g');
-  v_id    uuid;
-  v_nueva boolean;
+  v_tel    text := regexp_replace(coalesce(p_telefono, ''), '\D', '', 'g');
+  v_genero text := nullif(btrim(lower(coalesce(p_genero, ''))), '');
+  v_id     uuid;
+  v_nueva  boolean;
 begin
   if v_tel = '' then
     raise exception 'El teléfono es obligatorio.';
   end if;
   if coalesce(btrim(p_nombre), '') = '' then
     raise exception 'El nombre es obligatorio.';
+  end if;
+  if coalesce(btrim(p_apellidos), '') = '' then
+    raise exception 'Los apellidos son obligatorios.';
+  end if;
+  if coalesce(btrim(p_calle), '') = '' or coalesce(btrim(p_numero), '') = ''
+     or coalesce(btrim(p_colonia), '') = '' or coalesce(btrim(p_codigo_postal), '') = '' then
+    raise exception 'La dirección (calle, número, colonia y código postal) es obligatoria.';
+  end if;
+  if btrim(p_codigo_postal) !~ '^\d{5}$' then
+    raise exception 'El código postal debe tener 5 dígitos.';
+  end if;
+  if v_genero is not null and v_genero not in ('hombre', 'mujer') then
+    raise exception 'Género inválido.';
   end if;
 
   -- Se pregunta ANTES del upsert para poder distinguir alta de edición en la bitácora:
@@ -123,19 +177,34 @@ begin
     select 1 from clientes where restaurante_id = p_restaurante_id and telefono = v_tel
   ) into v_nueva;
 
-  insert into clientes (restaurante_id, telefono, nombre, direccion, nota)
-  values (p_restaurante_id, v_tel, btrim(p_nombre), nullif(btrim(p_direccion), ''), nullif(btrim(p_nota), ''))
+  insert into clientes (
+    restaurante_id, telefono, nombre, apellidos,
+    calle, numero, cruzamientos, colonia, codigo_postal,
+    cumpleanos, genero, nota
+  )
+  values (
+    p_restaurante_id, v_tel, btrim(p_nombre), btrim(p_apellidos),
+    btrim(p_calle), btrim(p_numero), nullif(btrim(p_cruzamientos), ''), btrim(p_colonia), btrim(p_codigo_postal),
+    p_cumpleanos, v_genero, nullif(btrim(p_nota), '')
+  )
   on conflict (restaurante_id, telefono) do update
-    set nombre     = excluded.nombre,
-        direccion  = excluded.direccion,
-        nota       = excluded.nota,
-        activo     = true,
-        updated_at = now()
+    set nombre        = excluded.nombre,
+        apellidos     = excluded.apellidos,
+        calle         = excluded.calle,
+        numero        = excluded.numero,
+        cruzamientos  = excluded.cruzamientos,
+        colonia       = excluded.colonia,
+        codigo_postal = excluded.codigo_postal,
+        cumpleanos    = excluded.cumpleanos,
+        genero        = excluded.genero,
+        nota          = excluded.nota,
+        activo        = true,
+        updated_at    = now()
   returning id into v_id;
 
   perform pos_log(
     p_restaurante_id, p_mesero_id, p_mesero_nombre,
-    'cliente.guardar', 'cliente', v_id, btrim(p_nombre),
+    'cliente.guardar', 'cliente', v_id, btrim(p_nombre) || ' ' || btrim(p_apellidos),
     jsonb_build_object('alta', v_nueva, 'telefono', v_tel)
   );
 
@@ -171,7 +240,7 @@ begin
     raise exception 'No se puede borrar un cliente con una orden para llevar abierta.';
   end if;
 
-  select restaurante_id, nombre into v_rest, v_nombre from clientes where id = p_cliente_id;
+  select restaurante_id, nombre || ' ' || apellidos into v_rest, v_nombre from clientes where id = p_cliente_id;
 
   update clientes set activo = false, updated_at = now() where id = p_cliente_id;
 
@@ -204,14 +273,27 @@ security definer
 set search_path = public
 as $$
 declare
-  v_cliente clientes%rowtype;
-  v_folio   integer;
-  v_orden   ordenes_llevar%rowtype;
+  v_cliente      clientes%rowtype;
+  v_folio        integer;
+  v_orden        ordenes_llevar%rowtype;
+  v_nombre_full  text;
+  v_direccion    text;
 begin
   select * into v_cliente from clientes where id = p_cliente_id;
   if not found then
     raise exception 'El cliente % no existe.', p_cliente_id;
   end if;
+
+  -- El nombre y la dirección viven en columnas separadas (ver tabla `clientes`);
+  -- lo que se congela en la orden sigue siendo una sola línea de texto, que es
+  -- lo que consumen cocina y el ticket.
+  v_nombre_full := btrim(v_cliente.nombre || ' ' || v_cliente.apellidos);
+  v_direccion := concat_ws(', ',
+    concat_ws(' ', v_cliente.calle, v_cliente.numero),
+    nullif('esq. ' || v_cliente.cruzamientos, 'esq. '),
+    nullif(v_cliente.colonia, ''),
+    nullif('CP ' || v_cliente.codigo_postal, 'CP ')
+  );
 
   perform 1 from restaurantes where id = p_restaurante_id for update;
   select coalesce(max(folio), 0) + 1 into v_folio
@@ -221,14 +303,14 @@ begin
     restaurante_id, folio, cliente_id, cliente_nombre, cliente_telefono, direccion,
     mesero_id, mesero_nombre, estado
   ) values (
-    p_restaurante_id, v_folio, v_cliente.id, v_cliente.nombre, v_cliente.telefono, v_cliente.direccion,
+    p_restaurante_id, v_folio, v_cliente.id, v_nombre_full, v_cliente.telefono, v_direccion,
     p_mesero_id, p_mesero_nombre, 'abierta'
   ) returning * into v_orden;
 
   perform pos_log(
     p_restaurante_id, p_mesero_id, p_mesero_nombre,
     'llevar.crear', 'orden_llevar', v_orden.id, 'L-' || v_folio,
-    jsonb_build_object('folio', v_folio, 'cliente', v_cliente.nombre, 'cliente_id', v_cliente.id)
+    jsonb_build_object('folio', v_folio, 'cliente', v_nombre_full, 'cliente_id', v_cliente.id)
   );
 
   return v_orden;
@@ -366,7 +448,7 @@ drop policy if exists "pos ordenes_llevar total" on ordenes_llevar;
 drop policy if exists "pos ordenes_llevar lectura" on ordenes_llevar;
 create policy "pos ordenes_llevar lectura" on ordenes_llevar for select to anon, authenticated using (true);
 
-grant execute on function pos_guardar_cliente(uuid, text, text, text, text, uuid, text) to anon, authenticated;
+grant execute on function pos_guardar_cliente(uuid, text, text, text, text, text, text, text, text, date, text, text, uuid, text) to anon, authenticated;
 grant execute on function pos_desactivar_cliente(uuid, uuid, text)                      to anon, authenticated;
 grant execute on function pos_crear_orden_llevar(uuid, uuid, uuid, text)                to anon, authenticated;
 grant execute on function pos_enviar_orden_llevar(uuid, jsonb, uuid, text)              to anon, authenticated;

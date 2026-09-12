@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { useLlevar, totalDeOrden, itemsDeOrden } from './useLlevar'
 import { useLlevarStore, useMeseroStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { MESEROS } from '../lib/mockMeseros'
+import { formatearDireccion } from '../lib/cliente'
 
 beforeEach(() => {
   useLlevarStore.setState({ clientes: [], ordenes: [] })
@@ -11,7 +12,10 @@ beforeEach(() => {
   useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
 })
 
-const DATOS = { telefono: '55 1234 5678', nombre: 'Sra. Elena', direccion: 'Oriente 168 #23' }
+const DATOS = {
+  telefono: '55 1234 5678', nombre: 'Elena', apellidos: 'Ruiz',
+  calle: 'Oriente', numero: '168', colonia: 'Centro', codigoPostal: '06000',
+}
 
 describe('useLlevar — búsqueda por teléfono', () => {
   it('no encontrar al cliente NO es un error: es el caso del cliente nuevo', async () => {
@@ -27,8 +31,9 @@ describe('useLlevar — búsqueda por teléfono', () => {
     // Se dio de alta con espacios y se busca sin ellos: el teléfono se guarda y se
     // compara siempre normalizado (solo dígitos).
     const { cliente } = await result.current.buscarPorTelefono('5512345678')
-    expect(cliente?.nombre).toBe('Sra. Elena')
-    expect(cliente?.direccion).toBe('Oriente 168 #23')
+    expect(cliente?.nombre).toBe('Elena')
+    expect(cliente?.apellidos).toBe('Ruiz')
+    expect(formatearDireccion(cliente)).toBe('Oriente 168, Centro, CP 06000')
   })
 })
 
@@ -37,11 +42,12 @@ describe('useLlevar — padrón de clientes', () => {
     const { result } = renderHook(() => useLlevar())
     await act(async () => { await result.current.guardarCliente(DATOS) })
     await act(async () => {
-      await result.current.guardarCliente({ ...DATOS, direccion: 'Se mudó: Sur 24 #100' })
+      await result.current.guardarCliente({ ...DATOS, calle: 'Sur', numero: '24' })
     })
     const { clientes } = useLlevarStore.getState()
     expect(clientes).toHaveLength(1)
-    expect(clientes[0].direccion).toBe('Se mudó: Sur 24 #100')
+    expect(clientes[0].calle).toBe('Sur')
+    expect(clientes[0].numero).toBe('24')
   })
 })
 
@@ -54,11 +60,11 @@ describe('useLlevar — abrir orden', () => {
 
     const [orden] = useLlevarStore.getState().ordenes
     expect(orden.estado).toBe('abierta')
-    expect(orden.clienteNombre).toBe('Sra. Elena')
+    expect(orden.clienteNombre).toBe('Elena Ruiz')
     expect(orden.clienteTelefono).toBe('5512345678')
     // Los datos del cliente se copian a la orden: si después se muda, las órdenes viejas
     // tienen que seguir diciendo a dónde se mandaron.
-    expect(orden.direccion).toBe('Oriente 168 #23')
+    expect(orden.direccion).toBe('Oriente 168, Centro, CP 06000')
     expect(orden.meseroNombre).toBe(MESEROS[0].nombre)
   })
 
