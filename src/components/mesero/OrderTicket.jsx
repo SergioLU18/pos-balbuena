@@ -68,6 +68,11 @@ function DraftRow({ item, onQty, onEdit, onRemove }) {
           </span>
           <DescripcionItem item={item} />
           {item.nota && <p style={{ margin: '2px 0 0', fontSize: 12, fontStyle: 'italic', color: 'var(--jb-pink-dark)' }}>“{item.nota}”</p>}
+          {item.modificaOriginal && (
+            <p style={{ margin: '2px 0 0', fontSize: 12, fontWeight: 700, color: 'var(--jb-pink-dark)' }}>
+              Cambio sin enviar (antes {item.modificaOriginal})
+            </p>
+          )}
         </div>
         <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', flexShrink: 0 }}>{f(precio * item.cantidad)}</span>
       </div>
@@ -121,11 +126,8 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
         </div>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{f(precio * cantidad)}</span>
       </div>
-      <span style={{ display: 'block', marginTop: 4, fontSize: 11, fontWeight: 700, color: estadoLabel?.color ?? 'var(--jb-ok)' }}>
-        {estadoLabel?.texto ?? 'Enviado a cocina ✓'}
-        {editado && (
-          <span style={{ color: 'var(--jb-pink-dark)' }}> · cambio sin enviar (antes {enviada})</span>
-        )}
+      <span style={{ display: 'block', marginTop: 4, fontSize: 11, fontWeight: 700, color: editado ? 'var(--jb-pink-dark)' : (estadoLabel?.color ?? 'var(--jb-ok)') }}>
+        {editado ? `Cambio sin enviar (antes ${enviada})` : (estadoLabel?.texto ?? 'Enviado a cocina ✓')}
       </span>
       {editable && (
         <CantidadControles

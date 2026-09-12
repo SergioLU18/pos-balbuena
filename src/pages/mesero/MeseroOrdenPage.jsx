@@ -78,13 +78,19 @@ export default function MeseroOrdenPage() {
 
   // Guardar cambios: un renglón del draft se reemplaza en su lugar; uno ya enviado a
   // cocina se retira del pedido y vuelve al draft ya modificado, para que el mesero lo
-  // reenvíe (así el cambio llega a la comanda de cocina de forma explícita).
+  // reenvíe (así el cambio llega a la comanda de cocina de forma explícita). En ese
+  // segundo caso se marca `modificaOriginal` con el nombre del renglón que reemplaza,
+  // para que el ticket avise qué se está editando (igual que ya hace con la cantidad).
   function confirmarEdicion(nuevoItem) {
     if (editando.tipo === 'draft') {
       reemplazarItem(editando.item.id, nuevoItem)
     } else {
       quitarItemEnviado(editando.pedidoId, editando.pedidoItemId)
-      agregarItemConstruido({ ...nuevoItem, id: uid('item') })
+      agregarItemConstruido({
+        ...nuevoItem,
+        id: uid('item'),
+        modificaOriginal: `${editando.item.platilloNombre} · ${editando.item.tier.nombre}`,
+      })
     }
     setEditando(null)
   }

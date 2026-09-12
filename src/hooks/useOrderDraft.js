@@ -187,7 +187,7 @@ export function useOrderDraft(mesaId) {
       // y además su estructura rica completa (para la comanda de cocina en pedidos.items).
       // La RPC abre la cuenta si hace falta, agrega los renglones con las funciones de
       // tali, recalcula el subtotal y crea el pedido — todo atómico. Realtime refresca.
-      const payload = draft.map((it) => ({
+      const payload = draft.map(({ modificaOriginal, ...it }) => ({
         ...it,
         nombre: nombreItem(it),
         precio_unitario: calcItemPrecio(it),
@@ -217,7 +217,7 @@ export function useOrderDraft(mesaId) {
       mesaNumero: mesa?.numero ?? '—',
       meseroId: mesero?.id ?? null,
       meseroNombre: mesero?.nombre ?? '—',
-      items: draft,
+      items: draft.map(({ modificaOriginal, ...it }) => it),
       enviadoAt: new Date().toISOString(),
       estado: 'pendiente',
     })

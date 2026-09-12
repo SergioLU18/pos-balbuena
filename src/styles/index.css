@@ -102,15 +102,16 @@ body {
 }
 .jb-slide-in { animation: jb-slide-in 0.22s cubic-bezier(0.32,0.72,0,1) both; }
 
-/* CTA "Enviar a cocina": anillo pulsante mientras hay algo sin enviar, para que
-   el mesero no olvide confirmar la comanda. Solo anima box-shadow para no chocar
-   con el scale que Button aplica al presionar. */
+/* CTA "Enviar a cocina": doble anillo + brillo mientras hay algo sin enviar, para que
+   el mesero no olvide confirmar la comanda. Solo anima box-shadow/filter (nunca transform)
+   para no chocar con el scale que Button aplica al presionar. */
 @keyframes jb-cta-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(234, 71, 138, 0.5); }
-  70%  { box-shadow: 0 0 0 16px rgba(234, 71, 138, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(234, 71, 138, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(234, 71, 138, 0.7), 0 0 0 0 rgba(234, 71, 138, 0.35); filter: brightness(1) saturate(1); }
+  45%  { filter: brightness(1.2) saturate(1.3); }
+  70%  { box-shadow: 0 0 0 14px rgba(234, 71, 138, 0), 0 0 0 26px rgba(234, 71, 138, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(234, 71, 138, 0), 0 0 0 0 rgba(234, 71, 138, 0); filter: brightness(1) saturate(1); }
 }
-.jb-cta-pulse { animation: jb-cta-pulse 1.8s ease-out infinite; }
+.jb-cta-pulse { animation: jb-cta-pulse 1.1s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .jb-cta-pulse { animation: none; }
 }
