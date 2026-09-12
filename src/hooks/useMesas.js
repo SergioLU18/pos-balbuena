@@ -1,10 +1,13 @@
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useMesaPagadaStore } from '../store/appStore'
 import { meserosDeMesa } from '../lib/asignaciones'
-import { sumaCuenta } from './useOrderDraft'
+import { sumaCuenta, calcSubtotal } from './useOrderDraft'
 
-/** Mesas visibles para el mesero actual, con su estado derivado (libre / preparando / abierta),
- *  si cocina ya está cocinando algún pedido de la mesa, y si ya dejó alguno "listo" para
- *  que el mesero lo recoja.
+/** Mesas visibles para el mesero actual, con su estado derivado. Solo existen dos
+ *  estados de cuenta: "abierta" (cualquier parte del proceso — armando el pedido,
+ *  enviado a cocina, en preparación, listo para servir — todo se ve igual desde el
+ *  piso; el detalle fino de cocina vive en CocinaPage, no aquí) y "pagada" (se cobró,
+ *  ya sea en tali o a mano por el mesero — ver cerrarMesa en useOrderDraft). Sin
+ *  ninguna de las dos, la mesa está "libre".
  *
  *  Cada mesa trae además `meseros` — los que la atienden, que pueden ser varios — y
  *  `esMia`, que es lo que filtra "solo mis mesas".
@@ -27,11 +30,12 @@ export function useMesas({ ignorarFiltro = false } = {}) {
   const base = MESAS.map((m) => {
     const cuenta = cuentas[m.id]
     const draft = drafts[m.id] ?? []
-    const pagada = pagadas[m.id] ?? null
-    const total = cuenta ? sumaCuenta(cuenta.items ?? []) : pagada ? pagada.total : 0
-    const tienePedidoListo = pedidos.some((p) => p.mesaId === m.id && p.estado === 'listo')
-    const tieneEnPreparacion = pedidos.some((p) => p.mesaId === m.id && p.estado === 'preparando')
-    const tienePedidoPendiente = pedidos.some((p) => p.mesaId === m.id && p.estado === 'pendiente')
+    const abierta = !!cuenta || draft.length > 0
+    // pagada solo aplica cuando la mesa no se reabrió: agregar el primer platillo del
+    // draft ya apaga el badge al instante (ver agregarPlatillo/agregarItemConstruido en
+    // useOrderDraft), esto es nomás la red de seguridad de la derivación.
+    const pagada = !abierta ? (pagadas[m.id] ?? null) : null
+    const total = cuenta ? sumaCuenta(cuenta.items ?? []) : draft.length > 0 ? calcSubtotal(draft) : pagada ? pagada.total : 0
 
     // Los meseros que atienden la mesa, en objetos (no ids) para que la tarjeta del
     // piso los pueda pintar por nombre. Se ignora el id que no resuelve contra el
@@ -48,16 +52,11 @@ export function useMesas({ ignorarFiltro = false } = {}) {
       meserosMesa.some((w) => w.id === currentMeseroId) ||
       pedidos.some((p) => p.mesaId === m.id && p.meseroId === currentMeseroId)
 
-    // Prioridad de estado: cuenta abierta > armando pedido (draft) > pagada (efímera) > libre.
-    // pagada solo aplica cuando ya no hay cuenta ni draft (el mesero no reabrió la mesa).
-    const estado = cuenta ? 'abierta' : draft.length > 0 ? 'preparando' : pagada ? 'pagada' : 'libre'
+    const estado = abierta ? 'abierta' : pagada ? 'pagada' : 'libre'
     return {
       ...m,
       estado,
       pagada: !!pagada,
-      tienePedidoListo,
-      tieneEnPreparacion,
-      tienePedidoPendiente,
       meseros: meserosMesa,
       esMia,
       compartida: meserosMesa.length > 1,

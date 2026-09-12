@@ -3,7 +3,7 @@ import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
-import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
+import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore, useMesaPagadaStore } from '../store/appStore'
 import { firma } from '../lib/bitacora'
 import { cargarTodo } from './usePosData'
 
@@ -134,12 +134,14 @@ export function useOrderDraft(mesaId) {
   }
 
   function agregarPlatillo(platillo, tierIndex) {
+    useMesaPagadaStore.getState().limpiarPagada(mesaId)
     addDraftItem(mesaId, buildDraftItem(platillo, tierIndex))
   }
 
   /** Agrega un renglón ya construido (p. ej. armado por ConfigurarPlatilloModal, con
    *  tier/mitades/ingredientes/modificadores/cantidad/nota ya elegidos por el mesero). */
   function agregarItemConstruido(item) {
+    useMesaPagadaStore.getState().limpiarPagada(mesaId)
     addDraftItem(mesaId, item)
   }
 
@@ -322,22 +324,31 @@ export function useOrderDraft(mesaId) {
     quitarItemCuenta(mesaId, itemId)
   }
 
-  // TEMPORAL: en la integración real, la cuenta se cierra desde la app de pagos
-  // (cuando se liquida por completo). Mientras no exista esa conexión, esto le da
-  // al mesero una forma manual de liberar la mesa para poder abrir una nueva.
+  // Cierre manual por el mesero (efectivo/tarjeta/otro): la contraparte del cierre
+  // automático que dispara tali al cobrar (ver el listener 'tali-panel-sync' en
+  // usePosData). Los dos caminos terminan igual del lado del mesero: la mesa se marca
+  // "Pagada" (useMesaPagadaStore) para que se vea el badge verde en el piso.
   function cerrarMesa(metodoPago) {
+    const total = sumaCuenta(cuenta?.items ?? [])
     if (!IS_MOCK) {
       sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId, p_metodo_pago: metodoPago, ...firma() })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] cerrarMesa falló:', error)
             avisarError('no se pudo cerrar la cuenta', 'La mesa sigue abierta')
+            return
           }
+          // Optimista, igual que el cierre automático por pago en tali: no se espera a que
+          // Realtime confirme para que la mesa se vea "Pagada" al instante.
+          cerrarCuenta(mesaId)
+          eliminarPedidosDeMesa(mesaId)
+          useMesaPagadaStore.getState().marcarPagada(mesaId, { at: new Date().toISOString(), total })
         })
       return
     }
     cerrarCuenta(mesaId)
     eliminarPedidosDeMesa(mesaId)
+    useMesaPagadaStore.getState().marcarPagada(mesaId, { at: new Date().toISOString(), total })
   }
 
   const subtotalDraft = calcSubtotal(draft)

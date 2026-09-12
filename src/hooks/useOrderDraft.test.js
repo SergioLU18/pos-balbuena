@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio, calcSubtotal, nombreItem } from './useOrderDraft'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio, calcSubtotal, nombreItem, useOrderDraft } from './useOrderDraft'
 import { MENU } from '../lib/mockMenu'
+import { MESAS } from '../lib/mockMesas'
+import { MESEROS } from '../lib/mockMeseros'
+import { useOrderStore, usePedidosStore, useMeseroStore, usePosStore, useMesaPagadaStore } from '../store/appStore'
 
 const sope = MENU.find((p) => p.id === 'sope')
 // Índice por nombre de tier (robusto al orden: el Sope tiene además "Sencillo con Chorizo").
@@ -8,6 +12,16 @@ const idx = (nombre) => sope.tiers.findIndex((t) => t.nombre === nombre)
 const I_SENCILLO = idx('Sencillo')       // 110
 const I_1ING = idx('1 Ingrediente')      // 140
 const I_2ING = idx('2 Ingredientes')     // 165
+
+const mesa1 = MESAS[0]
+
+beforeEach(() => {
+  useOrderStore.setState({ drafts: {}, cuentas: {} })
+  usePedidosStore.setState({ pedidos: [] })
+  useMesaPagadaStore.setState({ pagadas: {} })
+  useMeseroStore.setState({ currentMeseroId: MESEROS[0].id, soloMisMesas: false })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: [] })
+})
 
 describe('buildDraftItem', () => {
   it('crea un renglón completo (no dividido) con el precio del tier', () => {
@@ -88,5 +102,33 @@ describe('extras libres (escritos por el mesero)', () => {
     const item = { ...buildDraftItem(sope, I_1ING), extras: [{ nombre: 'Aguacate', precio: 30 }] }
     expect(nombreItem(item)).toContain('Extras: Aguacate')
     expect(nombreItem(item)).not.toContain('$30')
+  })
+})
+
+describe('useOrderDraft — cierre de mesa marca "pagada"', () => {
+  it('cerrarMesa limpia la cuenta y los pedidos, y marca la mesa como pagada con su total', () => {
+    useOrderStore.setState({
+      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, I_2ING)], createdAt: new Date().toISOString() } },
+    })
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'entregado' }],
+    })
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.cerrarMesa('efectivo'))
+
+    expect(useOrderStore.getState().cuentas[mesa1.id]).toBeUndefined()
+    expect(usePedidosStore.getState().pedidos).toHaveLength(0)
+    expect(useMesaPagadaStore.getState().pagadas[mesa1.id]).toMatchObject({ total: 165 })
+  })
+})
+
+describe('useOrderDraft — reabrir una mesa pagada', () => {
+  it('agregarPlatillo apaga el badge de pagada al instante, sin esperar el timeout', () => {
+    useMesaPagadaStore.setState({ pagadas: { [mesa1.id]: { at: new Date().toISOString(), total: 165 } } })
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+    act(() => result.current.agregarPlatillo(sope, I_2ING))
+
+    expect(useMesaPagadaStore.getState().pagadas[mesa1.id]).toBeUndefined()
+    expect(result.current.draft).toHaveLength(1)
   })
 })

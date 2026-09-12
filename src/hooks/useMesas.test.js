@@ -44,12 +44,13 @@ describe('useMesas — mesa pagada', () => {
     expect(mesa.total).toBe(165)
   })
 
-  it('una cuenta nueva (o draft) tiene prioridad sobre el badge de pagada', () => {
+  it('un draft nuevo (aún sin enviar) tiene prioridad sobre el badge de pagada', () => {
     useMesaPagadaStore.setState({ pagadas: { [mesa1.id]: { at: new Date().toISOString(), total: 165 } } })
     useOrderStore.setState({ drafts: { [mesa1.id]: [buildDraftItem(sope, I_2ING)] } })
     const { result } = renderHook(() => useMesas())
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
-    expect(mesa.estado).toBe('preparando')
+    expect(mesa.estado).toBe('abierta')
+    expect(mesa.total).toBe(165)
   })
 })
 
@@ -131,47 +132,19 @@ describe('useMesas — mesas unidas', () => {
   })
 })
 
-describe('useMesas — indicador de pedido listo', () => {
-  it('marca tienePedidoListo cuando cocina avanzó el pedido de la mesa a "listo"', () => {
-    usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'listo' }],
-    })
-    const { result } = renderHook(() => useMesas())
-    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
-    expect(mesa.tienePedidoListo).toBe(true)
-  })
-
-  it('deja de marcar tienePedidoListo una vez que el mesero lo recoge ("entregado"), y la mesa vuelve a verse como cuenta abierta', () => {
-    useOrderStore.setState({
-      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, 1)], createdAt: new Date().toISOString() } },
-    })
-    usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'entregado' }],
-    })
-    const { result } = renderHook(() => useMesas())
-    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
-    expect(mesa.tienePedidoListo).toBe(false)
-    expect(mesa.estado).toBe('abierta')
-  })
-
-  it('marca tieneEnPreparacion cuando cocina ya empezó a cocinar el pedido de la mesa', () => {
-    usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'preparando' }],
-    })
-    const { result } = renderHook(() => useMesas())
-    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
-    expect(mesa.tieneEnPreparacion).toBe(true)
-    expect(mesa.tienePedidoListo).toBe(false)
-  })
-
-  it('marca tienePedidoPendiente cuando el pedido ya se envió pero cocina aún no lo empieza', () => {
-    usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'pendiente' }],
-    })
-    const { result } = renderHook(() => useMesas())
-    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
-    expect(mesa.tienePedidoPendiente).toBe(true)
-    expect(mesa.tieneEnPreparacion).toBe(false)
-    expect(mesa.tienePedidoListo).toBe(false)
-  })
+describe('useMesas — solo dos estados de cuenta (el detalle de cocina no se ve en el piso)', () => {
+  it.each(['pendiente', 'preparando', 'listo', 'entregado'])(
+    'con cuenta abierta, la mesa se ve "abierta" sin importar la sub-etapa de cocina (%s)',
+    (estadoPedido) => {
+      useOrderStore.setState({
+        cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, 1)], createdAt: new Date().toISOString() } },
+      })
+      usePedidosStore.setState({
+        pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: estadoPedido }],
+      })
+      const { result } = renderHook(() => useMesas())
+      const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+      expect(mesa.estado).toBe('abierta')
+    },
+  )
 })

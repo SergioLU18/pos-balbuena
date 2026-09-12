@@ -180,15 +180,22 @@ export const usePosStore = create(
   ),
 )
 
-// Mesas recién pagadas (el pago ocurre en tali; aquí solo se refleja). A propósito NO
-// se persiste: es una señal efímera de sesión — la tarjeta muestra "Pagada" hasta que
-// el mesero recarga la página o abre una cuenta nueva (agrega un producto). usePosData
-// la enciende al detectar el pago por Realtime y la apaga cuando la mesa vuelve a tener
-// cuenta activa. En modo mock no se usa (no hay flujo de pago).
-export const useMesaPagadaStore = create((set) => ({
+// Cuánto dura el badge verde "Pagada" en el piso antes de volver sola a "libre": el mesero
+// solo necesita el aviso un momento para confirmar que se cobró, no todo el turno.
+const PAGADA_MS = 3 * 60 * 1000
+
+// Mesas recién pagadas — ya sea porque tali cerró el pago o porque el mesero cerró la
+// mesa a mano (efectivo/tarjeta, ver cerrarMesa en useOrderDraft). A propósito NO se
+// persiste: es una señal efímera de sesión. La tarjeta muestra "Pagada" hasta que pasan
+// PAGADA_MS (se agenda sola desde marcarPagada) o hasta que la mesa vuelve a tener cuenta
+// activa o un draft (el mesero agregó un platillo nuevo, ver limpiarPagada en useMesas).
+export const useMesaPagadaStore = create((set, get) => ({
   pagadas: {}, // mesaId -> { at, total }
-  marcarPagada: (mesaId, info) =>
-    set((s) => (mesaId in s.pagadas ? s : { pagadas: { ...s.pagadas, [mesaId]: info } })),
+  marcarPagada: (mesaId, info) => {
+    if (mesaId in get().pagadas) return // ya estaba marcada: no reinicia su propio timeout
+    set((s) => ({ pagadas: { ...s.pagadas, [mesaId]: info } }))
+    setTimeout(() => get().limpiarPagada(mesaId), PAGADA_MS)
+  },
   limpiarPagada: (mesaId) =>
     set((s) => {
       if (!(mesaId in s.pagadas)) return s

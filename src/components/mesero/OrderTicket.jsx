@@ -21,9 +21,10 @@ function DescripcionItem({ item }) {
   )
 }
 
-// Etiqueta de solo lectura para un renglón cuyo pedido ya no está en Nuevo — mismo
-// texto que usa MesaCard.jsx para el estado de cocina, para que se lea igual desde
-// las dos pantallas del mesero.
+// Etiqueta de solo lectura para un renglón cuyo pedido ya no está en Nuevo. El piso
+// (MesaCard.jsx) ya no distingue estas sub-etapas de cocina — solo "Cuenta abierta" o
+// "Pagada" — pero aquí, DENTRO de la orden de una mesa, sigue sirviendo para saber qué
+// platillo en concreto ya está listo para recoger.
 const ESTADO_LABEL = {
   // 'pendiente' = ya enviado a cocina pero todavía en la columna "Nuevo" (cocina no lo
   // empezó): sigue editable, pero necesita su propia etiqueta para no confundirse con un
