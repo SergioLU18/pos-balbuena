@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBitacora, hoyLocal } from '../../hooks/useBitacora'
 import { usePosStore } from '../../store/appStore'
 import { IS_MOCK } from '../../lib/config'
 import { f } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
 import { GRUPOS, describir, esSensible, grupoDe, importe, renglones, sujeto } from '../../lib/eventos'
+import { Section } from '../../components/admin/stats/Section'
+import { EstadisticasSection } from '../../components/admin/stats/EstadisticasSection'
 
 const FILTROS = [['', 'Todo'], ['operacion', 'Operación'], ['menu', 'Menú'], ['config', 'Configuración']]
 
@@ -24,8 +26,15 @@ const chip = (activo) => ({
 
 const hora = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
 
-// Ajustes → Bitácora: quién hizo qué y cuándo, un día a la vez. Solo lectura — la
-// bitácora no se edita ni se borra desde ningún lado (ver supabase/bitacora.sql).
+// Alto de la ventana scrolleable cuando la bitácora va encogida arriba de
+// Estadísticas — suficiente para ver 4-5 filas sin que la lista de todo el día
+// empuje las gráficas kilómetros hacia abajo. "Pantalla completa" es la salida
+// para cuando sí hace falta revisarla completa.
+const ALTO_ENCOGIDO = 460
+
+// Ajustes → Bitácora: quién hizo qué y cuándo (arriba, en su propia ventana
+// scrolleable) y Estadísticas de venta/clientes/patrones (abajo). Solo lectura —
+// la bitácora no se edita ni se borra desde ningún lado (ver supabase/bitacora.sql).
 export default function AdminBitacoraPage() {
   const meseros = usePosStore((s) => s.meseros)
   // "Hoy" se fija al abrir la pantalla: sirve de día inicial y de tope del selector.
@@ -33,76 +42,125 @@ export default function AdminBitacoraPage() {
   const [dia, setDia] = useState(hoy)
   const [meseroId, setMeseroId] = useState('')
   const [grupo, setGrupo] = useState('')
-  const [abierto, setAbierto] = useState(null)
-  const { eventos, cargando, error, hayMas, cargandoMas, cargarMas, recargar } =
-    useBitacora({ dia, meseroId: meseroId || null, grupo: grupo || null })
+  const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const bitacora = useBitacora({ dia, meseroId: meseroId || null, grupo: grupo || null })
 
-  const filtrado = !!(meseroId || grupo)
+  // Esc cierra la pantalla completa — es un overlay que tapa todo lo demás, y
+  // en una tableta con teclado (o el admin desde una laptop) es el reflejo natural.
+  useEffect(() => {
+    if (!pantallaCompleta) return
+    const onKeyDown = (e) => { if (e.key === 'Escape') setPantallaCompleta(false) }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pantallaCompleta])
 
-  let cuerpo
-  if (IS_MOCK) {
-    cuerpo = <Aviso>La bitácora se guarda en el servidor. En modo demo no se registra nada.</Aviso>
-  } else if (error) {
-    cuerpo = <Aviso tono="error">No se pudo leer la bitácora: {error}</Aviso>
-  } else if (cargando) {
-    cuerpo = <Aviso>Cargando…</Aviso>
-  } else if (!eventos.length) {
-    cuerpo = (
-      <Aviso>
-        No hay movimientos registrados {dia === hoy ? 'hoy' : 'ese día'}{filtrado ? ' con estos filtros' : ''}.
-      </Aviso>
-    )
-  } else {
-    cuerpo = (
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {eventos.map((ev) => (
-          <Fila
-            key={ev.id}
-            ev={ev}
-            abierto={abierto === ev.id}
-            onToggle={() => setAbierto(abierto === ev.id ? null : ev.id)}
-          />
-        ))}
-      </ul>
-    )
-  }
+  const filtros = { hoy, dia, setDia, meseroId, setMeseroId, grupo, setGrupo, meseros }
 
   return (
-    <div style={{ padding: '20px 24px 48px', maxWidth: 980, margin: '0 auto' }}>
-      <div className="flex items-start justify-between" style={{ gap: 16, marginBottom: 16 }}>
+    <div style={{ padding: '20px 24px 48px', maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <Section
+        title="Bitácora"
+        subtitle="Quién hizo qué y cuándo. Los registros no se pueden editar ni borrar."
+        action={
+          <div className="flex items-center" style={{ gap: 8 }}>
+            {!IS_MOCK && <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>}
+            <Button variant="secondary" size="md" onClick={() => setPantallaCompleta(true)}>⤢ Pantalla completa</Button>
+          </div>
+        }
+      >
+        <BitacoraFiltros {...filtros} />
+        <div style={{ maxHeight: ALTO_ENCOGIDO, overflowY: 'auto', paddingRight: 4 }}>
+          <BitacoraCuerpo {...bitacora} dia={dia} hoy={hoy} filtrado={!!(meseroId || grupo)} />
+        </div>
+      </Section>
+
+      <EstadisticasSection />
+
+      {pantallaCompleta && (
+        <BitacoraPantallaCompleta filtros={filtros} bitacora={bitacora} onCerrar={() => setPantallaCompleta(false)} />
+      )}
+    </div>
+  )
+}
+
+function BitacoraPantallaCompleta({ filtros, bitacora, onCerrar }) {
+  return (
+    <div
+      role="dialog" aria-modal="true" aria-label="Bitácora, pantalla completa"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1200, background: 'var(--jb-cream)',
+        display: 'flex', flexDirection: 'column', padding: '20px 24px',
+      }}
+    >
+      <div className="flex items-start justify-between" style={{ gap: 16, marginBottom: 16, flexShrink: 0 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Bitácora</h1>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>Bitácora</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>
             Quién hizo qué y cuándo. Los registros no se pueden editar ni borrar.
           </p>
         </div>
-        {!IS_MOCK && <Button variant="secondary" size="md" onClick={recargar}>Actualizar</Button>}
-      </div>
-
-      <div className="flex items-center flex-wrap" style={{ gap: 10, marginBottom: 18 }}>
-        <input
-          type="date"
-          value={dia}
-          max={hoy}
-          onChange={(e) => e.target.value && setDia(e.target.value)}
-          aria-label="Día"
-          style={CONTROL}
-        />
-        <select value={meseroId} onChange={(e) => setMeseroId(e.target.value)} aria-label="Mesero" style={CONTROL}>
-          <option value="">Todos los meseros</option>
-          {meseros.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-        </select>
-        <div className="flex flex-wrap" style={{ gap: 6 }}>
-          {FILTROS.map(([valor, texto]) => (
-            <button key={valor || 'todo'} onClick={() => setGrupo(valor)} aria-pressed={grupo === valor} style={chip(grupo === valor)}>
-              {texto}
-            </button>
-          ))}
+        <div className="flex items-center" style={{ gap: 8 }}>
+          {!IS_MOCK && <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>}
+          <Button variant="primary" size="md" onClick={onCerrar}>✕ Cerrar</Button>
         </div>
       </div>
+      <div style={{ flexShrink: 0, marginBottom: 16 }}>
+        <BitacoraFiltros {...filtros} />
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', maxWidth: 980, width: '100%', margin: '0 auto' }}>
+        <BitacoraCuerpo {...bitacora} dia={filtros.dia} hoy={filtros.hoy} filtrado={!!(filtros.meseroId || filtros.grupo)} />
+      </div>
+    </div>
+  )
+}
 
-      {cuerpo}
+function BitacoraFiltros({ hoy, dia, setDia, meseroId, setMeseroId, grupo, setGrupo, meseros }) {
+  return (
+    <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
+      <input
+        type="date"
+        value={dia}
+        max={hoy}
+        onChange={(e) => e.target.value && setDia(e.target.value)}
+        aria-label="Día"
+        style={CONTROL}
+      />
+      <select value={meseroId} onChange={(e) => setMeseroId(e.target.value)} aria-label="Mesero" style={CONTROL}>
+        <option value="">Todos los meseros</option>
+        {meseros.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+      </select>
+      <div className="flex flex-wrap" style={{ gap: 6 }}>
+        {FILTROS.map(([valor, texto]) => (
+          <button key={valor || 'todo'} onClick={() => setGrupo(valor)} aria-pressed={grupo === valor} style={chip(grupo === valor)}>
+            {texto}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
+function BitacoraCuerpo({ eventos, cargando, error, hayMas, cargandoMas, cargarMas, dia, hoy, filtrado }) {
+  const [abierto, setAbierto] = useState(null)
+
+  if (IS_MOCK) return <Aviso>La bitácora se guarda en el servidor. En modo demo no se registra nada.</Aviso>
+  if (error) return <Aviso tono="error">No se pudo leer la bitácora: {error}</Aviso>
+  if (cargando) return <Aviso>Cargando…</Aviso>
+  if (!eventos.length) {
+    return (
+      <Aviso>
+        No hay movimientos registrados {dia === hoy ? 'hoy' : 'ese día'}{filtrado ? ' con estos filtros' : ''}.
+      </Aviso>
+    )
+  }
+
+  return (
+    <>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {eventos.map((ev) => (
+          <Fila key={ev.id} ev={ev} abierto={abierto === ev.id} onToggle={() => setAbierto(abierto === ev.id ? null : ev.id)} />
+        ))}
+      </ul>
       {hayMas && (
         <div className="flex justify-center" style={{ marginTop: 16 }}>
           <Button variant="secondary" size="md" onClick={cargarMas} disabled={cargandoMas}>
@@ -110,7 +168,7 @@ export default function AdminBitacoraPage() {
           </Button>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

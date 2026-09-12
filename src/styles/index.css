@@ -39,6 +39,11 @@
   --jb-white:       #FFFFFF;
   --jb-ok:          #3FA66B;
   --jb-ok-bg:       #E8F7EF;
+  /* jb-down: contraparte de jb-ok para Estadísticas (venta que bajó vs. el
+     periodo anterior) — no existía porque nada antes de eso mostraba una
+     comparación que pudiera ir para abajo. */
+  --jb-down:        #C24545;
+  --jb-down-bg:     #FBEAEA;
   --jb-warn:        #E2A93B;
   --jb-warn-bg:     #FCF2DF;
   --jb-teal:        #2E8B95;
