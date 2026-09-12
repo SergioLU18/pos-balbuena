@@ -4,7 +4,7 @@ import { uid } from '../lib/utils'
 import { normalizarTelefono } from '../lib/telefono'
 import { nombreCompleto, formatearDireccion } from '../lib/cliente'
 import { firma } from '../lib/bitacora'
-import { useLlevarStore, useMeseroStore, usePedidosStore, usePosStore } from '../store/appStore'
+import { useLlevarStore, useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
 
 /** Renglones de una orden abierta: viven en sus pedidos de cocina (no hay tabla espejo
@@ -36,6 +36,7 @@ export function useLlevar() {
   const setClientes = useLlevarStore((s) => s.setClientes)
   const guardarClienteLocal = useLlevarStore((s) => s.guardarClienteLocal)
   const agregarOrdenLocal = useLlevarStore((s) => s.agregarOrdenLocal)
+  const quitarOrdenLocal = useLlevarStore((s) => s.quitarOrdenLocal)
   const pedidos = usePedidosStore((s) => s.pedidos)
   const restauranteId = usePosStore((s) => s.restauranteId)
   const meseros = usePosStore((s) => s.meseros)
@@ -140,14 +141,22 @@ export function useLlevar() {
   }
 
   /** Da de baja al cliente (borrado lógico: activo=false, mismo criterio que las bajas
-   *  de mesa/mesero). Bloqueado si tiene una orden para llevar abierta. */
+   *  de mesa/mesero). Bloqueado solo si tiene una orden para llevar abierta CON platillos
+   *  en cocina: las vacías (se abrió la orden y no se llegó a pedir nada) se descartan
+   *  junto con la baja — en backend eso lo hace pos_desactivar_cliente. */
   async function borrarCliente(clienteId) {
-    const tieneAbierta = ordenes.some((o) => o.clienteId === clienteId && o.estado === 'abierta')
-    if (tieneAbierta) {
+    const abiertas = ordenes.filter((o) => o.clienteId === clienteId && o.estado === 'abierta')
+    const vacias = abiertas.filter((o) => itemsDeOrden(o.id, pedidos, o).length === 0)
+    if (vacias.length < abiertas.length) {
       return { error: 'No se puede borrar un cliente con una orden para llevar abierta.' }
     }
+    const quitarVacias = () => vacias.forEach((o) => {
+      quitarOrdenLocal(o.id)
+      useOrderStore.getState().clearDraft(o.id)
+    })
 
     if (IS_MOCK) {
+      quitarVacias()
       setClientes(clientes.filter((c) => c.id !== clienteId))
       return { error: null }
     }
@@ -158,6 +167,7 @@ export function useLlevar() {
       return { error: error.message }
     }
     // Al padrón local en el acto, mismo motivo que guardarCliente/crearOrden.
+    quitarVacias()
     setClientes(clientes.filter((c) => c.id !== clienteId))
     return { error: null }
   }

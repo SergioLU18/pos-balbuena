@@ -242,6 +242,9 @@ export const useLlevarStore = create(
 
       actualizarOrdenLocal: (ordenId, patch) =>
         set((s) => ({ ordenes: s.ordenes.map((o) => (o.id === ordenId ? { ...o, ...patch } : o)) })),
+
+      // Una orden descartada (vacía) no se cierra: se borra, así que tampoco queda aquí.
+      quitarOrdenLocal: (ordenId) => set((s) => ({ ordenes: s.ordenes.filter((o) => o.id !== ordenId) })),
     }),
     { name: 'pos-balbuena-llevar', storage: safeStorage },
   ),

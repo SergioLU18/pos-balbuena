@@ -24,7 +24,9 @@ const GRUPO_DE = {
   'mesa.separar': 'operacion',
   'llevar.crear': 'operacion',
   'llevar.cerrar': 'operacion',
+  'llevar.descartar': 'operacion',
   'cliente.guardar': 'operacion',
+  'cliente.baja': 'operacion',
 
   'platillo.crear': 'menu',
   'platillo.editar': 'menu',
@@ -148,7 +150,9 @@ export function describir(ev) {
 
     case 'llevar.crear': return 'Abrió la orden para llevar'
     case 'llevar.cerrar': return d.estado === 'cancelada' ? 'Canceló la orden para llevar' : 'Entregó la orden para llevar'
+    case 'llevar.descartar': return 'Descartó la orden para llevar (sin platillos)'
     case 'cliente.guardar': return d.alta ? 'Dio de alta al cliente' : 'Editó los datos del cliente'
+    case 'cliente.baja': return 'Dio de baja al cliente'
 
     case 'platillo.crear': return 'Agregó el platillo al menú'
     case 'platillo.editar': return cambiosCatalogo(d, 'precio', 'el platillo')

@@ -22,13 +22,18 @@ export default function LlevarOrdenPage() {
   const { menu, categorias, ingredientes, modificadores, extras } = useMenu()
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
-  const [cerrando, setCerrando] = useState(null) // 'entregada' | 'cancelada' | null
+  const [cerrando, setCerrando] = useState(null) // 'entregada' | 'cancelada' | 'descartar' | null
 
   const {
     orden, draft, pedidos, enviados, subtotalDraft, subtotalEnviado,
     agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina,
-    fijarCantidadEnviado, quitarItemEnviado, cerrarOrden,
+    fijarCantidadEnviado, quitarItemEnviado, cerrarOrden, descartarOrden,
   } = useOrdenLlevar(ordenId)
+
+  // Nada enviado a cocina todavía. Una orden así no se cancela ni se deja abierta: se
+  // descarta (ver descartarOrden), para que no queden órdenes fantasma de $0 colgadas
+  // del cliente — que además impedían darlo de baja.
+  const vacia = enviados.length === 0
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
 
@@ -40,9 +45,24 @@ export default function LlevarOrdenPage() {
     setCategoriaActiva(categoria)
   }
 
+  function descartar() {
+    navigate('/mesero/llevar')
+    descartarOrden()
+  }
+
+  // Salir de una orden vacía la descarta. Si hay platillos capturados sin enviar se
+  // pregunta antes: el draft vive solo en esta tablet y se perdería sin aviso.
+  function salir() {
+    if (categoriaActiva) { setCategoriaActiva(null); return }
+    if (!vacia) { navigate('/mesero/llevar'); return }
+    if (draft.length > 0) { setCerrando('descartar'); return }
+    descartar()
+  }
+
   async function confirmarCierre() {
     const estado = cerrando
     setCerrando(null)
+    if (estado === 'descartar') { descartar(); return }
     const { error } = await cerrarOrden(estado)
     if (!error) navigate('/mesero/llevar')
   }
@@ -61,12 +81,32 @@ export default function LlevarOrdenPage() {
   }
 
   const cocinando = pedidos.some((p) => p.estado === 'pendiente' || p.estado === 'preparando')
+  const quien = `La orden L-${orden.folio} de ${orden.clienteNombre}`
+  const dialogo = {
+    cancelada: {
+      titulo: '¿Cancelar la orden?',
+      mensaje: `${quien} se marcará como cancelada${cocinando ? ' y sus comandas saldrán del tablero de cocina, aunque todavía se estén preparando' : ''}.`,
+      confirmar: 'Sí, cancelar',
+    },
+    entregada: {
+      titulo: '¿Entregar y cerrar la orden?',
+      mensaje: `${quien} quedará cerrada y guardada en su historial de compras${cocinando ? '. Ojo: todavía tiene platillos en cocina' : ''}.`,
+      confirmar: 'Sí, entregar',
+    },
+    descartar: {
+      titulo: '¿Descartar la orden?',
+      mensaje: draft.length > 0
+        ? `${quien} no tiene nada enviado a cocina. Se descarta junto con los platillos capturados sin enviar.`
+        : `${quien} no tiene platillos, así que se descarta sin quedar en su historial.`,
+      confirmar: 'Sí, descartar',
+    },
+  }[cerrando]
 
   return (
     <div className="h-full flex flex-col" style={{ padding: vertical ? '16px 20px' : '20px 28px' }}>
       <div className="flex items-center flex-shrink-0" style={{ gap: 14, marginBottom: 16 }}>
         <button
-          onClick={() => (categoriaActiva ? setCategoriaActiva(null) : navigate('/mesero/llevar'))}
+          onClick={salir}
           aria-label="Atrás"
           style={botonAtras}
         >
@@ -85,15 +125,18 @@ export default function LlevarOrdenPage() {
           </p>
         </div>
 
-        <button onClick={() => setCerrando('cancelada')} style={{ ...botonSecundario, color: '#A83232', borderColor: '#E0B4B4' }}>
+        <button
+          onClick={() => setCerrando(vacia ? 'descartar' : 'cancelada')}
+          style={{ ...botonSecundario, color: '#A83232', borderColor: '#E0B4B4' }}
+        >
           Cancelar orden
         </button>
         <button
           onClick={() => setCerrando('entregada')}
-          disabled={enviados.length === 0}
+          disabled={vacia}
           style={{
             ...botonSecundario, background: 'var(--jb-teal)', color: '#fff', borderColor: 'var(--jb-teal)',
-            opacity: enviados.length === 0 ? 0.45 : 1, cursor: enviados.length === 0 ? 'default' : 'pointer',
+            opacity: vacia ? 0.45 : 1, cursor: vacia ? 'default' : 'pointer',
           }}
         >
           Entregar y cerrar
@@ -166,17 +209,13 @@ export default function LlevarOrdenPage() {
         />
       )}
 
-      {cerrando && (
+      {dialogo && (
         <ConfirmModal
-          titulo={cerrando === 'cancelada' ? '¿Cancelar la orden?' : '¿Entregar y cerrar la orden?'}
-          mensaje={
-            cerrando === 'cancelada'
-              ? `La orden L-${orden.folio} de ${orden.clienteNombre} se marcará como cancelada${cocinando ? ' y sus comandas saldrán del tablero de cocina, aunque todavía se estén preparando' : ''}.`
-              : `La orden L-${orden.folio} de ${orden.clienteNombre} quedará cerrada y guardada en su historial de compras${cocinando ? '. Ojo: todavía tiene platillos en cocina' : ''}.`
-          }
-          confirmarLabel={cerrando === 'cancelada' ? 'Sí, cancelar' : 'Sí, entregar'}
+          titulo={dialogo.titulo}
+          mensaje={dialogo.mensaje}
+          confirmarLabel={dialogo.confirmar}
           cancelarLabel="Volver"
-          danger={cerrando === 'cancelada'}
+          danger={cerrando !== 'entregada'}
           onConfirm={confirmarCierre}
           onClose={() => setCerrando(null)}
         />

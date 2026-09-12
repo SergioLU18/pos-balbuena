@@ -33,6 +33,7 @@ export function useOrdenLlevar(ordenId) {
   const clearDraft = useOrderStore((s) => s.clearDraft)
   const orden = useLlevarStore((s) => s.ordenes).find((o) => o.id === ordenId) ?? null
   const actualizarOrdenLocal = useLlevarStore((s) => s.actualizarOrdenLocal)
+  const quitarOrdenLocal = useLlevarStore((s) => s.quitarOrdenLocal)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const meseros = usePosStore((s) => s.meseros)
   const agregarPedido = usePedidosStore((s) => s.agregarPedido)
@@ -187,6 +188,26 @@ export function useOrdenLlevar(ordenId) {
       })
   }
 
+  /** Descarta una orden que nunca llegó a cocina (sin renglones enviados): se BORRA en
+   *  vez de cancelarse, para no dejar una "cancelada de $0" en el historial del cliente
+   *  por algo que no existió. Optimista: la orden sale del listado en el acto; si el RPC
+   *  falla (p. ej. otra tablet le mandó platillos mientras tanto) se recarga y vuelve. */
+  function descartarOrden() {
+    if (enviados.length > 0) return
+    quitarOrdenLocal(ordenId)
+    eliminarPedidosDeOrdenLlevar(ordenId)
+    clearDraft(ordenId)
+    if (IS_MOCK) return
+
+    sb.rpc('pos_descartar_orden_llevar', { p_orden_id: ordenId, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[llevar] descartarOrden falló:', error)
+          recargarDesdeBackend()
+        }
+      })
+  }
+
   return {
     orden,
     draft,
@@ -201,5 +222,6 @@ export function useOrdenLlevar(ordenId) {
     fijarCantidadEnviado,
     quitarItemEnviado,
     cerrarOrden,
+    descartarOrden,
   }
 }
