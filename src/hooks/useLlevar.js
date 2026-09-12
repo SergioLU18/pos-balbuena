@@ -32,6 +32,7 @@ export function totalDeOrden(orden, pedidos) {
 export function useLlevar() {
   const clientes = useLlevarStore((s) => s.clientes)
   const ordenes = useLlevarStore((s) => s.ordenes)
+  const setClientes = useLlevarStore((s) => s.setClientes)
   const guardarClienteLocal = useLlevarStore((s) => s.guardarClienteLocal)
   const agregarOrdenLocal = useLlevarStore((s) => s.agregarOrdenLocal)
   const pedidos = usePedidosStore((s) => s.pedidos)
@@ -112,6 +113,29 @@ export function useLlevar() {
     return { cliente: guardado, error: null }
   }
 
+  /** Da de baja al cliente (borrado lógico: activo=false, mismo criterio que las bajas
+   *  de mesa/mesero). Bloqueado si tiene una orden para llevar abierta. */
+  async function borrarCliente(clienteId) {
+    const tieneAbierta = ordenes.some((o) => o.clienteId === clienteId && o.estado === 'abierta')
+    if (tieneAbierta) {
+      return { error: 'No se puede borrar un cliente con una orden para llevar abierta.' }
+    }
+
+    if (IS_MOCK) {
+      setClientes(clientes.filter((c) => c.id !== clienteId))
+      return { error: null }
+    }
+
+    const { error } = await sb.rpc('pos_desactivar_cliente', { p_cliente_id: clienteId, ...firma() })
+    if (error) {
+      console.error('[llevar] borrarCliente falló:', error)
+      return { error: error.message }
+    }
+    // Al padrón local en el acto, mismo motivo que guardarCliente/crearOrden.
+    setClientes(clientes.filter((c) => c.id !== clienteId))
+    return { error: null }
+  }
+
   /** Abre una orden para llevar del cliente y devuelve su id (con el que se navega a la
    *  pantalla de toma de orden). El folio corto lo asigna el backend, consecutivo por
    *  restaurante — es el número que se canta en cocina, un uuid no sirve para eso. */
@@ -189,6 +213,7 @@ export function useLlevar() {
     pedidos,
     buscarPorTelefono,
     guardarCliente,
+    borrarCliente,
     crearOrden,
     historialCliente,
   }

@@ -144,6 +144,45 @@ end;
 $$;
 
 -- ============================================================================
+-- RPC: dar de baja a un cliente (borrado lógico, activo=false, mismo criterio
+-- que pos_borrar_mesero). No se borra la fila: sus órdenes ya cerradas siguen
+-- sosteniendo el historial de venta. Si tiene una orden para llevar ABIERTA se
+-- bloquea, igual que "no se puede borrar una mesa con cuenta abierta".
+-- ============================================================================
+drop function if exists pos_desactivar_cliente(uuid);
+create or replace function pos_desactivar_cliente(
+  p_cliente_id    uuid,
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rest          uuid;
+  v_nombre        text;
+  v_tiene_abierta boolean;
+begin
+  select exists(
+    select 1 from ordenes_llevar where cliente_id = p_cliente_id and estado = 'abierta'
+  ) into v_tiene_abierta;
+  if v_tiene_abierta then
+    raise exception 'No se puede borrar un cliente con una orden para llevar abierta.';
+  end if;
+
+  select restaurante_id, nombre into v_rest, v_nombre from clientes where id = p_cliente_id;
+
+  update clientes set activo = false, updated_at = now() where id = p_cliente_id;
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'cliente.baja', 'cliente', p_cliente_id, v_nombre, '{}'::jsonb
+  );
+end;
+$$;
+
+-- ============================================================================
 -- RPC: abrir una orden para llevar para un cliente. Copia sus datos a la orden
 -- (ver el comentario de la tabla) y le asigna el folio consecutivo del
 -- restaurante. El lock sobre `restaurantes` serializa el cálculo del folio para
@@ -328,6 +367,7 @@ drop policy if exists "pos ordenes_llevar lectura" on ordenes_llevar;
 create policy "pos ordenes_llevar lectura" on ordenes_llevar for select to anon, authenticated using (true);
 
 grant execute on function pos_guardar_cliente(uuid, text, text, text, text, uuid, text) to anon, authenticated;
+grant execute on function pos_desactivar_cliente(uuid, uuid, text)                      to anon, authenticated;
 grant execute on function pos_crear_orden_llevar(uuid, uuid, uuid, text)                to anon, authenticated;
 grant execute on function pos_enviar_orden_llevar(uuid, jsonb, uuid, text)              to anon, authenticated;
 grant execute on function pos_cerrar_orden_llevar(uuid, text, uuid, text)               to anon, authenticated;
