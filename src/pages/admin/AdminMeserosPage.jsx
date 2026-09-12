@@ -1,32 +1,12 @@
 import { useState } from 'react'
 import { usePosStore, useMeseroStore } from '../../store/appStore'
-import { atiende, mesasDeMesero, meserosDeMesa } from '../../lib/asignaciones'
+import { meserosDeMesa } from '../../lib/asignaciones'
 import { useMeseroAdmin } from '../../hooks/useMeseroAdmin'
 import { Button } from '../../components/ui/Button'
-import { Chip } from '../../components/ui/Chip'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
 import { PinPad } from '../../components/layout/PinPad'
-
-const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
-
-/** El reparto de un mesero: las mesas que atiende, y de esas, cuáles comparte y con
- *  quién. Una mesa puede tener varios meseros, así que "sus" mesas no son exclusivas
- *  y conviene que el admin vea el traslape antes de mover nada. */
-function repartoDeMesero(meseroId, mesas, meseros, asignaciones) {
-  const suyas = mesas.filter((m) => atiende(asignaciones, m.id, meseroId)).sort(porNumero)
-  const compartidas = suyas
-    .map((m) => ({
-      numero: m.numero,
-      con: meserosDeMesa(asignaciones, m.id)
-        .filter((id) => id !== meseroId)
-        .map((id) => meseros.find((w) => w.id === id)?.nombre)
-        .filter(Boolean),
-    }))
-    .filter((x) => x.con.length > 0)
-  return { suyas, compartidas }
-}
 
 // Gestión de meseros: alta, edición (nombre, PIN, mesas que atiende, rol admin,
 // activo) y baja. Guardas para no quedarse sin admin: no puedes borrarte a ti
@@ -41,7 +21,6 @@ export default function AdminMeserosPage() {
   const [editando, setEditando] = useState(null) // mesero en edición, o {} para nuevo
   const [borrando, setBorrando] = useState(null) // mesero a confirmar borrado
 
-  const mesasOrdenadas = [...mesas].sort(porNumero)
   const adminsActivos = meseros.filter((m) => m.esAdmin && m.activo !== false)
   const esUltimoAdmin = (m) => m.esAdmin && adminsActivos.length <= 1
   // Mesas que atiende más de un mesero. Se muestra arriba porque es lo que distingue
@@ -72,7 +51,6 @@ export default function AdminMeserosPage() {
           <MeseroCard
             key={m.id}
             mesero={m}
-            reparto={repartoDeMesero(m.id, mesas, meseros, asignaciones)}
             esActual={m.id === currentMeseroId}
             onEdit={() => setEditando(m)}
             onDelete={() => setBorrando(m)}
@@ -83,8 +61,6 @@ export default function AdminMeserosPage() {
       {editando && (
         <MeseroModal
           mesero={editando}
-          mesas={mesasOrdenadas}
-          asignaciones={asignaciones}
           esUltimoAdmin={editando.id ? esUltimoAdmin(editando) : false}
           onGuardar={guardarMesero}
           onClose={() => setEditando(null)}
@@ -105,7 +81,7 @@ export default function AdminMeserosPage() {
   )
 }
 
-function MeseroCard({ mesero, reparto, esActual, onEdit, onDelete }) {
+function MeseroCard({ mesero, esActual, onEdit, onDelete }) {
   const inactivo = mesero.activo === false
   return (
     <div
@@ -120,19 +96,6 @@ function MeseroCard({ mesero, reparto, esActual, onEdit, onDelete }) {
           {mesero.esAdmin && <Badge color="var(--jb-pink)">Admin</Badge>}
           {inactivo && <Badge color="var(--jb-gray)">Inactivo</Badge>}
         </div>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--jb-ink-soft)' }}>
-        {reparto.suyas.length
-          ? `Mesas: ${reparto.suyas.map((m) => m.numero).join(', ')}`
-          : 'Sin mesas asignadas'}
-      </div>
-      {reparto.compartidas.length > 0 && (
-        <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>
-          Comparte {reparto.compartidas.map((c) => `${c.numero} (${c.con.join(', ')})`).join(' · ')}
-        </div>
-      )}
-      <div style={{ fontSize: 13, color: 'var(--jb-gray)' }}>
-        PIN: {mesero.pin ? '••••' : 'sin PIN'}
       </div>
       <div className="flex" style={{ gap: 8, marginTop: 4 }}>
         <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onEdit}>Editar</Button>
@@ -161,12 +124,10 @@ function Badge({ color, children }) {
   )
 }
 
-function MeseroModal({ mesero, mesas, asignaciones, esUltimoAdmin, onGuardar, onClose }) {
+function MeseroModal({ mesero, esUltimoAdmin, onGuardar, onClose }) {
   const esNuevo = !mesero.id
   const [nombre, setNombre] = useState(mesero.nombre ?? '')
   const [pin, setPin] = useState(mesero.pin ?? '')
-  // Ids de mesa, no números: el número es editable y reciclable (ver asignaciones.js).
-  const [mesasSel, setMesasSel] = useState(() => mesasDeMesero(asignaciones, mesero.id))
   const [esAdmin, setEsAdmin] = useState(!!mesero.esAdmin)
   const [activo, setActivo] = useState(mesero.activo !== false)
   const [error, setError] = useState(null)
@@ -210,25 +171,6 @@ function MeseroModal({ mesero, mesas, asignaciones, esUltimoAdmin, onGuardar, on
       }
     }
   }
-  // "Seleccionar todas" deja el siguiente clic en UNA mesa en modo especial: en vez
-  // de destildarla nada más, se queda solo esa (partir de cero, no de las 15 ya
-  // marcadas). Un toggle normal después de eso vuelve a sumar/quitar como siempre.
-  const [modoTodas, setModoTodas] = useState(false)
-
-  function toggleMesa(mesaId) {
-    if (modoTodas) {
-      setMesasSel([mesaId])
-      setModoTodas(false)
-      return
-    }
-    setMesasSel((prev) => (prev.includes(mesaId) ? prev.filter((x) => x !== mesaId) : [...prev, mesaId]))
-  }
-
-  function seleccionarTodas() {
-    setMesasSel(mesas.map((m) => m.id))
-    setModoTodas(true)
-  }
-
   async function guardar() {
     if (!nombre.trim()) { setError('El nombre es obligatorio.'); return }
     if (pin && !/^\d{4}$/.test(pin)) { setError('El PIN debe ser de 4 dígitos (o vacío).'); return }
@@ -240,7 +182,7 @@ function MeseroModal({ mesero, mesas, asignaciones, esUltimoAdmin, onGuardar, on
     }
     setGuardando(true)
     const { error: err } = await onGuardar({
-      id: mesero.id, nombre: nombre.trim(), pin, mesas: mesasSel, esAdmin, activo,
+      id: mesero.id, nombre: nombre.trim(), pin, esAdmin, activo,
     })
     setGuardando(false)
     if (err) { setError(err); return }
@@ -290,36 +232,6 @@ function MeseroModal({ mesero, mesas, asignaciones, esUltimoAdmin, onGuardar, on
           style={{ ...inputStyle, letterSpacing: 4 }}
           placeholder="1234"
         />
-      </Campo>
-
-      <Campo label="Mesas que atiende">
-        {mesas.length === 0 ? (
-          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay mesas creadas todavía.</span>
-        ) : (
-          <>
-            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--jb-gray)' }}>
-              Una mesa puede tener varios meseros: marcarla aquí no se la quita a nadie.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={seleccionarTodas}
-                style={{
-                  gridColumn: '1 / -1',
-                  ...(modoTodas ? { background: 'var(--jb-pink-tint)', border: '2px solid var(--jb-pink)' } : {}),
-                }}
-              >
-                Seleccionar todas
-              </Button>
-              {mesas.map((m) => (
-                <Chip key={m.id} active={mesasSel.includes(m.id)} onClick={() => toggleMesa(m.id)}>
-                  {m.numero}
-                </Chip>
-              ))}
-            </div>
-          </>
-        )}
       </Campo>
 
       <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>

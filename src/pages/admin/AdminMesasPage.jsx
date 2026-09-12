@@ -35,7 +35,7 @@ function MoverBtns({ onUp, onDown, disableUp, disableDown }) {
 // letras y números, único— baja, y el ORDEN del listado (▲▼). Ese orden es compartido:
 // todos los meseros ven las mesas en la misma secuencia.
 export default function AdminMesasPage() {
-  const { mesas, meseros } = useMesas({ ignorarFiltro: true })
+  const { mesas, meseros } = useMesas()
   const { crearMesa, renombrarMesa, reordenarMesas, borrarMesa } = useMesaAdmin()
 
   const [creando, setCreando] = useState(false)

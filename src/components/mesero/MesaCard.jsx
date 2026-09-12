@@ -22,7 +22,7 @@ const THEME = {
 }
 
 /** `seleccionada` y `deshabilitada` solo se usan en el modo "Unir mesas" del piso. */
-export function MesaCard({ mesa, meseroActualId, onClick, seleccionada = false, deshabilitada = false }) {
+export function MesaCard({ mesa, onClick, seleccionada = false, deshabilitada = false }) {
   // La secundaria de un grupo unido no tiene estado propio: todo vive en su principal.
   const visual = mesa.unidaA ? 'unida' : mesa.estado
   const theme = THEME[visual] ?? THEME.libre
@@ -99,29 +99,6 @@ export function MesaCard({ mesa, meseroActualId, onClick, seleccionada = false, 
       )}
       {visual !== 'unida' && mesa.estado === 'pagada' && mesa.total > 0 && (
         <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
-      )}
-
-      {/* Quién atiende la mesa. Pueden ser varios: dos meseros que se reparten el
-          salón, o uno que le cubre la mesa a otro. El propio nombre va resaltado para
-          poder barrer el mapa y ubicar las suyas sin leer nombre por nombre.
-          marginTop:auto lo ancla abajo, tenga o no total arriba. */}
-      {mesa.meseros?.length > 0 && (
-        <span
-          style={{
-            marginTop: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--jb-gray)',
-            maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}
-        >
-          {mesa.meseros.map((w, i) => (
-            <span
-              key={w.id}
-              style={w.id === meseroActualId ? { fontWeight: 800, color: 'var(--jb-pink-dark)' } : undefined}
-            >
-              {i > 0 && <span style={{ color: 'var(--jb-line)' }}> · </span>}
-              {w.nombre}
-            </span>
-          ))}
-        </span>
       )}
     </button>
   )

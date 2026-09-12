@@ -41,7 +41,6 @@ export const useMeseroStore = create(
   persist(
     (set) => ({
       currentMeseroId: MESEROS[0].id,
-      soloMisMesas: false,
       // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. NO se
       // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
       // al cambiar de mesero (ver setMesero).
@@ -60,17 +59,15 @@ export const useMeseroStore = create(
       setAdminUnlocked: (v) => set({ adminUnlocked: v }),
       setSessionUnlocked: (v) => set({ sessionUnlocked: v }),
       setLastAdminPath: (path) => set({ lastAdminPath: path }),
-      toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
     }),
     {
       name: 'pos-balbuena-mesero',
       storage: safeStorage,
-      // Solo se persiste la identidad del mesero (y su filtro de mesas). Antes NADA
-      // se persistía, así que un refresh reseteaba el mesero al primero de la lista.
-      // adminUnlocked queda fuera a propósito: el PIN se vuelve a pedir cada sesión.
+      // Solo se persiste la identidad del mesero. Antes NADA se persistía, así que un
+      // refresh reseteaba el mesero al primero de la lista. adminUnlocked queda fuera
+      // a propósito: el PIN se vuelve a pedir cada sesión.
       partialize: (s) => ({
         currentMeseroId: s.currentMeseroId,
-        soloMisMesas: s.soloMisMesas,
         lastAdminPath: s.lastAdminPath,
       }),
     },
@@ -113,8 +110,6 @@ export const usePosStore = create(
       soltarMesa: (mesaId) => set((s) => ({ asignaciones: asig.sinMesa(s.asignaciones, mesaId) })),
       soltarMesero: (meseroId) =>
         set((s) => ({ asignaciones: asig.sinMeseroEnTodas(s.asignaciones, meseroId) })),
-      fijarMesasDeMesero: (meseroId, mesaIds) =>
-        set((s) => ({ asignaciones: asig.fijarMesasDeMesero(s.asignaciones, meseroId, mesaIds) })),
       setPlatillos: (platillos) => set({ platillos }),
       setIngredientes: (ingredientes) => set({ ingredientes }),
       setModificadores: (modificadores) => set({ modificadores }),

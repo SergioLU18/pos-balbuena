@@ -10,33 +10,27 @@ import { usePosStore } from '../store/appStore'
  *  (pos_guardar_mesero y compañía) para que cada cambio quede en la bitácora. El
  *  store no se toca en backend: usePosData recarga por Realtime tras cada cambio.
  *
- *  Las mesas que atiende NO son una columna del mesero: viven en `mesa_meseros`,
- *  porque una mesa puede tener varios. Por eso guardar un mesero son dos escrituras
- *  (sus datos + su reparto de mesas) y el reparto se manda entero a una RPC que lo
- *  deja idéntico en una sola transacción, sin tocar a los demás meseros de esas mesas. */
+ *  Guardar un mesero ya no toca su reparto de mesas (`mesa_meseros`): en la
+ *  práctica todos los meseros atienden todas las mesas, así que el alta/edición
+ *  dejó de pedirlo. Las asignaciones existentes se quedan como están. */
 export function useMeseroAdmin() {
   const meseros = usePosStore((s) => s.meseros)
   const setMeseros = usePosStore((s) => s.setMeseros)
-  const fijarMesasDeMesero = usePosStore((s) => s.fijarMesasDeMesero)
   const soltarMesero = usePosStore((s) => s.soltarMesero)
   const restauranteId = usePosStore((s) => s.restauranteId)
 
-  // m: { id?, nombre, mesas: string[] (ids de mesa), pin, esAdmin, activo }
+  // m: { id?, nombre, pin, esAdmin, activo }
   function guardarMesero(m) {
-    const { mesas: mesaIds = [], ...campos } = m
     if (IS_MOCK) {
       const existente = m.id && meseros.some((x) => x.id === m.id)
       const id = existente ? m.id : uid('mesero')
       setMeseros(
         existente
-          ? meseros.map((x) => (x.id === id ? { ...x, ...campos } : x))
-          : [...meseros, { activo: true, ...campos, id }],
+          ? meseros.map((x) => (x.id === id ? { ...x, ...m } : x))
+          : [...meseros, { activo: true, ...m, id }],
       )
-      fijarMesasDeMesero(id, mesaIds)
       return Promise.resolve({ error: null })
     }
-    // La RPC devuelve el id: en el alta hace falta en el acto para asignarle sus
-    // mesas, que viven en otra tabla y no pueden viajar en la misma llamada.
     const q = sb.rpc('pos_guardar_mesero', {
       p_id: m.id ?? null,
       p_restaurante_id: restauranteId,
@@ -46,12 +40,7 @@ export function useMeseroAdmin() {
       p_activo: m.activo !== false,
       ...firmaActor(),
     })
-    return q.then(({ data: meseroId, error }) => {
-      if (error) return { error: error.message }
-      return sb
-        .rpc('pos_set_mesas_mesero', { p_mesero_id: meseroId, p_mesa_ids: mesaIds, ...firmaActor() })
-        .then(({ error: errMesas }) => ({ error: errMesas?.message ?? null }))
-    })
+    return q.then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // Baja lógica: cargarTodo solo trae activo=true, así el mesero desaparece del

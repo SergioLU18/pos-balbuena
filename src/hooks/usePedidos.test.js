@@ -13,7 +13,7 @@ const mesa1 = MESAS[0]
 beforeEach(() => {
   useOrderStore.setState({ drafts: {}, cuentas: {} })
   usePedidosStore.setState({ pedidos: [] })
-  useMeseroStore.setState({ currentMeseroId: MESEROS[0].id, soloMisMesas: false })
+  useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
 })
 
 describe('enviarACocina', () => {

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
 import { useMesasUnidas } from '../../hooks/useMesasUnidas'
 import { useVertical } from '../../hooks/useVertical'
-import { useLlevarStore, useMeseroStore } from '../../store/appStore'
+import { useLlevarStore } from '../../store/appStore'
 import { puedeSerPrincipal, puedeUnirse, nombreGrupo } from '../../lib/mesasUnidas'
 import { f } from '../../lib/utils'
 import { MesaCard, MESA_CARD_W } from '../../components/mesero/MesaCard'
@@ -18,17 +18,11 @@ export default function MeseroFloorPage() {
   const navigate = useNavigate()
   const vertical = useVertical()
   // Modo "Unir mesas": null = apagado. Paso 1 elige la principal (principalId null);
-  // paso 2 marca las que se le juntan. Mientras dura se ven TODAS las mesas: la del
-  // grupo puede ser de otro mesero aunque "solo mis mesas" esté activo.
+  // paso 2 marca las que se le juntan.
   const [unir, setUnir] = useState(null)
   const [confirmandoUnion, setConfirmandoUnion] = useState(false)
-  const { mesas, mesero } = useMesas({ ignorarFiltro: !!unir })
+  const { mesas, mesero } = useMesas()
   const { unirMesas } = useMesasUnidas()
-  const soloMisMesas = useMeseroStore((s) => s.soloMisMesas)
-  const toggleSoloMisMesas = useMeseroStore((s) => s.toggleSoloMisMesas)
-  // Cuántas atiende el mesero actual. Se cuenta por esMia y no por el largo de `mesas`,
-  // que con el filtro apagado trae todo el salón.
-  const misMesas = mesas.filter((m) => m.esMia).length
   // Las órdenes para llevar no tienen mesa que pintar en este listado, así que aquí solo
   // va la cuenta: el badge es lo que evita que una orden de mostrador se quede olvidada
   // porque nada en esta pantalla la menciona.
@@ -89,7 +83,7 @@ export default function MeseroFloorPage() {
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: 'var(--jb-ink)' }}>Mesas</h1>
           <p style={{ margin: '4px 0 0', fontSize: 15, color: 'var(--jb-ink-soft)' }}>
-            {mesero ? `Atendiendo como ${mesero.nombre} · ${misMesas} ${misMesas === 1 ? 'mesa' : 'mesas'}` : ''}
+            {mesero ? `Atendiendo como ${mesero.nombre}` : ''}
           </p>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
@@ -125,17 +119,6 @@ export default function MeseroFloorPage() {
                 {llevarAbiertas}
               </span>
             )}
-          </button>
-          <button
-            onClick={toggleSoloMisMesas}
-            style={{
-              ...botonHeader,
-              border: `2.5px solid ${soloMisMesas ? 'var(--jb-pink)' : 'var(--jb-line)'}`,
-              background: soloMisMesas ? 'var(--jb-pink)' : '#fff',
-              color: soloMisMesas ? '#fff' : 'var(--jb-ink)',
-            }}
-          >
-            {soloMisMesas ? '✓ Solo mis mesas' : 'Solo mis mesas'}
           </button>
         </div>
       </div>
@@ -176,7 +159,7 @@ export default function MeseroFloorPage() {
 
       {mesas.length === 0 ? (
         <p style={{ fontSize: 15, color: 'var(--jb-gray)' }}>
-          {soloMisMesas ? 'No tienes mesas asignadas.' : 'Todavía no hay mesas. Un administrador las crea en Ajustes → Mesas.'}
+          Todavía no hay mesas. Un administrador las crea en Ajustes → Mesas.
         </p>
       ) : (
         <div
@@ -195,7 +178,6 @@ export default function MeseroFloorPage() {
             <MesaCard
               key={mesa.id}
               mesa={mesa}
-              meseroActualId={mesero?.id}
               onClick={() => tocarMesa(mesa)}
               seleccionada={!!unir && (mesa.id === unir.principalId || unir.secundarias.includes(mesa.id))}
               deshabilitada={deshabilitada(mesa)}

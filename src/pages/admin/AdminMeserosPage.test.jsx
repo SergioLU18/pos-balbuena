@@ -6,7 +6,7 @@ import { usePosStore, useMeseroStore } from '../../store/appStore'
 import { MESAS } from '../../lib/mockMesas'
 import { MESEROS, ASIGNACIONES } from '../../lib/mockMeseros'
 
-const [ROSA, BETO] = MESEROS
+const [ROSA] = MESEROS
 
 beforeEach(() => {
   usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
@@ -14,16 +14,10 @@ beforeEach(() => {
 })
 
 describe('AdminMeserosPage — reparto del salón', () => {
-  it('lista las mesas de cada mesero desde las asignaciones', () => {
+  it('ya no lista las mesas ni el PIN en la tarjeta de cada mesero', () => {
     render(<AdminMeserosPage />)
-    expect(screen.getByText('Mesas: 1, 2, 3, 4, 5')).toBeInTheDocument()
-    expect(screen.getByText('Mesas: 5, 6, 7, 8, 9, 10')).toBeInTheDocument()
-  })
-
-  it('dice con quién se comparte cada mesa traslapada', () => {
-    render(<AdminMeserosPage />)
-    expect(screen.getByText(`Comparte 5 (${BETO.nombre})`)).toBeInTheDocument()
-    expect(screen.getByText(`Comparte 5 (${ROSA.nombre})`)).toBeInTheDocument()
+    expect(screen.queryByText(/^Mesas:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^PIN:/)).not.toBeInTheDocument()
   })
 
   it('cuenta las mesas compartidas en el encabezado', () => {
@@ -31,15 +25,9 @@ describe('AdminMeserosPage — reparto del salón', () => {
     expect(screen.getByText(/1 mesa compartida/)).toBeInTheDocument()
   })
 
-  it('al editar, avisa que marcar una mesa no se la quita a nadie', async () => {
+  it('al crear o editar ya no se piden las mesas que atiende', async () => {
     render(<AdminMeserosPage />)
     await userEvent.click(screen.getAllByText('Editar')[0])
-    expect(screen.getByText('Mesas que atiende')).toBeInTheDocument()
-    expect(screen.getByText(/no se la quita a nadie/)).toBeInTheDocument()
-    // El chip solo trae el número de mesa, comparta o no: quién más la atiende ya no
-    // se muestra ahí.
-    const chip = (numero) => screen.getByText(numero, { selector: 'span' }).closest('button')
-    expect(chip('5').textContent).toBe('5')
-    expect(chip('1').textContent).toBe('1')
+    expect(screen.queryByText('Mesas que atiende')).not.toBeInTheDocument()
   })
 })

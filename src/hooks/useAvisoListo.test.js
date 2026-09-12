@@ -17,18 +17,19 @@ import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
 const [ROSA, BETO, LUPITA] = MESEROS
 const COMPARTIDA = MESAS[4] // mesa-5: la atienden Rosa y Beto
 
-// El pedido acaba de quedar listo (dentro de la ventana de 2 min de RECIENTE_MS).
-// Cada prueba usa un id distinto: useAvisoListo recuerda a nivel de módulo qué
-// pedidos ya anunció, así que reusar un id haría que el segundo render no sonara.
+// El pedido se mandó a cocina hace un poco más de 5 minutos: su plazo de aviso ya
+// se cumplió, pero hace poco (dentro de la ventana de gracia RECIENTE_MS), así que
+// debe sonar de inmediato en vez de programarse a futuro. Cada prueba usa un id
+// distinto: useAvisoListo recuerda a nivel de módulo qué pedidos ya anunció, así
+// que reusar un id haría que el segundo render no sonara.
 function pedidoListo(id, extra) {
   return {
     id,
     mesaId: COMPARTIDA.id,
     mesaNumero: COMPARTIDA.numero,
     items: [],
-    enviadoAt: new Date().toISOString(),
-    estado: 'listo',
-    listoAt: new Date().toISOString(),
+    enviadoAt: new Date(Date.now() - 5 * 60 * 1000 - 10_000).toISOString(),
+    estado: 'preparando',
     ...extra,
   }
 }
