@@ -34,9 +34,9 @@ export default function MeseroOrdenPage() {
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
   // Renglón del ticket que se está reeditando: { tipo: 'draft'|'enviado', platillo, item, pedidoId?, pedidoItemId? }
   const [editando, setEditando] = useState(null)
-  // Confirmaciones en modal: cerrar la mesa (confirmar → elegir método de pago),
-  // o la secundaria que se va a separar.
-  const [confirmandoCierre, setConfirmandoCierre] = useState(false)
+  // Confirmación en modal de la secundaria que se va a separar. Cerrar la mesa no pasa
+  // por aquí: va directo a elegir método de pago (MetodoPagoModal ya trae su propia
+  // confirmación antes de cerrar).
   const [eligiendoMetodoPago, setEligiendoMetodoPago] = useState(false)
   const [separando, setSeparando] = useState(null)
 
@@ -96,16 +96,9 @@ export default function MeseroOrdenPage() {
     enviarACocina()
   }
 
-  // TEMPORAL: botón manual para cerrar la mesa mientras no exista el cierre real
-  // desde la app de pagos. Se quitará cuando esa integración esté lista.
-  function handleConfirmarCierre() {
-    setConfirmandoCierre(false)
-    setEligiendoMetodoPago(true)
-  }
-
-  function handleSeleccionarMetodoPago(metodo) {
+  function handleSeleccionarMetodoPago(metodo, detalle) {
     setEligiendoMetodoPago(false)
-    cerrarMesa(metodo)
+    cerrarMesa(metodo, detalle)
     navigate('/mesero')
   }
 
@@ -149,15 +142,14 @@ export default function MeseroOrdenPage() {
 
         {cuenta && (
           <button
-            onClick={() => setConfirmandoCierre(true)}
-            title="Temporal: cerrará cuando exista el cierre real desde la app de pagos"
+            onClick={() => setEligiendoMetodoPago(true)}
             style={{
               fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
               padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
               background: '#fff', border: '2px solid #E0B4B4', color: '#A83232',
             }}
           >
-            Cerrar mesa (temporal)
+            Cerrar mesa
           </button>
         )}
       </div>
@@ -239,20 +231,9 @@ export default function MeseroOrdenPage() {
         />
       )}
 
-      {confirmandoCierre && (
-        <ConfirmModal
-          titulo={`¿Cerrar ${nombre}?`}
-          mensaje="Esto libera la mesa para una nueva cuenta."
-          confirmarLabel="Cerrar mesa"
-          cancelarLabel="Volver"
-          danger
-          onConfirm={handleConfirmarCierre}
-          onClose={() => setConfirmandoCierre(false)}
-        />
-      )}
-
       {eligiendoMetodoPago && (
         <MetodoPagoModal
+          total={subtotalCuenta}
           onSelect={handleSeleccionarMetodoPago}
           onClose={() => setEligiendoMetodoPago(false)}
         />

@@ -324,14 +324,22 @@ export function useOrderDraft(mesaId) {
     quitarItemCuenta(mesaId, itemId)
   }
 
-  // Cierre manual por el mesero (efectivo/tarjeta/otro): la contraparte del cierre
+  // Cierre manual por el mesero (efectivo/tarjeta/ambos): la contraparte del cierre
   // automático que dispara tali al cobrar (ver el listener 'tali-panel-sync' en
   // usePosData). Los dos caminos terminan igual del lado del mesero: la mesa se marca
   // "Pagada" (useMesaPagadaStore) para que se vea el badge verde en el piso.
-  function cerrarMesa(metodoPago) {
+  // `detalle` solo llega con metodoPago 'ambos': { efectivo, tarjeta } — cuánto entró de
+  // cada uno, para que quede en la bitácora (ver pos_cerrar_mesa).
+  function cerrarMesa(metodoPago, detalle) {
     const total = sumaCuenta(cuenta?.items ?? [])
     if (!IS_MOCK) {
-      sb.rpc('pos_cerrar_mesa', { p_mesa_id: mesaId, p_metodo_pago: metodoPago, ...firma() })
+      sb.rpc('pos_cerrar_mesa', {
+        p_mesa_id: mesaId,
+        p_metodo_pago: metodoPago,
+        p_monto_efectivo: detalle?.efectivo ?? null,
+        p_monto_tarjeta: detalle?.tarjeta ?? null,
+        ...firma(),
+      })
         .then(({ error }) => {
           if (error) {
             console.error('[orden] cerrarMesa falló:', error)

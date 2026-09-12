@@ -38,7 +38,7 @@ describe('enviarACocina', () => {
   })
 })
 
-describe('cerrarMesa (temporal, mientras no exista el cierre real desde la app de pagos)', () => {
+describe('cerrarMesa', () => {
   it('libera la mesa (sin cuenta) y borra sus pedidos de cocina, para poder abrir una nueva', () => {
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
     act(() => result.current.agregarItemConstruido(buildDraftItem(sope, 0)))

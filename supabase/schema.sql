@@ -401,10 +401,15 @@ alter table cuentas add column if not exists metodo_pago text;
 -- ============================================================================
 drop function if exists pos_cerrar_mesa(uuid);
 create or replace function pos_cerrar_mesa(
-  p_mesa_id       uuid,
-  p_metodo_pago   text default null,
-  p_mesero_id     uuid default null,
-  p_mesero_nombre text default null
+  p_mesa_id         uuid,
+  p_metodo_pago     text default null,
+  p_mesero_id       uuid default null,
+  p_mesero_nombre   text default null,
+  -- Solo llegan con p_metodo_pago = 'ambos': cuánto de la cuenta se pagó en efectivo y
+  -- cuánto con tarjeta (el POS ya validó que sumen el total antes de llamar la RPC).
+  -- No hay columna propia para esto en `cuentas` — se registran en la bitácora.
+  p_monto_efectivo  numeric default null,
+  p_monto_tarjeta   numeric default null
 ) returns void
 language plpgsql
 security definer
@@ -459,9 +464,11 @@ begin
         select coalesce(sum((r->>'precio_unitario')::numeric * (r->>'cantidad')::integer), 0)
         from jsonb_array_elements(v_items) as r
       )),
-      'metodo_pago',  p_metodo_pago,
-      'comandas',     v_comandas,
-      'items',        v_items
+      'metodo_pago',    p_metodo_pago,
+      'monto_efectivo', p_monto_efectivo,
+      'monto_tarjeta',  p_monto_tarjeta,
+      'comandas',       v_comandas,
+      'items',          v_items
     )
   );
 end;
