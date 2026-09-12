@@ -8,10 +8,12 @@ import { puedeSerPrincipal, puedeUnirse, nombreGrupo } from '../../lib/mesasUnid
 import { f } from '../../lib/utils'
 import { MesaCard, MESA_CARD_W } from '../../components/mesero/MesaCard'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
+import { IconUnirMesas, IconParaLlevar } from '../../components/ui/icons'
 
 const botonHeader = {
   fontFamily: "'Inter Tight', sans-serif", fontSize: 16, fontWeight: 800,
   padding: '14px 20px', borderRadius: 16, cursor: 'pointer', whiteSpace: 'nowrap',
+  display: 'inline-flex', alignItems: 'center', gap: 8,
 }
 
 export default function MeseroFloorPage() {
@@ -96,7 +98,7 @@ export default function MeseroFloorPage() {
               color: unir ? '#fff' : 'var(--jb-ink)',
             }}
           >
-            🔗 Unir mesas
+            <IconUnirMesas /> Unir mesas
           </button>
           <button
             onClick={() => navigate('/mesero/llevar')}
@@ -107,7 +109,7 @@ export default function MeseroFloorPage() {
               color: 'var(--jb-pink-dark)',
             }}
           >
-            🥡 Para llevar
+            <IconParaLlevar /> Para llevar
             {llevarAbiertas > 0 && (
               <span
                 style={{
