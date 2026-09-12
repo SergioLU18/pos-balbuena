@@ -4,6 +4,7 @@ import AdminMeserosPage from './AdminMeserosPage'
 import AdminMenuPage from './AdminMenuPage'
 import AdminMesasPage from './AdminMesasPage'
 import AdminBitacoraPage from './AdminBitacoraPage'
+import AdminClientesPage from './AdminClientesPage'
 
 // Panel de administración. Solo accesible para un mesero esAdmin que ya confirmó su
 // PIN (adminUnlocked, ver AdminEntry). El gate es client-side — misma postura
@@ -37,9 +38,10 @@ export default function AdminApp() {
           <span style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Ajustes</span>
           <nav className="flex items-center" style={{ gap: 8 }}>
             <TabLink to="/admin/menu">Menú</TabLink>
-            <TabLink to="/admin/meseros">Meseros</TabLink>
             <TabLink to="/admin/mesas">Mesas</TabLink>
+            <TabLink to="/admin/meseros">Meseros</TabLink>
             <TabLink to="/admin/bitacora">Bitácora</TabLink>
+            <TabLink to="/admin/clientes">Clientes</TabLink>
           </nav>
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
@@ -60,9 +62,10 @@ export default function AdminApp() {
         <Routes>
           <Route index element={<Navigate to="/admin/menu" replace />} />
           <Route path="menu" element={<AdminMenuPage />} />
-          <Route path="meseros" element={<AdminMeserosPage />} />
           <Route path="mesas" element={<AdminMesasPage />} />
+          <Route path="meseros" element={<AdminMeserosPage />} />
           <Route path="bitacora" element={<AdminBitacoraPage />} />
+          <Route path="clientes" element={<AdminClientesPage />} />
           <Route path="*" element={<Navigate to="/admin/menu" replace />} />
         </Routes>
       </main>
@@ -77,8 +80,8 @@ function TabLink({ to, end, children }) {
       end={end}
       style={({ isActive }) => ({
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        padding: '11px 18px', minHeight: 44, display: 'inline-flex', alignItems: 'center',
-        borderRadius: 11, textDecoration: 'none',
+        width: 118, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 11, textDecoration: 'none', textAlign: 'center',
         background: isActive ? '#fff' : 'rgba(255,255,255,0.18)',
         color: isActive ? 'var(--jb-pink-dark)' : '#fff',
       })}

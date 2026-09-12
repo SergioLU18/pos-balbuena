@@ -38,7 +38,8 @@ function SubTab({ active, onClick, children }) {
       onClick={onClick}
       style={{
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        padding: '13px 20px', minHeight: 46, borderRadius: 12, cursor: 'pointer',
+        flex: '1 1 140px', height: 46, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 12, cursor: 'pointer', textAlign: 'center',
         border: active ? '2.5px solid var(--jb-pink)' : '2.5px solid var(--jb-line)',
         background: active ? 'var(--jb-pink-tint)' : '#fff',
         color: active ? 'var(--jb-pink-dark)' : 'var(--jb-ink)',
