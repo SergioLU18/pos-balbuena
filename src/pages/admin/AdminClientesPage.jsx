@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLlevar } from '../../hooks/useLlevar'
-import { formatearTelefono, normalizarTelefono } from '../../lib/telefono'
+import { formatearTelefono, normalizarTelefono, telefonoCompleto } from '../../lib/telefono'
 import { nombreCompleto, formatearDireccion, formatearCumpleanos, formatearGenero } from '../../lib/cliente'
 import { ModalShell, Campo } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
@@ -8,17 +8,20 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { ClienteForm } from '../../components/mesero/ClienteForm'
 import { HistorialCliente } from '../../components/mesero/HistorialCliente'
+import { TelefonoPad } from '../../components/mesero/TelefonoPad'
 
 // Ajustes → Clientes: el padrón que se va formando solo, cliente por cliente, cada vez
-// que un mesero toma un pedido para llevar (ver ClienteForm / useLlevar). Aquí no se dan
-// de alta clientes nuevos — eso pasa en /mesero al tomar el pedido — solo se consultan,
-// se corrigen sus datos y se ve su historial de compras.
+// que un mesero toma un pedido para llevar (ver ClienteForm / useLlevar). También se
+// puede dar de alta uno desde aquí ("+ Nuevo cliente"), con el mismo formulario y el
+// mismo teclado de teléfono que usa el mesero — útil para cargar el padrón de un jalón
+// sin depender de que llegue un pedido.
 export default function AdminClientesPage() {
-  const { clientes, guardarCliente, borrarCliente, historialCliente } = useLlevar()
+  const { clientes, buscarPorTelefono, guardarCliente, borrarCliente, historialCliente } = useLlevar()
   const [busqueda, setBusqueda] = useState('')
   const [seleccionado, setSeleccionado] = useState(null)
   const [historial, setHistorial] = useState([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
+  const [agregando, setAgregando] = useState(false)
 
   // El historial se pide al abrir la ficha, no desde un efecto: mismo criterio que
   // LlevarPage.jsx — encontrar al cliente ES el momento en que hay historial que pedir.
@@ -46,12 +49,15 @@ export default function AdminClientesPage() {
         <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>
           {clientes.length} {clientes.length === 1 ? 'cliente registrado' : 'clientes registrados'} desde pedidos para llevar
         </p>
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o teléfono"
-          style={{ ...inputStyle, width: 260 }}
-        />
+        <div className="flex items-center" style={{ gap: 10 }}>
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre o teléfono"
+            style={{ ...inputStyle, width: 260 }}
+          />
+          <Button size="md" onClick={() => setAgregando(true)}>+ Nuevo cliente</Button>
+        </div>
       </div>
 
       {clientes.length === 0 ? (
@@ -88,7 +94,74 @@ export default function AdminClientesPage() {
           onClose={() => setSeleccionado(null)}
         />
       )}
+
+      {agregando && (
+        <NuevoClienteModal
+          onBuscarPorTelefono={buscarPorTelefono}
+          onGuardar={guardarCliente}
+          onExistente={(cliente) => { setAgregando(false); abrir(cliente) }}
+          onClose={() => setAgregando(false)}
+        />
+      )}
     </div>
+  )
+}
+
+// Alta desde Ajustes: primero el teléfono (mismo teclado que usa el mesero), y si ya
+// existe un cliente con ese número se manda directo a su ficha en vez de duplicarlo —
+// el teléfono sigue siendo la llave del padrón, también dándolo de alta desde aquí.
+function NuevoClienteModal({ onBuscarPorTelefono, onGuardar, onExistente, onClose }) {
+  const [telefono, setTelefono] = useState('')
+  const [buscando, setBuscando] = useState(false)
+  const [error, setError] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+  // Teléfono completo y sin coincidencia en el padrón: pasa al formulario de alta.
+  const [mostrarForm, setMostrarForm] = useState(false)
+
+  async function buscarYContinuar() {
+    if (!telefonoCompleto(telefono)) return
+    setBuscando(true)
+    setError(null)
+    const { cliente, error: err } = await onBuscarPorTelefono(telefono)
+    setBuscando(false)
+    if (err) { setError(err); return }
+    if (cliente) { onExistente(cliente); return }
+    setMostrarForm(true)
+  }
+
+  async function guardar(datos) {
+    setGuardando(true)
+    setError(null)
+    const { error: err } = await onGuardar(datos)
+    setGuardando(false)
+    if (err) { setError(err); return }
+    onClose()
+  }
+
+  return (
+    <ModalShell width={420} titulo="Nuevo cliente" onClose={onClose}>
+      {mostrarForm ? (
+        <ClienteForm
+          telefono={telefono}
+          guardando={guardando}
+          onGuardar={guardar}
+          onCancelar={onClose}
+          subtituloAlta={`El ${formatearTelefono(telefono)} no está registrado. Da de alta su ficha.`}
+          labelGuardarAlta="Registrar cliente"
+        />
+      ) : (
+        <TelefonoPad
+          valor={telefono}
+          onDigito={(d) => { setError(null); setTelefono((t) => (t.length >= 10 ? t : t + d)) }}
+          onBorrar={() => { setError(null); setTelefono((t) => t.slice(0, -1)) }}
+          onLimpiar={() => { setError(null); setTelefono('') }}
+          onBuscar={buscarYContinuar}
+          buscando={buscando}
+          error={error}
+        />
+      )}
+      {error && mostrarForm && <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
+    </ModalShell>
   )
 }
 

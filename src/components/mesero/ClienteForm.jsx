@@ -43,7 +43,10 @@ function GeneroBtn({ active, onClick, children }) {
  *  La dirección va en columnas separadas (calle/número/cruzamientos/colonia/CP) y es
  *  obligatoria salvo `cruzamientos` — no siempre se conoce, y no debe bloquear el alta
  *  por eso. Cumpleaños y género son enteramente opcionales. */
-export function ClienteForm({ telefono, cliente, guardando, onGuardar, onCancelar }) {
+export function ClienteForm({
+  telefono, cliente, guardando, onGuardar, onCancelar,
+  subtituloAlta, labelGuardarAlta = 'Registrar y tomar orden',
+}) {
   const [nombre, setNombre] = useState(cliente?.nombre ?? '')
   const [apellidos, setApellidos] = useState(cliente?.apellidos ?? '')
   const [calle, setCalle] = useState(cliente?.calle ?? '')
@@ -79,7 +82,7 @@ export function ClienteForm({ telefono, cliente, guardando, onGuardar, onCancela
         <p style={{ margin: '4px 0 0', fontSize: 15, color: 'var(--jb-ink-soft)' }}>
           {cliente
             ? 'Los cambios aplican a las órdenes nuevas; las anteriores conservan los datos con los que se mandaron.'
-            : `El ${formatearTelefono(telefono)} no está registrado. Da de alta al cliente para tomarle la orden.`}
+            : subtituloAlta ?? `El ${formatearTelefono(telefono)} no está registrado. Da de alta al cliente para tomarle la orden.`}
         </p>
       </div>
 
@@ -158,7 +161,7 @@ export function ClienteForm({ telefono, cliente, guardando, onGuardar, onCancela
           </Button>
         )}
         <Button size="md" onClick={guardar} disabled={!puedeGuardar} style={{ flex: 2 }}>
-          {guardando ? 'Guardando…' : cliente ? 'Guardar cambios' : 'Registrar y tomar orden'}
+          {guardando ? 'Guardando…' : cliente ? 'Guardar cambios' : labelGuardarAlta}
         </Button>
       </div>
 
