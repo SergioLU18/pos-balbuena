@@ -36,10 +36,10 @@ describe('AdminMeserosPage — reparto del salón', () => {
     await userEvent.click(screen.getAllByText('Editar')[0])
     expect(screen.getByText('Mesas que atiende')).toBeInTheDocument()
     expect(screen.getByText(/no se la quita a nadie/)).toBeInTheDocument()
-    // Cada chip dice quién MÁS atiende esa mesa: la 5 la comparte con Beto, la 1 no
-    // la atiende nadie más. Así marcar una mesa no se siente como quitársela a otro.
+    // El chip solo trae el número de mesa, comparta o no: quién más la atiende ya no
+    // se muestra ahí.
     const chip = (numero) => screen.getByText(numero, { selector: 'span' }).closest('button')
-    expect(chip('5').textContent).toContain(`con ${BETO.nombre}`)
+    expect(chip('5').textContent).toBe('5')
     expect(chip('1').textContent).toBe('1')
   })
 })

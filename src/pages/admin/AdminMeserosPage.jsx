@@ -7,6 +7,7 @@ import { Chip } from '../../components/ui/Chip'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
+import { PinPad } from '../../components/layout/PinPad'
 
 const porNumero = (a, b) => Number(a.numero) - Number(b.numero)
 
@@ -83,7 +84,6 @@ export default function AdminMeserosPage() {
         <MeseroModal
           mesero={editando}
           mesas={mesasOrdenadas}
-          meseros={meseros}
           asignaciones={asignaciones}
           esUltimoAdmin={editando.id ? esUltimoAdmin(editando) : false}
           onGuardar={guardarMesero}
@@ -161,7 +161,7 @@ function Badge({ color, children }) {
   )
 }
 
-function MeseroModal({ mesero, mesas, meseros, asignaciones, esUltimoAdmin, onGuardar, onClose }) {
+function MeseroModal({ mesero, mesas, asignaciones, esUltimoAdmin, onGuardar, onClose }) {
   const esNuevo = !mesero.id
   const [nombre, setNombre] = useState(mesero.nombre ?? '')
   const [pin, setPin] = useState(mesero.pin ?? '')
@@ -172,17 +172,61 @@ function MeseroModal({ mesero, mesas, meseros, asignaciones, esUltimoAdmin, onGu
   const [error, setError] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
+  // Volver admin a alguien es delicado, así que no basta con destildar el toggle: hay
+  // que confirmar y, si quien está en la sesión tiene PIN, volver a teclearlo (mismo
+  // criterio de "atribución" que el gate de /admin en AdminEntry.jsx). Quitar el rol
+  // sigue siendo inmediato — lo que se protege es DAR el poder, no retirarlo.
+  const meserosStore = usePosStore((s) => s.meseros)
+  const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
+  const actor = meserosStore.find((w) => w.id === currentMeseroId)
+  const [pidiendoAdmin, setPidiendoAdmin] = useState(false)
+  const [pinIngresado, setPinIngresado] = useState('')
+  const [pinError, setPinError] = useState(false)
+
+  function onToggleAdmin(next) {
+    if (!next) { setEsAdmin(false); return }
+    setPinIngresado('')
+    setPinError(false)
+    setPidiendoAdmin(true)
+  }
+
+  function confirmarAdminSinPin() {
+    setEsAdmin(true)
+    setPidiendoAdmin(false)
+  }
+
+  function teclearPinAdmin(d) {
+    if (pinIngresado.length >= 4) return
+    const siguiente = pinIngresado + d
+    setPinIngresado(siguiente)
+    setPinError(false)
+    if (siguiente.length === 4) {
+      if (siguiente === actor?.pin) {
+        setEsAdmin(true)
+        setPidiendoAdmin(false)
+      } else {
+        setPinError(true)
+        setPinIngresado('')
+      }
+    }
+  }
+  // "Seleccionar todas" deja el siguiente clic en UNA mesa en modo especial: en vez
+  // de destildarla nada más, se queda solo esa (partir de cero, no de las 15 ya
+  // marcadas). Un toggle normal después de eso vuelve a sumar/quitar como siempre.
+  const [modoTodas, setModoTodas] = useState(false)
+
   function toggleMesa(mesaId) {
+    if (modoTodas) {
+      setMesasSel([mesaId])
+      setModoTodas(false)
+      return
+    }
     setMesasSel((prev) => (prev.includes(mesaId) ? prev.filter((x) => x !== mesaId) : [...prev, mesaId]))
   }
 
-  // Quién MÁS atiende una mesa. Se muestra bajo cada chip para que quede claro que
-  // marcarla no se la quita a nadie: el mesero se suma a los que ya estaban.
-  function otrosEn(mesaId) {
-    return meserosDeMesa(asignaciones, mesaId)
-      .filter((id) => id !== mesero.id)
-      .map((id) => meseros.find((w) => w.id === id)?.nombre)
-      .filter(Boolean)
+  function seleccionarTodas() {
+    setMesasSel(mesas.map((m) => m.id))
+    setModoTodas(true)
   }
 
   async function guardar() {
@@ -204,7 +248,21 @@ function MeseroModal({ mesero, mesas, meseros, asignaciones, esUltimoAdmin, onGu
   }
 
   return (
-    <ModalShell onClose={onClose} titulo={esNuevo ? 'Nuevo mesero' : `Editar ${mesero.nombre}`}>
+    <ModalShell
+      onClose={onClose}
+      titulo={esNuevo ? 'Nuevo mesero' : `Editar ${mesero.nombre}`}
+      footer={(
+        <>
+          {error && <p style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
+          <div className="flex" style={{ gap: 12 }}>
+            <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
+            <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </>
+      )}
+    >
       <Campo label="Nombre">
         <input
           value={nombre}
@@ -242,38 +300,68 @@ function MeseroModal({ mesero, mesas, meseros, asignaciones, esUltimoAdmin, onGu
             <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--jb-gray)' }}>
               Una mesa puede tener varios meseros: marcarla aquí no se la quita a nadie.
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {mesas.map((m) => {
-                const otros = otrosEn(m.id)
-                return (
-                  <Chip
-                    key={m.id}
-                    active={mesasSel.includes(m.id)}
-                    onClick={() => toggleMesa(m.id)}
-                    sublabel={otros.length ? `con ${otros.join(', ')}` : undefined}
-                  >
-                    {m.numero}
-                  </Chip>
-                )
-              })}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={seleccionarTodas}
+                style={{
+                  gridColumn: '1 / -1',
+                  ...(modoTodas ? { background: 'var(--jb-pink-tint)', border: '2px solid var(--jb-pink)' } : {}),
+                }}
+              >
+                Seleccionar todas
+              </Button>
+              {mesas.map((m) => (
+                <Chip key={m.id} active={mesasSel.includes(m.id)} onClick={() => toggleMesa(m.id)}>
+                  {m.numero}
+                </Chip>
+              ))}
             </div>
           </>
         )}
       </Campo>
 
       <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>
-        <Toggle checked={esAdmin} onChange={setEsAdmin} label="Administrador (edita meseros y menú)" />
+        <Toggle checked={esAdmin} onChange={onToggleAdmin} label="Administrador (edita meseros y menú)" />
         <Toggle checked={activo} onChange={setActivo} label="Activo" />
       </div>
 
-      {error && <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#C24A4A' }}>{error}</p>}
-
-      <div className="flex" style={{ gap: 12, marginTop: 6 }}>
-        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onClose}>Cancelar</Button>
-        <Button size="md" style={{ flex: 1 }} disabled={guardando} onClick={guardar}>
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </Button>
-      </div>
+      {pidiendoAdmin && (
+        actor?.pin ? (
+          <div
+            onClick={(e) => { if (e.target === e.currentTarget) setPidiendoAdmin(false) }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(51,34,42,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20,
+            }}
+          >
+            <div style={{
+              background: '#fff', borderRadius: 26, width: 420, maxWidth: '100%',
+              fontFamily: "'Inter Tight', sans-serif", boxShadow: '0 24px 60px rgba(51,34,42,0.3)',
+              padding: '28px 28px 32px',
+            }}>
+              <PinPad
+                titulo="Confirmar"
+                subtitulo={`Ingresa tu PIN, ${actor.nombre}, para hacer administrador a ${nombre.trim() || mesero.nombre}`}
+                entered={pinIngresado}
+                error={pinError}
+                onDigit={teclearPinAdmin}
+                onBack={() => { setPinIngresado((p) => p.slice(0, -1)); setPinError(false) }}
+                onCancel={() => setPidiendoAdmin(false)}
+              />
+            </div>
+          </div>
+        ) : (
+          <ConfirmModal
+            titulo="¿Hacer administrador?"
+            mensaje={`${nombre.trim() || mesero.nombre} podrá editar meseros y el menú.`}
+            confirmarLabel="Sí, hacer admin"
+            onConfirm={confirmarAdminSinPin}
+            onClose={() => setPidiendoAdmin(false)}
+          />
+        )
+      )}
     </ModalShell>
   )
 }
