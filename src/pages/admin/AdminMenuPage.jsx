@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePosStore } from '../../store/appStore'
 import { useMenuAdmin } from '../../hooks/useMenuAdmin'
 import { f, uid } from '../../lib/utils'
@@ -49,6 +49,48 @@ function SubTab({ active, onClick, children }) {
   )
 }
 
+const DUR_ANIM = 300 // ms que dura el deslizamiento de las tarjetas al reordenar (igual que en Mesas)
+
+// Animación FLIP: cuando cambia `dep`, cada nodo registrado en `nodos` se desliza
+// físicamente desde donde estaba hasta su nuevo lugar, en vez de saltar. Mismo
+// mecanismo que AdminMesasPage.jsx.
+function useFlip(nodos, dep) {
+  const rectsPrev = useRef(new Map())
+  useLayoutEffect(() => {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const rectsNuevos = new Map()
+    nodos.current.forEach((el, id) => rectsNuevos.set(id, el.getBoundingClientRect()))
+
+    if (!reduce) {
+      let huboMovimiento = false
+      nodos.current.forEach((el, id) => {
+        const viejo = rectsPrev.current.get(id)
+        const nuevo = rectsNuevos.get(id)
+        if (!viejo || !nuevo) return
+        const dx = viejo.left - nuevo.left
+        const dy = viejo.top - nuevo.top
+        if (!dx && !dy) return
+        huboMovimiento = true
+        el.style.transition = 'none'
+        el.style.transform = `translate(${dx}px, ${dy}px)`
+      })
+      if (huboMovimiento) {
+        void document.body.offsetWidth // reflow para fijar la posición invertida
+        requestAnimationFrame(() => {
+          nodos.current.forEach((el) => {
+            if (el.style.transform) {
+              el.style.transition = `transform ${DUR_ANIM}ms cubic-bezier(0.22, 1, 0.36, 1)`
+              el.style.transform = ''
+            }
+          })
+        })
+      }
+    }
+    rectsPrev.current = rectsNuevos
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `nodos` es un ref estable (useRef en el llamador)
+  }, [dep])
+}
+
 // ── Platillos ────────────────────────────────────────────────────────────────
 function preciosDe(p) {
   const tiers = p.tortillas ? p.tortillas.flatMap((t) => t.tiers) : (p.tiers ?? [])
@@ -79,15 +121,6 @@ function MoveButtons({ onUp, onDown, disableUp, disableDown }) {
   )
 }
 
-// Devuelve una copia del arreglo con el elemento en `idx` movido `dir` (-1 arriba, +1 abajo).
-function mover(arr, idx, dir) {
-  const next = idx + dir
-  if (next < 0 || next >= arr.length) return arr
-  const copia = arr.slice()
-  ;[copia[idx], copia[next]] = [copia[next], copia[idx]]
-  return copia
-}
-
 function PlatillosTab() {
   const platillos = usePosStore((s) => s.platillos)
   const categoriasOrden = usePosStore((s) => s.categoriasOrden)
@@ -97,8 +130,39 @@ function PlatillosTab() {
   const [borrando, setBorrando] = useState(null)
 
   const categorias = categoriasOrdenadas(platillos, categoriasOrden)
-  const dishesDe = (cat) =>
+  const dishesDeStore = (cat) =>
     platillos.filter((p) => (p.categoria || 'Sin categoría') === cat).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+
+  // Orden optimista (solo de la categoría que se está reordenando): igual patrón que
+  // AdminMesasPage.jsx — el clic reacomoda esta copia local al instante y se manda al
+  // backend con debounce; se suelta cuando el backend confirma, cambia el juego de
+  // platillos de esa categoría, o tras un tope de seguridad.
+  const [ordenOpt, setOrdenOpt] = useState(null) // { cat, ids } | null
+  const rpcTimer = useRef(null)
+
+  const idsStoreDeOpt = ordenOpt ? new Set(dishesDeStore(ordenOpt.cat).map((p) => p.id)) : null
+  const optVigente = !!ordenOpt
+    && ordenOpt.ids.length === idsStoreDeOpt.size
+    && ordenOpt.ids.every((id) => idsStoreDeOpt.has(id))
+    && ordenOpt.ids.join(',') !== dishesDeStore(ordenOpt.cat).map((p) => p.id).join(',')
+  if (ordenOpt && !optVigente) setOrdenOpt(null)
+
+  const dishesDe = (cat) =>
+    optVigente && cat === ordenOpt.cat
+      ? ordenOpt.ids.map((id) => platillos.find((p) => p.id === id))
+      : dishesDeStore(cat)
+
+  useEffect(() => {
+    if (!ordenOpt) return
+    const t = setTimeout(() => setOrdenOpt(null), 4000)
+    return () => clearTimeout(t)
+  }, [ordenOpt])
+
+  useEffect(() => () => clearTimeout(rpcTimer.current), [])
+
+  const nodos = useRef(new Map())
+  const ordenActual = categorias.map((cat) => dishesDe(cat).map((p) => p.id).join(',')).join('|')
+  useFlip(nodos, ordenActual)
 
   async function confirmarBorrado() {
     const p = borrando
@@ -109,8 +173,13 @@ function PlatillosTab() {
 
   function moverPlatillo(cat, idx, dir) {
     const lista = dishesDe(cat)
-    const reordenada = mover(lista, idx, dir)
-    if (reordenada !== lista) reordenarPlatillos(reordenada.map((p) => p.id))
+    const destino = idx + dir
+    if (destino < 0 || destino >= lista.length) return
+    const nuevo = lista.map((p) => p.id)
+    ;[nuevo[idx], nuevo[destino]] = [nuevo[destino], nuevo[idx]]
+    setOrdenOpt({ cat, ids: nuevo })
+    clearTimeout(rpcTimer.current)
+    rpcTimer.current = setTimeout(() => reordenarPlatillos(nuevo), 250)
   }
 
   return (
@@ -122,32 +191,45 @@ function PlatillosTab() {
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo platillo</Button>
       </div>
 
-      {categorias.map((cat) => {
-        const lista = dishesDe(cat)
-        return (
-          <div key={cat} style={{ marginBottom: 24 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{cat}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+        {categorias.map((cat) => {
+          const lista = dishesDe(cat)
+          const mostrarHeader = lista.length > 1
+          return (
+            <Fragment key={cat}>
+              {mostrarHeader && (
+                <h3 style={{ gridColumn: '1 / -1', margin: '10px 0 -4px', fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{cat}</h3>
+              )}
               {lista.map((p, idx) => {
                 const precios = preciosDe(p)
                 const inactivo = p.activo === false
                 const min = precios.length ? Math.min(...precios) : 0
                 const max = precios.length ? Math.max(...precios) : 0
                 return (
-                  <div key={p.id} style={{
-                    background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
-                    padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
-                  }}>
+                  <div
+                    key={p.id}
+                    ref={(el) => {
+                      if (el) nodos.current.set(p.id, el)
+                      else nodos.current.delete(p.id)
+                    }}
+                    style={{
+                      background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
+                      padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
+                      willChange: 'transform',
+                    }}
+                  >
                     <div className="flex items-center justify-between">
                       <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
                       <div className="flex items-center" style={{ gap: 8 }}>
                         {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
-                        <MoveButtons
-                          onUp={() => moverPlatillo(cat, idx, -1)}
-                          onDown={() => moverPlatillo(cat, idx, 1)}
-                          disableUp={idx === 0}
-                          disableDown={idx === lista.length - 1}
-                        />
+                        {mostrarHeader && (
+                          <MoveButtons
+                            onUp={() => moverPlatillo(cat, idx, -1)}
+                            onDown={() => moverPlatillo(cat, idx, 1)}
+                            disableUp={idx === 0}
+                            disableDown={idx === lista.length - 1}
+                          />
+                        )}
                       </div>
                     </div>
                     <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
@@ -160,10 +242,10 @@ function PlatillosTab() {
                   </div>
                 )
               })}
-            </div>
-          </div>
-        )
-      })}
+            </Fragment>
+          )
+        })}
+      </div>
 
       {viendo && <PlatilloVistaModal platillo={viendo} onClose={() => setViendo(null)} />}
       {editando && (
@@ -195,11 +277,41 @@ function CategoriasTab() {
   const categoriasOrden = usePosStore((s) => s.categoriasOrden)
   const { reordenarCategorias } = useMenuAdmin()
 
-  const categorias = categoriasOrdenadas(platillos, categoriasOrden)
+  const categoriasStore = categoriasOrdenadas(platillos, categoriasOrden)
+  const idsStore = categoriasStore.join(',')
+
+  // Orden optimista, mismo patrón que AdminMesasPage.jsx.
+  const [ordenOpt, setOrdenOpt] = useState(null)
+  const rpcTimer = useRef(null)
+
+  const nombresStoreSet = new Set(categoriasStore)
+  const optVigente = !!ordenOpt
+    && ordenOpt.length === nombresStoreSet.size
+    && ordenOpt.every((n) => nombresStoreSet.has(n))
+    && ordenOpt.join(',') !== idsStore
+  if (ordenOpt && !optVigente) setOrdenOpt(null)
+
+  const categorias = optVigente ? ordenOpt : categoriasStore
+
+  useEffect(() => {
+    if (!ordenOpt) return
+    const t = setTimeout(() => setOrdenOpt(null), 4000)
+    return () => clearTimeout(t)
+  }, [ordenOpt])
+
+  useEffect(() => () => clearTimeout(rpcTimer.current), [])
+
+  const nodos = useRef(new Map())
+  useFlip(nodos, categorias.join(','))
 
   function moverCategoria(idx, dir) {
-    const reordenada = mover(categorias, idx, dir)
-    if (reordenada !== categorias) reordenarCategorias(reordenada)
+    const destino = idx + dir
+    if (destino < 0 || destino >= categorias.length) return
+    const nuevo = categorias.slice()
+    ;[nuevo[idx], nuevo[destino]] = [nuevo[destino], nuevo[idx]]
+    setOrdenOpt(nuevo)
+    clearTimeout(rpcTimer.current)
+    rpcTimer.current = setTimeout(() => reordenarCategorias(nuevo), 250)
   }
 
   return (
@@ -209,10 +321,18 @@ function CategoriasTab() {
       </p>
       <div style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {categorias.map((cat, idx) => (
-          <div key={cat} style={{
-            background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14,
-            padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          }}>
+          <div
+            key={cat}
+            ref={(el) => {
+              if (el) nodos.current.set(cat, el)
+              else nodos.current.delete(cat)
+            }}
+            style={{
+              background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14,
+              padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              willChange: 'transform',
+            }}
+          >
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)' }}>
               <span style={{ color: 'var(--jb-gray)', marginRight: 10 }}>{idx + 1}.</span>{cat}
             </span>
