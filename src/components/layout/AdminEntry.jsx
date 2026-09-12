@@ -11,6 +11,7 @@ export function AdminEntry() {
   const navigate = useNavigate()
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const setAdminUnlocked = useMeseroStore((s) => s.setAdminUnlocked)
+  const lastAdminPath = useMeseroStore((s) => s.lastAdminPath)
   const meseros = usePosStore((s) => s.meseros)
   const mesero = meseros.find((m) => m.id === currentMeseroId) ?? null
 
@@ -23,7 +24,7 @@ export function AdminEntry() {
   function entrar() {
     setAdminUnlocked(true)
     setOpen(false)
-    navigate('/admin')
+    navigate(lastAdminPath || '/admin/menu')
   }
 
   function abrir() {

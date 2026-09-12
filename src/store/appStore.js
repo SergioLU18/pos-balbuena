@@ -52,9 +52,14 @@ export const useMeseroStore = create(
       // que un cambio programático (p. ej. el fallback de usePosData a meseros[0]) no salte
       // el gate; solo un PIN correcto (MeseroGate/MeseroSwitcher) lo vuelve a subir.
       sessionUnlocked: false,
+      // lastAdminPath: última pestaña de /admin que se vio (p. ej. "/admin/mesas"). Se
+      // persiste para que, al volver a entrar a Ajustes tras un bloqueo/refresh, el PIN
+      // regrese a esa pestaña en vez de caer siempre en "/admin/menu" (ver AdminApp/AdminEntry).
+      lastAdminPath: '/admin/menu',
       setMesero: (id) => set({ currentMeseroId: id, adminUnlocked: false, sessionUnlocked: false }),
       setAdminUnlocked: (v) => set({ adminUnlocked: v }),
       setSessionUnlocked: (v) => set({ sessionUnlocked: v }),
+      setLastAdminPath: (path) => set({ lastAdminPath: path }),
       toggleSoloMisMesas: () => set((s) => ({ soloMisMesas: !s.soloMisMesas })),
     }),
     {
@@ -63,7 +68,11 @@ export const useMeseroStore = create(
       // Solo se persiste la identidad del mesero (y su filtro de mesas). Antes NADA
       // se persistía, así que un refresh reseteaba el mesero al primero de la lista.
       // adminUnlocked queda fuera a propósito: el PIN se vuelve a pedir cada sesión.
-      partialize: (s) => ({ currentMeseroId: s.currentMeseroId, soloMisMesas: s.soloMisMesas }),
+      partialize: (s) => ({
+        currentMeseroId: s.currentMeseroId,
+        soloMisMesas: s.soloMisMesas,
+        lastAdminPath: s.lastAdminPath,
+      }),
     },
   ),
 )

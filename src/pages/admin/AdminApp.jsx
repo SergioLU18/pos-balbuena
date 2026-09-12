@@ -1,28 +1,96 @@
-import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useMeseroStore, usePosStore } from '../../store/appStore'
+import { PinPad } from '../../components/layout/PinPad'
 import AdminMeserosPage from './AdminMeserosPage'
 import AdminMenuPage from './AdminMenuPage'
 import AdminMesasPage from './AdminMesasPage'
 import AdminBitacoraPage from './AdminBitacoraPage'
 import AdminClientesPage from './AdminClientesPage'
 
-// Panel de administración. Solo accesible para un mesero esAdmin que ya confirmó su
-// PIN (adminUnlocked, ver AdminEntry). El gate es client-side — misma postura
-// "atribución, no seguridad" del resto del POS. Un deep-link a /admin sin cumplir
-// ambas condiciones redirige a /mesero.
+// Panel de administración. Solo accesible para un mesero esAdmin. El gate es client-side
+// — misma postura "atribución, no seguridad" del resto del POS. Si el mesero actual no es
+// admin, redirige a /mesero. Si sí es admin pero adminUnlocked está en false (no se
+// persiste a propósito: cada refresh/bloqueo vuelve a pedir el PIN), el PIN se pide AQUÍ
+// MISMO, sin navegar — así un refresh en "/admin/mesas" se queda en "/admin/mesas" tras
+// desbloquear, en vez de rebotar a /mesero y perder la pestaña en la que se estaba.
 export default function AdminApp() {
   const navigate = useNavigate()
+  const location = useLocation()
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const unlocked = useMeseroStore((s) => s.adminUnlocked)
   const setAdminUnlocked = useMeseroStore((s) => s.setAdminUnlocked)
+  const setLastAdminPath = useMeseroStore((s) => s.setLastAdminPath)
   const meseros = usePosStore((s) => s.meseros)
   const mesero = meseros.find((m) => m.id === currentMeseroId) ?? null
 
-  if (!mesero?.esAdmin || !unlocked) return <Navigate to="/mesero" replace />
+  const [entered, setEntered] = useState('')
+  const [error, setError] = useState(false)
+
+  // Recuerda la pestaña actual (p. ej. "/admin/mesas") mientras el admin navega, para que
+  // AdminEntry pueda volver ahí tras el PIN (cuando se entra desde el botón "Ajustes" en
+  // /mesero) en vez de caer siempre en "/admin/menu".
+  useEffect(() => {
+    if (mesero?.esAdmin && unlocked && location.pathname !== '/admin') {
+      setLastAdminPath(location.pathname)
+    }
+  }, [location.pathname, mesero?.esAdmin, unlocked, setLastAdminPath])
+
+  // Mesero sin PIN configurado: no hay nada que pedir, se desbloquea solo (mismo criterio
+  // que AdminEntry/MeseroGate para meseros sin PIN).
+  useEffect(() => {
+    if (mesero?.esAdmin && !unlocked && !mesero.pin) setAdminUnlocked(true)
+  }, [mesero?.esAdmin, mesero?.pin, unlocked, setAdminUnlocked])
+
+  if (!mesero?.esAdmin) return <Navigate to="/mesero" replace />
 
   function salir() {
     setAdminUnlocked(false)
     navigate('/mesero')
+  }
+
+  if (!unlocked) {
+    if (!mesero.pin) return null // el useEffect de arriba ya está desbloqueando
+
+    function teclear(d) {
+      if (entered.length >= 4) return
+      const next = entered + d
+      setEntered(next)
+      setError(false)
+      if (next.length === 4) {
+        if (next === mesero.pin) setAdminUnlocked(true)
+        else { setError(true); setEntered('') }
+      }
+    }
+
+    function borrar() {
+      setEntered((e) => e.slice(0, -1))
+      setError(false)
+    }
+
+    return (
+      <div
+        className="h-dvh w-full flex flex-col items-center justify-center"
+        style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif", padding: 20 }}
+      >
+        <div
+          style={{
+            background: '#fff', borderRadius: 26, width: 420, maxWidth: '100%',
+            boxShadow: '0 24px 60px rgba(51,34,42,0.3)', padding: '28px 28px 32px',
+          }}
+        >
+          <PinPad
+            titulo="Ajustes"
+            subtitulo={`PIN de ${mesero.nombre}`}
+            entered={entered}
+            error={error}
+            onDigit={teclear}
+            onBack={borrar}
+            onCancel={() => navigate('/mesero')}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
