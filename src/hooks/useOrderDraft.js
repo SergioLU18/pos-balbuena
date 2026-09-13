@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
@@ -110,6 +111,11 @@ export function useOrderDraft(mesaId) {
   const updateDraftItem = useOrderStore((s) => s.updateDraftItem)
   const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
   const enviarOrden = useOrderStore((s) => s.enviarOrden)
+  // Envío en vuelo (solo backend): mientras la RPC no contesta el draft sigue en pantalla,
+  // y un segundo toque en "Enviar" mandaba la misma comanda dos veces a cocina. El ref
+  // corta el doble toque del mismo tick, antes de que el estado alcance a apagar el botón.
+  const enviandoRef = useRef(false)
+  const [enviando, setEnviando] = useState(false)
   const clearDraft = useOrderStore((s) => s.clearDraft)
   const actualizarCantidadItemCuenta = useOrderStore((s) => s.actualizarCantidadItemCuenta)
   const quitarItemCuenta = useOrderStore((s) => s.quitarItemCuenta)
@@ -122,7 +128,6 @@ export function useOrderDraft(mesaId) {
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
-  const atenderMesa = usePosStore((s) => s.atenderMesa)
 
   // Un fallo suena igual para todos los casos, así que el tono solo dice "algo no se
   // guardó". El renglón en la campana es el que dice qué fue y en qué mesa, y sigue ahí
@@ -179,7 +184,7 @@ export function useOrderDraft(mesaId) {
   }
 
   function enviarACocina() {
-    if (draft.length === 0) return
+    if (draft.length === 0 || enviandoRef.current) return
     const mesero = meseros.find((m) => m.id === currentMeseroId)
 
     if (!IS_MOCK) {
@@ -192,12 +197,16 @@ export function useOrderDraft(mesaId) {
         nombre: nombreItem(it),
         precio_unitario: calcItemPrecio(it),
       }))
+      enviandoRef.current = true
+      setEnviando(true)
       sb.rpc('pos_enviar_orden', {
         p_mesa_id: mesaId,
         p_mesero_id: mesero?.id ?? null,
         p_mesero_nombre: mesero?.nombre ?? '—',
         p_items: payload,
       }).then(({ error }) => {
+        enviandoRef.current = false
+        setEnviando(false)
         // Hasta aquí un fallo era invisible: el draft se quedaba en pantalla y el mesero
         // no podía distinguir "no se envió" de "se envió y la pantalla no ha refrescado",
         // así que se iba de la mesa o volvía a picar (con riesgo de orden duplicada).
@@ -221,9 +230,6 @@ export function useOrderDraft(mesaId) {
       enviadoAt: new Date().toISOString(),
       estado: 'pendiente',
     })
-    // Quien toma la orden pasa a atender la mesa (sin desplazar a los que ya estaban).
-    // El backend hace lo mismo dentro de pos_enviar_orden; aquí es el espejo del mock.
-    atenderMesa(mesaId, mesero?.id)
     enviarOrden(mesaId)
     sonarConfirmacion()
   }
@@ -376,6 +382,7 @@ export function useOrderDraft(mesaId) {
     cambiarNota,
     quitarItem,
     enviarACocina,
+    enviando,
     cambiarCantidadEnviado,
     fijarCantidadEnviado,
     quitarItemEnviado,

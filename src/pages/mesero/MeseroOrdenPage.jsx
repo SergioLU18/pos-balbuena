@@ -42,7 +42,7 @@ export default function MeseroOrdenPage() {
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
-    agregarItemConstruido, reemplazarItem, cambiarCantidad, quitarItem, enviarACocina,
+    agregarItemConstruido, reemplazarItem, cambiarCantidad, quitarItem, enviarACocina, enviando,
     fijarCantidadEnviado, quitarItemEnviado, cerrarMesa,
   } = useOrderDraft(mesaId)
 
@@ -211,6 +211,7 @@ export default function MeseroOrdenPage() {
           onFijarEnviado={fijarCantidadEnviado}
           onRemoveEnviado={quitarItemEnviado}
           onEnviar={handleEnviarACocina}
+          enviando={enviando}
         />
       </div>
 

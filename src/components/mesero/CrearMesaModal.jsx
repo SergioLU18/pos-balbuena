@@ -1,25 +1,18 @@
 import { useState } from 'react'
 import { Button } from '../ui/Button'
-import { Chip } from '../ui/Chip'
 
-// Los meseros se eligen en plural: una mesa puede repartirse entre varios desde que
-// se crea (ver src/lib/asignaciones.js). Dejarla sin nadie también es válido — el
-// primero que le mande una orden queda atendiéndola.
-export function CrearMesaModal({ meseros, onConfirm, onClose }) {
+// Alta de mesa: solo el nombre. No se le asigna a nadie — cualquier mesero atiende
+// cualquier mesa.
+export function CrearMesaModal({ onConfirm, onClose }) {
   const [numero, setNumero] = useState('')
-  const [meseroIds, setMeseroIds] = useState([])
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState(null)
-
-  function toggleMesero(id) {
-    setMeseroIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
 
   async function handleConfirm() {
     if (!numero.trim()) return
     setEnviando(true)
     setError(null)
-    const { error } = await onConfirm(numero.trim(), meseroIds)
+    const { error } = await onConfirm(numero.trim())
     if (error) {
       setError(error)
       setEnviando(false)
@@ -67,24 +60,6 @@ export function CrearMesaModal({ meseros, onConfirm, onClose }) {
               fontFamily: "'Inter Tight', sans-serif", fontSize: 16, outline: 'none', boxSizing: 'border-box',
             }}
           />
-        </div>
-
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--jb-gray)', margin: '0 0 8px' }}>
-            ¿Quién la atiende? (opcional, pueden ser varios)
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {meseros.map((m) => (
-              <Chip key={m.id} active={meseroIds.includes(m.id)} onClick={() => toggleMesero(m.id)}>
-                {m.nombre}
-              </Chip>
-            ))}
-          </div>
-          {meseroIds.length === 0 && (
-            <p style={{ fontSize: 12, color: 'var(--jb-gray)', margin: '8px 0 0' }}>
-              Sin asignar: quedará a nombre del primero que le mande una orden.
-            </p>
-          )}
         </div>
 
         {error && (

@@ -127,6 +127,9 @@ export default function LlevarPage() {
             onBuscar={buscar}
             buscando={ocupado && paso === PASOS.ordenes}
             error={paso === PASOS.ordenes ? error : null}
+            // Con la ficha abierta el número ya es su llave: un ⌫ perdido registraba al
+            // cliente con 9 dígitos. Para otro número, "Cancelar" en la ficha.
+            bloqueado={paso === PASOS.nuevo || paso === PASOS.editar}
           />
         </div>
 
@@ -156,7 +159,10 @@ export default function LlevarPage() {
 
           {paso === PASOS.editar && (
             <ClienteForm
-              telefono={telefono}
+              // Del cliente y no del teclado: en la ficha el teclado sigue vivo (para buscar
+              // otro número), y editar con lo que se haya tecleado ahí le pisaba la ficha a
+              // quien tuviera ese otro teléfono.
+              telefono={cliente.telefono}
               cliente={cliente}
               guardando={ocupado}
               onGuardar={guardarEdicion}

@@ -166,7 +166,7 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
 // lo originó — de eso dependen los −/+, el "Editar" y el "Quitar" de un renglón ya
 // enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
 // (ver src/lib/renglones.js).
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   const vertical = useVertical()
 
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
@@ -211,6 +211,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
   const puedeEnviar = draft.length > 0 || hayEdits
 
   function enviarTodo() {
+    if (enviando) return
     editsPendientes.forEach((e) => onFijarEnviado(e.pedidoId, e.itemId, e.cantidad))
     if (draft.length > 0) onEnviar()
     setEdits({})
@@ -279,11 +280,11 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
         </div>
         <Button
           onClick={enviarTodo}
-          disabled={!puedeEnviar}
-          className={puedeEnviar ? 'jb-cta-pulse' : undefined}
+          disabled={!puedeEnviar || enviando}
+          className={puedeEnviar && !enviando ? 'jb-cta-pulse' : undefined}
           style={vertical ? { flex: 1 } : { width: '100%' }}
         >
-          {draft.length > 0
+          {enviando ? 'Enviando…' : draft.length > 0
             ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
             : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}
         </Button>
