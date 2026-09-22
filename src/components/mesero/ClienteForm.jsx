@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatearTelefono } from '../../lib/telefono'
+import { formatearTelefono, telefonoCompleto } from '../../lib/telefono'
 import { formatearCumpleanos } from '../../lib/cliente'
 import { Button } from '../ui/Button'
 import { FechaNacimientoModal } from './FechaNacimientoModal'
@@ -59,7 +59,8 @@ export function ClienteForm({
   const [nota, setNota] = useState(cliente?.nota ?? '')
   const [mostrandoFecha, setMostrandoFecha] = useState(false)
 
-  const puedeGuardar = nombre.trim().length > 0 && apellidos.trim().length > 0
+  const puedeGuardar = telefonoCompleto(telefono)
+    && nombre.trim().length > 0 && apellidos.trim().length > 0
     && calle.trim().length > 0 && numero.trim().length > 0
     && colonia.trim().length > 0 && codigoPostal.length === 5
     && !guardando

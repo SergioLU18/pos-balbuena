@@ -12,30 +12,29 @@ import { useAvisoListo } from './useAvisoListo'
 import { sonarListo } from '../lib/sonidos'
 import { usePedidosStore, useMeseroStore, usePosStore, useAvisosStore } from '../store/appStore'
 import { MESAS } from '../lib/mockMesas'
-import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
+import { MESEROS } from '../lib/mockMeseros'
 
 const [ROSA, BETO, LUPITA] = MESEROS
-const COMPARTIDA = MESAS[4] // mesa-5: la atienden Rosa y Beto
+const MESA = MESAS[4]
 
-// El pedido se mandó a cocina hace un poco más de 5 minutos: su plazo de aviso ya
-// se cumplió, pero hace poco (dentro de la ventana de gracia RECIENTE_MS), así que
-// debe sonar de inmediato en vez de programarse a futuro. Cada prueba usa un id
-// distinto: useAvisoListo recuerda a nivel de módulo qué pedidos ya anunció, así
-// que reusar un id haría que el segundo render no sonara.
-function pedidoListo(id, extra) {
+// El aviso sale a los 5 minutos de mandar el pedido (AVISO_MS en useAvisoListo). El
+// envío se fecha apenas pasados esos 5 minutos para que suene al montar —dentro de la
+// ventana de RECIENTE_MS— sin esperar al temporizador. Cada prueba usa un id distinto:
+// useAvisoListo recuerda a nivel de módulo qué pedidos ya anunció.
+const AVISO_MS = 5 * 60 * 1000
+function pedidoVencido(id, extra) {
   return {
     id,
-    mesaId: COMPARTIDA.id,
-    mesaNumero: COMPARTIDA.numero,
+    mesaId: MESA.id,
+    mesaNumero: MESA.numero,
     items: [],
-    enviadoAt: new Date(Date.now() - 5 * 60 * 1000 - 10_000).toISOString(),
-    estado: 'preparando',
+    enviadoAt: new Date(Date.now() - AVISO_MS - 1000).toISOString(),
+    estado: 'pendiente',
     ...extra,
   }
 }
 
-// Monta el hook como el mesero indicado y responde si sonó la campana. Limpia el
-// espía primero para poder encadenar varias llamadas dentro de una misma prueba.
+// Monta el hook como el mesero indicado y responde si sonó la campana.
 function sonoPara(meseroId, pedido) {
   sonarListo.mockClear()
   useMeseroStore.setState({ currentMeseroId: meseroId })
@@ -46,43 +45,42 @@ function sonoPara(meseroId, pedido) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
   usePedidosStore.setState({ pedidos: [] })
   useAvisosStore.setState({ avisos: [] })
 })
 
-describe('useAvisoListo — a quién le suena en una mesa con varios meseros', () => {
+describe('useAvisoListo — a quién le suena', () => {
   it('suena para el mesero que MANDÓ el pedido', () => {
-    expect(sonoPara(ROSA.id, pedidoListo('p-propio', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))).toBe(true)
+    expect(sonoPara(ROSA.id, pedidoVencido('p-propio', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))).toBe(true)
   })
 
-  it('NO suena para el otro mesero de la misma mesa', () => {
-    // Beto también atiende mesa-5, pero el plato no es de su comanda: antes le sonaba
-    // igual y ninguno de los dos sabía a quién le tocaba ir por él.
-    expect(sonoPara(BETO.id, pedidoListo('p-ajeno', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))).toBe(false)
-  })
-
-  it('NO suena para un mesero que ni atiende la mesa ni mandó el pedido', () => {
-    expect(sonoPara(LUPITA.id, pedidoListo('p-lejano', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))).toBe(false)
+  it('NO suena para otro mesero', () => {
+    expect(sonoPara(BETO.id, pedidoVencido('p-ajeno', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))).toBe(false)
   })
 
   it('deja el aviso en la campana, no solo el sonido', () => {
-    sonoPara(ROSA.id, pedidoListo('p-aviso', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))
+    sonoPara(ROSA.id, pedidoVencido('p-aviso', { meseroId: ROSA.id, meseroNombre: ROSA.nombre }))
     const avisos = useAvisosStore.getState().avisos
     expect(avisos).toHaveLength(1)
-    expect(avisos[0].mesaId).toBe(COMPARTIDA.id)
+    expect(avisos[0].mesaId).toBe(MESA.id)
+  })
+
+  it('no suena antes de los 5 minutos', () => {
+    const recien = pedidoVencido('p-recien', { meseroId: ROSA.id, enviadoAt: new Date().toISOString() })
+    expect(sonoPara(ROSA.id, recien)).toBe(false)
   })
 })
 
 describe('useAvisoListo — pedidos sin mesero_id (base anterior a la FK)', () => {
   it('cae al nombre para identificar al dueño', () => {
-    expect(sonoPara(ROSA.id, pedidoListo('p-nombre-mio', { meseroNombre: ROSA.nombre }))).toBe(true)
-    expect(sonoPara(BETO.id, pedidoListo('p-nombre-ajeno', { meseroNombre: ROSA.nombre }))).toBe(false)
+    expect(sonoPara(ROSA.id, pedidoVencido('p-nombre-mio', { meseroNombre: ROSA.nombre }))).toBe(true)
+    expect(sonoPara(BETO.id, pedidoVencido('p-nombre-ajeno', { meseroNombre: ROSA.nombre }))).toBe(false)
   })
 
-  it('si el pedido no tiene dueño reconocible, suena para todos los que atienden la mesa', () => {
+  it('si el pedido no tiene dueño reconocible, suena para todos', () => {
     // Más vale avisar de más que dejar un plato enfriándose sin dueño.
-    expect(sonoPara(BETO.id, pedidoListo('p-huerfano-1', { meseroNombre: '—' }))).toBe(true)
-    expect(sonoPara(LUPITA.id, pedidoListo('p-huerfano-2', { meseroNombre: '—' }))).toBe(false)
+    expect(sonoPara(BETO.id, pedidoVencido('p-huerfano-1', { meseroNombre: '—' }))).toBe(true)
+    expect(sonoPara(LUPITA.id, pedidoVencido('p-huerfano-2', { meseroNombre: '—' }))).toBe(true)
   })
 })

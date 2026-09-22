@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { usePosStore, useMeseroStore } from '../../store/appStore'
-import { meserosDeMesa } from '../../lib/asignaciones'
 import { useMeseroAdmin } from '../../hooks/useMeseroAdmin'
 import { Button } from '../../components/ui/Button'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
@@ -8,13 +7,12 @@ import { ModalShell, Campo, Toggle } from '../../components/admin/AdminModal'
 import { inputStyle } from '../../components/admin/adminStyles'
 import { PinPad } from '../../components/layout/PinPad'
 
-// Gestión de meseros: alta, edición (nombre, PIN, mesas que atiende, rol admin,
-// activo) y baja. Guardas para no quedarse sin admin: no puedes borrarte a ti
-// mismo, ni dejar al restaurante sin ningún mesero administrador.
+// Gestión de meseros: alta, edición (nombre, PIN, rol admin, activo) y baja. No hay
+// reparto de mesas: cualquier mesero atiende cualquier mesa. Guardas para no quedarse
+// sin admin: no puedes borrarte a ti mismo, ni dejar al restaurante sin ningún mesero
+// administrador.
 export default function AdminMeserosPage() {
   const meseros = usePosStore((s) => s.meseros)
-  const mesas = usePosStore((s) => s.mesas)
-  const asignaciones = usePosStore((s) => s.asignaciones)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const { guardarMesero, borrarMesero } = useMeseroAdmin()
 
@@ -23,9 +21,6 @@ export default function AdminMeserosPage() {
 
   const adminsActivos = meseros.filter((m) => m.esAdmin && m.activo !== false)
   const esUltimoAdmin = (m) => m.esAdmin && adminsActivos.length <= 1
-  // Mesas que atiende más de un mesero. Se muestra arriba porque es lo que distingue
-  // este reparto del de antes, cuando una mesa era de un solo mesero.
-  const compartidas = mesas.filter((m) => meserosDeMesa(asignaciones, m.id).length > 1).length
 
   async function confirmarBorrado() {
     const m = borrando
@@ -40,7 +35,6 @@ export default function AdminMeserosPage() {
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: 'var(--jb-ink)' }}>Meseros</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--jb-ink-soft)' }}>
             {meseros.length} {meseros.length === 1 ? 'mesero' : 'meseros'} · {adminsActivos.length} admin
-            {compartidas > 0 && ` · ${compartidas} ${compartidas === 1 ? 'mesa compartida' : 'mesas compartidas'}`}
           </p>
         </div>
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo mesero</Button>
@@ -96,6 +90,9 @@ function MeseroCard({ mesero, esActual, onEdit, onDelete }) {
           {mesero.esAdmin && <Badge color="var(--jb-pink)">Admin</Badge>}
           {inactivo && <Badge color="var(--jb-gray)">Inactivo</Badge>}
         </div>
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--jb-gray)' }}>
+        PIN: {mesero.pin ? '••••' : 'sin PIN'}
       </div>
       <div className="flex" style={{ gap: 8, marginTop: 4 }}>
         <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={onEdit}>Editar</Button>
@@ -171,6 +168,7 @@ function MeseroModal({ mesero, esUltimoAdmin, onGuardar, onClose }) {
       }
     }
   }
+
   async function guardar() {
     if (!nombre.trim()) { setError('El nombre es obligatorio.'); return }
     if (pin && !/^\d{4}$/.test(pin)) { setError('El PIN debe ser de 4 dígitos (o vacío).'); return }
@@ -277,4 +275,3 @@ function MeseroModal({ mesero, esUltimoAdmin, onGuardar, onClose }) {
     </ModalShell>
   )
 }
-

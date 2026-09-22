@@ -2,12 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMesaAdmin } from './useMesaAdmin'
 import { useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
-import { meserosDeMesa } from '../lib/asignaciones'
 import { MESAS } from '../lib/mockMesas'
-import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
+import { MESEROS } from '../lib/mockMeseros'
 
 beforeEach(() => {
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
   useOrderStore.setState({ drafts: {}, cuentas: {} })
   usePedidosStore.setState({ pedidos: [] })
 })
@@ -16,37 +15,17 @@ describe('useMesaAdmin — crear mesa', () => {
   it('agrega la mesa nueva al catálogo', async () => {
     const { result } = renderHook(() => useMesaAdmin())
     await act(async () => {
-      await result.current.crearMesa('16', null)
+      await result.current.crearMesa('16')
     })
     const mesas = usePosStore.getState().mesas
     expect(mesas.some((m) => m.numero === '16')).toBe(true)
-  })
-
-  it('pone a atender la mesa nueva a TODOS los meseros indicados', async () => {
-    const { result } = renderHook(() => useMesaAdmin())
-    await act(async () => {
-      await result.current.crearMesa('16', [MESEROS[0].id, MESEROS[1].id])
-    })
-    const { mesas, asignaciones } = usePosStore.getState()
-    const nueva = mesas.find((m) => m.numero === '16')
-    expect(meserosDeMesa(asignaciones, nueva.id)).toEqual([MESEROS[0].id, MESEROS[1].id])
-  })
-
-  it('deja la mesa nueva sin nadie cuando no se indica mesero', async () => {
-    const { result } = renderHook(() => useMesaAdmin())
-    await act(async () => {
-      await result.current.crearMesa('16', [])
-    })
-    const { mesas, asignaciones } = usePosStore.getState()
-    const nueva = mesas.find((m) => m.numero === '16')
-    expect(meserosDeMesa(asignaciones, nueva.id)).toEqual([])
   })
 })
 
 describe('useMesaAdmin — nombre único', () => {
   it('no crea una mesa con un nombre que ya existe (sin distinguir mayúsculas)', async () => {
     const { result } = renderHook(() => useMesaAdmin())
-    const { error } = await result.current.crearMesa(MESAS[0].numero.toUpperCase(), null)
+    const { error } = await result.current.crearMesa(MESAS[0].numero.toUpperCase())
     expect(error).toMatch(/[Yy]a existe/)
     expect(usePosStore.getState().mesas.length).toBe(MESAS.length)
   })
@@ -54,17 +33,12 @@ describe('useMesaAdmin — nombre único', () => {
 })
 
 describe('useMesaAdmin — renombrar mesa', () => {
-  it('cambia el nombre SIN tocar quién atiende la mesa', async () => {
-    // La asignación va por id (mesa_meseros), no por nombre: ese fue justo el motivo de
-    // dejar de guardar el número — renombrar una mesa reasignaba en silencio la que
-    // tuviera ese número. Renombrar no debe mover a nadie.
+  it('cambia el nombre de la mesa', async () => {
     const mesa = MESAS[0]
-    const antes = meserosDeMesa(usePosStore.getState().asignaciones, mesa.id)
     const { result } = renderHook(() => useMesaAdmin())
     const { error } = await result.current.renombrarMesa(mesa.id, 'Terraza 1')
     expect(error).toBeNull()
     expect(usePosStore.getState().mesas.find((m) => m.id === mesa.id).numero).toBe('Terraza 1')
-    expect(meserosDeMesa(usePosStore.getState().asignaciones, mesa.id)).toEqual(antes)
   })
 
   it('propaga el nombre nuevo a las comandas de esa mesa (cocina canta el nombre)', async () => {
@@ -110,17 +84,12 @@ describe('useMesaAdmin — reordenar mesas', () => {
 })
 
 describe('useMesaAdmin — borrar mesa', () => {
-  it('quita la mesa del catálogo y la suelta de TODOS los meseros que la atendían', async () => {
-    // mesa-5 arranca compartida entre Doña Rosa y Don Beto, así que el borrado tiene
-    // que soltar a los dos y no solo al primero que la tuviera.
-    const compartida = MESAS[4]
-    expect(meserosDeMesa(ASIGNACIONES, compartida.id)).toHaveLength(2)
-
+  it('quita la mesa del catálogo', async () => {
+    const mesa = MESAS[4]
     const { result } = renderHook(() => useMesaAdmin())
-    const { error } = await result.current.borrarMesa(compartida.id)
+    const { error } = await result.current.borrarMesa(mesa.id)
     expect(error).toBeNull()
-    expect(usePosStore.getState().mesas.some((m) => m.id === compartida.id)).toBe(false)
-    expect(meserosDeMesa(usePosStore.getState().asignaciones, compartida.id)).toEqual([])
+    expect(usePosStore.getState().mesas.some((m) => m.id === mesa.id)).toBe(false)
   })
 
   it('no borra una mesa con cuenta abierta y devuelve un error', async () => {

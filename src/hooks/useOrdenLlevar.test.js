@@ -97,3 +97,25 @@ describe('useOrdenLlevar — cerrar la orden', () => {
     expect(useLlevarStore.getState().ordenes[0].estado).toBe('cancelada')
   })
 })
+
+describe('useOrdenLlevar — descartar una orden vacía', () => {
+  it('la borra en vez de cancelarla: no deja una cancelada de $0 en el historial', () => {
+    const { result } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.descartarOrden() })
+
+    expect(useLlevarStore.getState().ordenes).toHaveLength(0)
+    expect(useOrderStore.getState().drafts[ORDEN_ID] ?? []).toHaveLength(0)
+  })
+
+  it('no descarta una orden que ya mandó platillos a cocina', () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.enviarACocina() })
+    rerender()
+    act(() => { result.current.descartarOrden() })
+
+    expect(useLlevarStore.getState().ordenes[0].estado).toBe('abierta')
+    expect(usePedidosStore.getState().pedidos).toHaveLength(1)
+  })
+})

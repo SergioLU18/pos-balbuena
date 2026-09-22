@@ -10,13 +10,10 @@ import { usePosStore } from '../store/appStore'
  *  (pos_guardar_mesero y compañía) para que cada cambio quede en la bitácora. El
  *  store no se toca en backend: usePosData recarga por Realtime tras cada cambio.
  *
- *  Guardar un mesero ya no toca su reparto de mesas (`mesa_meseros`): en la
- *  práctica todos los meseros atienden todas las mesas, así que el alta/edición
- *  dejó de pedirlo. Las asignaciones existentes se quedan como están. */
+ *  No hay reparto de mesas: cualquier mesero atiende cualquier mesa. */
 export function useMeseroAdmin() {
   const meseros = usePosStore((s) => s.meseros)
   const setMeseros = usePosStore((s) => s.setMeseros)
-  const soltarMesero = usePosStore((s) => s.soltarMesero)
   const restauranteId = usePosStore((s) => s.restauranteId)
 
   // m: { id?, nombre, pin, esAdmin, activo }
@@ -31,26 +28,25 @@ export function useMeseroAdmin() {
       )
       return Promise.resolve({ error: null })
     }
-    const q = sb.rpc('pos_guardar_mesero', {
-      p_id: m.id ?? null,
-      p_restaurante_id: restauranteId,
-      p_nombre: m.nombre?.trim(),
-      p_pin: m.pin || null,
-      p_es_admin: !!m.esAdmin,
-      p_activo: m.activo !== false,
-      ...firmaActor(),
-    })
-    return q.then(({ error }) => ({ error: error?.message ?? null }))
+    return sb
+      .rpc('pos_guardar_mesero', {
+        p_id: m.id ?? null,
+        p_restaurante_id: restauranteId,
+        p_nombre: m.nombre?.trim(),
+        p_pin: m.pin || null,
+        p_es_admin: !!m.esAdmin,
+        p_activo: m.activo !== false,
+        ...firmaActor(),
+      })
+      .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   // Baja lógica: cargarTodo solo trae activo=true, así el mesero desaparece del
   // catálogo sin perder la referencia en pedidos históricos (mesero_nombre queda
-  // denormalizado en cada pedido). La RPC además lo suelta de todas sus mesas —
-  // quien ya no está en el turno no puede seguir figurando como quien las atiende.
+  // denormalizado en cada pedido).
   function borrarMesero(id) {
     if (IS_MOCK) {
       setMeseros(meseros.filter((x) => x.id !== id))
-      soltarMesero(id)
       return Promise.resolve({ error: null })
     }
     return sb.rpc('pos_borrar_mesero', { p_mesero_id: id, ...firmaActor() }).then(({ error }) => ({ error: error?.message ?? null }))

@@ -78,6 +78,41 @@ describe('useLlevar — abrir orden', () => {
   })
 })
 
+describe('useLlevar — borrar cliente', () => {
+  async function clienteConOrden(result) {
+    let cliente
+    await act(async () => { ({ cliente } = await result.current.guardarCliente(DATOS)) })
+    await act(async () => { await result.current.crearOrden(cliente) })
+    return { cliente, orden: useLlevarStore.getState().ordenes[0] }
+  }
+
+  it('una orden abierta SIN platillos no bloquea la baja: se descarta con ella', async () => {
+    const { result } = renderHook(() => useLlevar())
+    const { cliente } = await clienteConOrden(result)
+
+    let error
+    await act(async () => { ({ error } = await result.current.borrarCliente(cliente.id)) })
+    expect(error).toBeNull()
+    expect(useLlevarStore.getState().clientes).toHaveLength(0)
+    expect(useLlevarStore.getState().ordenes).toHaveLength(0)
+  })
+
+  it('una orden abierta CON platillos en cocina sí la bloquea', async () => {
+    const { result, rerender } = renderHook(() => useLlevar())
+    const { cliente, orden } = await clienteConOrden(result)
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', ordenLlevarId: orden.id, items: [{ id: 'i1', precio_unitario: 110, cantidad: 1 }] }],
+    })
+    rerender()
+
+    let error
+    await act(async () => { ({ error } = await result.current.borrarCliente(cliente.id)) })
+    expect(error).toBeTruthy()
+    expect(useLlevarStore.getState().clientes).toHaveLength(1)
+    expect(useLlevarStore.getState().ordenes[0].estado).toBe('abierta')
+  })
+})
+
 describe('totalDeOrden', () => {
   const orden = { id: 'ol-1', estado: 'abierta', total: 0, items: [] }
   const pedidos = [

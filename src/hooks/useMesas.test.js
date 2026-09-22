@@ -5,7 +5,7 @@ import { buildDraftItem } from './useOrderDraft'
 import { useOrderStore, usePedidosStore, useMeseroStore, useMesaPagadaStore, usePosStore } from '../store/appStore'
 import { MENU } from '../lib/mockMenu'
 import { MESAS } from '../lib/mockMesas'
-import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
+import { MESEROS } from '../lib/mockMeseros'
 
 const sope = MENU.find((p) => p.id === 'sope')
 const I_2ING = sope.tiers.findIndex((t) => t.nombre === '2 Ingredientes') // -> 165
@@ -16,7 +16,7 @@ beforeEach(() => {
   usePedidosStore.setState({ pedidos: [] })
   useMesaPagadaStore.setState({ pagadas: {} })
   useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
 })
 
 describe('useMesas — total de una mesa con cuenta abierta', () => {
@@ -48,6 +48,16 @@ describe('useMesas — mesa pagada', () => {
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
     expect(mesa.estado).toBe('abierta')
     expect(mesa.total).toBe(165)
+  })
+})
+
+describe('useMesas — sin reparto de mesas', () => {
+  it('todos los meseros ven el salón completo', () => {
+    for (const w of MESEROS) {
+      useMeseroStore.setState({ currentMeseroId: w.id })
+      const { result } = renderHook(() => useMesas())
+      expect(result.current.mesas).toHaveLength(MESAS.length)
+    }
   })
 })
 

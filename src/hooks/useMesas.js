@@ -1,12 +1,15 @@
 import { useMeseroStore, useOrderStore, usePosStore, useMesaPagadaStore } from '../store/appStore'
 import { sumaCuenta, calcSubtotal } from './useOrderDraft'
 
-/** Mesas visibles para el mesero actual, con su estado derivado. Solo existen dos
- *  estados de cuenta: "abierta" (cualquier parte del proceso — armando el pedido,
- *  enviado a cocina, en preparación, listo para servir — todo se ve igual desde el
- *  piso; el detalle fino de cocina vive en CocinaPage, no aquí) y "pagada" (se cobró,
- *  ya sea en tali o a mano por el mesero — ver cerrarMesa en useOrderDraft). Sin
- *  ninguna de las dos, la mesa está "libre". */
+/** Mesas del salón, con su estado derivado. Solo existen dos estados de cuenta:
+ *  "abierta" (cualquier parte del proceso — armando el pedido, enviado a cocina, en
+ *  preparación, listo para servir — todo se ve igual desde el piso; el detalle fino de
+ *  cocina vive en CocinaPage, no aquí) y "pagada" (se cobró, ya sea en tali o a mano
+ *  por el mesero — ver cerrarMesa en useOrderDraft). Sin ninguna de las dos, la mesa
+ *  está "libre".
+ *
+ *  No hay reparto de mesas: cualquier mesero atiende cualquier mesa, así que todos
+ *  ven el mismo salón. */
 export function useMesas() {
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const cuentas = useOrderStore((s) => s.cuentas)
@@ -44,14 +47,12 @@ export function useMesas() {
   const porId = new Map(base.map((m) => [m.id, m]))
   const mesas = base.map((m) => {
     const principal = m.joined_to ? porId.get(m.joined_to) ?? null : null
-    const raiz = principal ?? m
-    const grupo = base.filter((x) => x.id === raiz.id || x.joined_to === raiz.id)
     return {
       ...m,
       unidaA: principal ? { id: principal.id, numero: principal.numero } : null,
-      unidas: principal ? [] : grupo.filter((x) => x.id !== m.id).map((x) => ({ id: x.id, numero: x.numero })),
+      unidas: principal ? [] : base.filter((x) => x.joined_to === m.id).map((x) => ({ id: x.id, numero: x.numero })),
     }
   })
 
-  return { mesas, mesero, meseros: MESEROS }
+  return { mesas, mesero }
 }

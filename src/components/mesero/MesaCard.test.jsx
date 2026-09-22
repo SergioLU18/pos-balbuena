@@ -10,6 +10,11 @@ function mesa(extra) {
 }
 
 describe('MesaCard', () => {
+  it('una mesa libre dice que está sin ocupar', () => {
+    const { container } = render(<MesaCard mesa={mesa()} />)
+    expect(container.textContent).toContain('Sin ocupar')
+  })
+
   // Ya no existe la asignación de mesas por mesero: la tarjeta del piso no debe
   // mostrar quién la atiende, ni aunque le lleguen datos de un `mesa.meseros` viejo.
   it('no muestra qué mesero atiende la mesa aunque el dato venga en `mesa.meseros`', () => {
