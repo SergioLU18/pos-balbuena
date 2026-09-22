@@ -27,35 +27,26 @@ export function DiaModal({ titulo = 'Día', value, min, max, onConfirm, onClose 
   const [mes, setMes] = useState(mesIni)
   const [dia, setDia] = useState(diaIni)
 
-  // Recorta mes/día al tope o al piso permitido cada vez que cualquier rueda
-  // cambia — así nunca queda una combinación fuera de [min, max].
-  function elegir(nuevoAnio, nuevoMes, nuevoDia) {
-    let mm = nuevoMes
-    let dd = nuevoDia
-    if (max && nuevoAnio === maxAnio) {
-      if (mm > maxMes) mm = maxMes
-      if (mm === maxMes && dd > maxDia) dd = maxDia
-    }
-    if (min && nuevoAnio === minAnio) {
-      if (mm < minMes) mm = minMes
-      if (mm === minMes && dd < minDia) dd = minDia
-    }
-    setAnio(nuevoAnio)
-    setMes(mm)
-    setDia(dd)
+  // Las tres ruedas siempre muestran su rango completo (nunca "algunos meses sí,
+  // otros no"); lo que hace `elegir` es recortar la combinación elegida a [min, max]
+  // cuando se pasa de la raya, comparando la fecha completa (no solo el año).
+  function posterior(a1, m1, d1, a2, m2, d2) {
+    if (a1 !== a2) return a1 > a2
+    if (m1 !== m2) return m1 > m2
+    return d1 > d2
   }
 
-  const aniosDisponibles = ANIOS_ITEMS.filter((it) => (!max || it.value <= maxAnio) && (!min || it.value >= minAnio))
-  const mesesDisponibles = MESES_ITEMS.filter((it) => {
-    if (max && anio === maxAnio && it.value > maxMes) return false
-    if (min && anio === minAnio && it.value < minMes) return false
-    return true
-  })
-  const diasDisponibles = DIAS_ITEMS.filter((it) => {
-    if (max && anio === maxAnio && mes === maxMes && it.value > maxDia) return false
-    if (min && anio === minAnio && mes === minMes && it.value < minDia) return false
-    return true
-  })
+  function elegir(nuevoAnio, nuevoMes, nuevoDia) {
+    let a = nuevoAnio, m = nuevoMes, d = nuevoDia
+    if (max && posterior(a, m, d, maxAnio, maxMes, maxDia)) {
+      a = maxAnio; m = maxMes; d = maxDia
+    } else if (min && posterior(minAnio, minMes, minDia, a, m, d)) {
+      a = minAnio; m = minMes; d = minDia
+    }
+    setAnio(a)
+    setMes(m)
+    setDia(d)
+  }
 
   function confirmar() {
     const mm = String(mes).padStart(2, '0')
@@ -66,9 +57,9 @@ export function DiaModal({ titulo = 'Día', value, min, max, onConfirm, onClose 
   return (
     <ModalShell width={400} titulo={titulo} onClose={onClose}>
       <div className="flex" style={{ gap: 6 }}>
-        <WheelPicker items={diasDisponibles} value={dia} onChange={(v) => elegir(anio, mes, v)} />
-        <WheelPicker items={mesesDisponibles} value={mes} onChange={(v) => elegir(anio, v, dia)} />
-        <WheelPicker items={aniosDisponibles} value={anio} onChange={(v) => elegir(v, mes, dia)} />
+        <WheelPicker items={DIAS_ITEMS} value={dia} onChange={(v) => elegir(anio, mes, v)} />
+        <WheelPicker items={MESES_ITEMS} value={mes} onChange={(v) => elegir(anio, v, dia)} />
+        <WheelPicker items={ANIOS_ITEMS} value={anio} onChange={(v) => elegir(v, mes, dia)} />
       </div>
 
       <div className="flex" style={{ gap: 12, marginTop: 4 }}>
