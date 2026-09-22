@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useBitacora, hoyLocal } from '../../hooks/useBitacora'
 import { usePosStore } from '../../store/appStore'
 import { IS_MOCK } from '../../lib/config'
-import { f } from '../../lib/utils'
+import { f, formatearDia } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
+import { DiaModal } from '../../components/admin/DiaModal'
 import { GRUPOS, describir, esSensible, grupoDe, importe, renglones, sujeto } from '../../lib/eventos'
 import { Section } from '../../components/admin/stats/Section'
 import { EstadisticasSection } from '../../components/admin/stats/EstadisticasSection'
@@ -115,16 +116,25 @@ function BitacoraPantallaCompleta({ filtros, bitacora, onCerrar }) {
 }
 
 function BitacoraFiltros({ hoy, dia, setDia, meseroId, setMeseroId, grupo, setGrupo, meseros }) {
+  const [mostrandoDia, setMostrandoDia] = useState(false)
   return (
     <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
-      <input
-        type="date"
-        value={dia}
-        max={hoy}
-        onChange={(e) => e.target.value && setDia(e.target.value)}
+      <button
+        type="button"
+        onClick={() => setMostrandoDia(true)}
         aria-label="Día"
-        style={CONTROL}
-      />
+        style={{ ...CONTROL, textAlign: 'left', cursor: 'pointer' }}
+      >
+        {dia === hoy ? 'Hoy' : formatearDia(dia)}
+      </button>
+      {mostrandoDia && (
+        <DiaModal
+          value={dia}
+          max={hoy}
+          onConfirm={(iso) => { setDia(iso); setMostrandoDia(false) }}
+          onClose={() => setMostrandoDia(false)}
+        />
+      )}
       <select value={meseroId} onChange={(e) => setMeseroId(e.target.value)} aria-label="Mesero" style={CONTROL}>
         <option value="">Todos los meseros</option>
         {meseros.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}

@@ -11,6 +11,14 @@ export function fdate(iso) {
   return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+/** Format a "YYYY-MM-DD" local date as "12 de marzo de 2025". A propósito no usa
+ *  `new Date(iso)`: eso lo interpreta como medianoche UTC y en México (UTC-6)
+ *  puede mostrar el día anterior. */
+export function formatearDia(iso) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 /** Clamp a value between min and max */
 export function clamp(val, min, max) {
   return Math.min(Math.max(val, min), max)

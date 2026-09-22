@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { ymdLocal } from '../../../lib/statsRangos'
+import { formatearDia } from '../../../lib/utils'
+import { DiaModal } from '../DiaModal'
 
 const OPCIONES = [['dia', 'Hoy'], ['semana', 'Semana'], ['mes', 'Mes'], ['personalizado', 'Personalizado']]
 
@@ -18,9 +21,11 @@ const inputEstilo = {
 
 /** Hoy / Semana / Mes / Personalizado, para todo lo que se corta por periodo en
  *  Estadísticas (el heatmap y "del mes" no lo usan — son fijos, ver
- *  EstadisticasSection). "Personalizado" abre dos <input type=date>. */
+ *  EstadisticasSection). "Personalizado" abre el mismo selector de día de rueditas
+ *  que usa Bitácora y Cumpleaños en alta de clientes, no un <input type=date>. */
 export function PeriodoTabs({ periodo, onPeriodo, personalizado, onPersonalizado }) {
   const hoy = ymdLocal()
+  const [modal, setModal] = useState(null) // 'desde' | 'hasta' | null
   return (
     <div className="flex items-center flex-wrap" style={{ gap: 8 }}>
       {OPCIONES.map(([valor, texto]) => (
@@ -30,18 +35,33 @@ export function PeriodoTabs({ periodo, onPeriodo, personalizado, onPersonalizado
       ))}
       {periodo === 'personalizado' && (
         <div className="flex items-center" style={{ gap: 6 }}>
-          <input
-            type="date" value={personalizado.desde} max={personalizado.hasta || hoy}
-            onChange={(e) => e.target.value && onPersonalizado({ ...personalizado, desde: e.target.value })}
-            aria-label="Desde" style={inputEstilo}
-          />
+          <button type="button" onClick={() => setModal('desde')} aria-label="Desde" style={{ ...inputEstilo, cursor: 'pointer' }}>
+            {formatearDia(personalizado.desde)}
+          </button>
           <span style={{ color: 'var(--jb-ink-soft)', fontWeight: 800 }}>–</span>
-          <input
-            type="date" value={personalizado.hasta} min={personalizado.desde} max={hoy}
-            onChange={(e) => e.target.value && onPersonalizado({ ...personalizado, hasta: e.target.value })}
-            aria-label="Hasta" style={inputEstilo}
-          />
+          <button type="button" onClick={() => setModal('hasta')} aria-label="Hasta" style={{ ...inputEstilo, cursor: 'pointer' }}>
+            {formatearDia(personalizado.hasta)}
+          </button>
         </div>
+      )}
+      {modal === 'desde' && (
+        <DiaModal
+          titulo="Desde"
+          value={personalizado.desde}
+          max={personalizado.hasta || hoy}
+          onConfirm={(iso) => { onPersonalizado({ ...personalizado, desde: iso }); setModal(null) }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'hasta' && (
+        <DiaModal
+          titulo="Hasta"
+          value={personalizado.hasta}
+          min={personalizado.desde}
+          max={hoy}
+          onConfirm={(iso) => { onPersonalizado({ ...personalizado, hasta: iso }); setModal(null) }}
+          onClose={() => setModal(null)}
+        />
       )}
     </div>
   )
