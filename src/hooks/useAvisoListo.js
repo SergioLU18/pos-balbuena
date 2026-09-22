@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { usePedidosStore, useMeseroStore, usePosStore, useAvisosStore } from '../store/appStore'
-import { atiende } from '../lib/asignaciones'
 import { sonarListo } from '../lib/sonidos'
 
 // El aviso ya no depende de que cocina marque "listo": ahora es puramente por tiempo,
@@ -103,7 +102,6 @@ export function useAvisoListo() {
   const pedidos = usePedidosStore((s) => s.pedidos)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const meseros = usePosStore((s) => s.meseros)
-  const asignaciones = usePosStore((s) => s.asignaciones)
 
   // Los temporizadores viven en el módulo, así que sobrevivirían a que la app se vuelva a
   // bloquear (cambio de mesero) y sonarían encima del teclado del PIN. Se cancelan al
@@ -118,17 +116,13 @@ export function useAvisoListo() {
     const nombresConocidos = new Set(meseros.map((m) => m.nombre))
     // Por id, que es la referencia real. El nombre es el respaldo para los pedidos
     // creados antes de que existiera pedidos.mesero_id, y solo cuenta si identifica a
-    // un mesero del catálogo: si el pedido no tiene dueño reconocible (base vieja, o el
-    // mesero se dio de baja) suena para todos los que atienden la mesa — más vale
-    // avisar de más que dejar un plato enfriándose sin dueño.
+    // un mesero del catálogo. Si el pedido no tiene dueño reconocible (base vieja, o el
+    // mesero se dio de baja) suena para todos: no hay reparto de mesas que diga a quién
+    // le toca, y más vale avisar de más que dejar un plato enfriándose sin dueño.
     const esMio = (p) => {
       if (p.meseroId) return p.meseroId === currentMeseroId
       if (p.meseroNombre && nombresConocidos.has(p.meseroNombre)) return p.meseroNombre === mesero?.nombre
-      // Una comanda para llevar sin dueño reconocible no tiene mesa contra la cual
-      // preguntar, así que suena para todos — mismo criterio que abajo: más vale avisar
-      // de más que dejar un pedido enfriándose sin que nadie lo recoja.
-      if (p.tipo === 'llevar') return true
-      return atiende(asignaciones, p.mesaId, currentMeseroId)
+      return true
     }
 
     const ahora = Date.now()
@@ -169,5 +163,5 @@ export function useAvisoListo() {
     for (const id of [...avisados]) if (!vivos.has(id)) avisados.delete(id)
     for (const id of [...temporizadores.keys()]) if (!vivos.has(id)) cancelarTemporizador(id)
     for (const id of [...recordatorios.keys()]) if (!vivos.has(id)) cancelarRecordatorio(id)
-  }, [pedidos, currentMeseroId, meseros, asignaciones])
+  }, [pedidos, currentMeseroId, meseros])
 }

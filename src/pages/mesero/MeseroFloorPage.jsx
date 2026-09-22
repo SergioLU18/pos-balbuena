@@ -179,8 +179,7 @@ export default function MeseroFloorPage() {
           {mesas.map((mesa) => (
             <MesaCard
               key={mesa.id}
-              mesa={mesa}
-              onClick={() => tocarMesa(mesa)}
+              mesa={mesa}              onClick={() => tocarMesa(mesa)}
               seleccionada={!!unir && (mesa.id === unir.principalId || unir.secundarias.includes(mesa.id))}
               deshabilitada={deshabilitada(mesa)}
             />

@@ -100,6 +100,7 @@ export function MesaCard({ mesa, onClick, seleccionada = false, deshabilitada = 
       {visual !== 'unida' && mesa.estado === 'pagada' && mesa.total > 0 && (
         <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
       )}
+
     </button>
   )
 }

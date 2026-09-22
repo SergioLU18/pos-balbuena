@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
@@ -33,6 +34,7 @@ export function useOrdenLlevar(ordenId) {
   const clearDraft = useOrderStore((s) => s.clearDraft)
   const orden = useLlevarStore((s) => s.ordenes).find((o) => o.id === ordenId) ?? null
   const actualizarOrdenLocal = useLlevarStore((s) => s.actualizarOrdenLocal)
+  const quitarOrdenLocal = useLlevarStore((s) => s.quitarOrdenLocal)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const meseros = usePosStore((s) => s.meseros)
   const agregarPedido = usePedidosStore((s) => s.agregarPedido)
@@ -40,6 +42,10 @@ export function useOrdenLlevar(ordenId) {
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const eliminarPedidosDeOrdenLlevar = usePedidosStore((s) => s.eliminarPedidosDeOrdenLlevar)
   const pedidos = usePedidosStore((s) => s.pedidos).filter((p) => p.ordenLlevarId === ordenId)
+  // Mismo candado que useOrderDraft: sin él, un doble toque en "Enviar" mientras la RPC
+  // no contesta mandaba la comanda dos veces a cocina.
+  const enviandoRef = useRef(false)
+  const [enviando, setEnviando] = useState(false)
 
   const etiqueta = orden ? `Para llevar L-${orden.folio}` : 'Para llevar'
   const avisarError = (titulo, detalle) => {
@@ -71,7 +77,7 @@ export function useOrdenLlevar(ordenId) {
   }
 
   function enviarACocina() {
-    if (draft.length === 0) return
+    if (draft.length === 0 || enviandoRef.current) return
     const mesero = meseros.find((m) => m.id === currentMeseroId)
     // Cada renglón lleva nombre + precio_unitario además de su estructura rica: es lo que
     // permite que el total de la orden (y su copia congelada al cerrarla) se calcule sin
@@ -83,12 +89,16 @@ export function useOrdenLlevar(ordenId) {
     }))
 
     if (!IS_MOCK) {
+      enviandoRef.current = true
+      setEnviando(true)
       sb.rpc('pos_enviar_orden_llevar', {
         p_orden_id: ordenId,
         p_items: payload,
         p_mesero_id: mesero?.id ?? null,
         p_mesero_nombre: mesero?.nombre ?? '—',
       }).then(({ error }) => {
+        enviandoRef.current = false
+        setEnviando(false)
         if (error) {
           console.error('[llevar] enviarACocina falló:', error)
           avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
@@ -187,6 +197,26 @@ export function useOrdenLlevar(ordenId) {
       })
   }
 
+  /** Descarta una orden que nunca llegó a cocina (sin renglones enviados): se BORRA en
+   *  vez de cancelarse, para no dejar una "cancelada de $0" en el historial del cliente
+   *  por algo que no existió. Optimista: la orden sale del listado en el acto; si el RPC
+   *  falla (p. ej. otra tablet le mandó platillos mientras tanto) se recarga y vuelve. */
+  function descartarOrden() {
+    if (enviados.length > 0) return
+    quitarOrdenLocal(ordenId)
+    eliminarPedidosDeOrdenLlevar(ordenId)
+    clearDraft(ordenId)
+    if (IS_MOCK) return
+
+    sb.rpc('pos_descartar_orden_llevar', { p_orden_id: ordenId, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[llevar] descartarOrden falló:', error)
+          recargarDesdeBackend()
+        }
+      })
+  }
+
   return {
     orden,
     draft,
@@ -198,8 +228,10 @@ export function useOrdenLlevar(ordenId) {
     cambiarCantidad,
     quitarItem,
     enviarACocina,
+    enviando,
     fijarCantidadEnviado,
     quitarItemEnviado,
     cerrarOrden,
+    descartarOrden,
   }
 }

@@ -24,31 +24,24 @@ export function validarNombreMesa(nombre, mesas, exceptoId = null) {
  *  abierta no se puede borrar — hacerlo a medio servicio dejaría la cuenta y los pedidos
  *  de cocina huérfanos; en modo backend esa regla la aplica también la RPC
  *  `pos_borrar_mesa`, así que queda protegida aunque dos meseros la intenten borrar al
- *  mismo tiempo desde tablets distintas.
- *
- *  `crearMesa` recibe VARIOS meseros porque una mesa se puede repartir entre más de
- *  uno desde que se crea (ver src/lib/asignaciones.js). */
+ *  mismo tiempo desde tablets distintas. */
 export function useMesaAdmin() {
   const mesas = usePosStore((s) => s.mesas)
   const setMesas = usePosStore((s) => s.setMesas)
-  const atenderMesa = usePosStore((s) => s.atenderMesa)
-  const soltarMesa = usePosStore((s) => s.soltarMesa)
   const restauranteId = usePosStore((s) => s.restauranteId)
 
-  function crearMesa(numero, meseroIds = []) {
+  function crearMesa(numero) {
     const nombre = (numero ?? '').trim()
     const err = validarNombreMesa(nombre, mesas)
     if (err) return Promise.resolve({ error: err, id: null })
-    const ids = (meseroIds ?? []).filter(Boolean)
 
     if (IS_MOCK) {
       const mesa = { id: uid('mesa'), numero: nombre, activo: true }
       setMesas([...mesas, mesa])
-      for (const meseroId of ids) atenderMesa(mesa.id, meseroId)
       return Promise.resolve({ error: null, id: mesa.id })
     }
     return sb
-      .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: nombre, p_mesero_ids: ids, ...firma() })
+      .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: nombre, ...firma() })
       .then(({ data, error }) => ({ error: error?.message ?? null, id: data ?? null }))
   }
 
@@ -63,10 +56,8 @@ export function useMesaAdmin() {
       if (mesa.numero === nombre) return Promise.resolve({ error: null })
 
       setMesas(mesas.map((m) => (m.id === mesaId ? { ...m, numero: nombre } : m)))
-      // Quién atiende la mesa NO hay que tocarlo: `asignaciones` guarda ids, no nombres
-      // — justo para que renombrar una mesa no reasigne nada por accidente. Lo que sí
-      // guarda el NOMBRE es la copia denormalizada de la comanda (pedidos.mesaNumero),
-      // así que esa sí se propaga o la cocina seguiría cantando el nombre viejo.
+      // El nombre también vive en la copia denormalizada de la comanda
+      // (pedidos.mesaNumero), así que se propaga o la cocina seguiría cantando el viejo.
       const { pedidos, setPedidos } = usePedidosStore.getState()
       setPedidos(pedidos.map((p) => (p.mesaId === mesaId ? { ...p, mesaNumero: nombre } : p)))
       return Promise.resolve({ error: null })
@@ -105,7 +96,6 @@ export function useMesaAdmin() {
         return Promise.resolve({ error: 'La mesa está unida con otra. Sepárala antes de borrarla.' })
       }
       setMesas(mesas.filter((m) => m.id !== mesaId))
-      soltarMesa(mesaId) // deja de estar atendida por nadie
       return Promise.resolve({ error: null })
     }
     return sb.rpc('pos_borrar_mesa', { p_mesa_id: mesaId, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))

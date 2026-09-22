@@ -20,7 +20,7 @@ beforeEach(() => {
   usePedidosStore.setState({ pedidos: [] })
   useMesaPagadaStore.setState({ pagadas: {} })
   useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: [] })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
 })
 
 describe('buildDraftItem', () => {

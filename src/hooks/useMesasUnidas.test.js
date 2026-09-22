@@ -5,13 +5,13 @@ import { buildDraftItem } from './useOrderDraft'
 import { useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
 import { MENU } from '../lib/mockMenu'
 import { MESAS } from '../lib/mockMesas'
-import { MESEROS, ASIGNACIONES } from '../lib/mockMeseros'
+import { MESEROS } from '../lib/mockMeseros'
 
 const sope = MENU.find((p) => p.id === 'sope')
 const mesa = (id) => usePosStore.getState().mesas.find((m) => m.id === id)
 
 beforeEach(() => {
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS, asignaciones: ASIGNACIONES })
+  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
   useOrderStore.setState({ drafts: {}, cuentas: {} })
   usePedidosStore.setState({ pedidos: [] })
   useAvisosStore.setState({ avisos: [] })

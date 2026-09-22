@@ -9,7 +9,9 @@ const TECLAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'limpiar', '0', 'ba
 
 const LARGO = 10
 
-export function TelefonoPad({ valor, onDigito, onBorrar, onLimpiar, onBuscar, buscando, error }) {
+// `bloqueado` apaga todo el teclado mientras hay una ficha abierta al lado: el número ya
+// es la llave de esa ficha, y un toque perdido no debe cambiarlo a medio registro.
+export function TelefonoPad({ valor, onDigito, onBorrar, onLimpiar, onBuscar, buscando, error, bloqueado = false }) {
   const completo = valor.length === LARGO
 
   return (
@@ -46,29 +48,34 @@ export function TelefonoPad({ valor, onDigito, onBorrar, onLimpiar, onBuscar, bu
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         {TECLAS.map((k) => {
-          if (k === 'limpiar') return <button key={k} onClick={onLimpiar} style={tecla('accion')}>Limpiar</button>
-          if (k === 'back') return <button key={k} onClick={onBorrar} style={tecla('accion')} aria-label="Borrar">⌫</button>
+          if (k === 'limpiar') {
+            return <button key={k} onClick={onLimpiar} disabled={bloqueado} style={tecla('accion', bloqueado)}>Limpiar</button>
+          }
+          if (k === 'back') {
+            return <button key={k} onClick={onBorrar} disabled={bloqueado} style={tecla('accion', bloqueado)} aria-label="Borrar">⌫</button>
+          }
           return (
-            <button key={k} onClick={() => onDigito(k)} disabled={completo} style={{ ...tecla('digito'), opacity: completo ? 0.4 : 1 }}>
+            <button key={k} onClick={() => onDigito(k)} disabled={completo || bloqueado} style={tecla('digito', completo || bloqueado)}>
               {k}
             </button>
           )
         })}
       </div>
 
-      <Button onClick={onBuscar} disabled={!completo || buscando} style={{ width: '100%' }}>
+      <Button onClick={onBuscar} disabled={!completo || buscando || bloqueado} style={{ width: '100%' }}>
         {buscando ? 'Buscando…' : 'Buscar cliente'}
       </Button>
     </div>
   )
 }
 
-function tecla(tipo) {
+function tecla(tipo, apagada = false) {
   return {
     fontFamily: "'Inter Tight', sans-serif",
     fontSize: tipo === 'digito' ? 26 : 15,
     fontWeight: tipo === 'digito' ? 800 : 700,
-    padding: '16px 0', borderRadius: 16, cursor: 'pointer',
+    padding: '16px 0', borderRadius: 16, cursor: apagada ? 'default' : 'pointer',
+    opacity: apagada ? 0.4 : 1,
     border: '2.5px solid var(--jb-line)',
     background: tipo === 'digito' ? '#fff' : 'var(--jb-cream)',
     color: 'var(--jb-ink)',

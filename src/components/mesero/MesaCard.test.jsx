@@ -2,20 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MesaCard } from './MesaCard'
 
-const ROSA = { id: 'mesero-1', nombre: 'Doña Rosa' }
-const BETO = { id: 'mesero-2', nombre: 'Don Beto' }
-
 function mesa(extra) {
-  return { id: 'mesa-5', numero: '5', estado: 'libre', meseros: [], total: 0, ...extra }
+  return { id: 'mesa-5', numero: '5', estado: 'libre', total: 0, ...extra }
 }
 
 describe('MesaCard', () => {
-  // Ya no existe la asignación de mesas por mesero: la tarjeta del piso no debe
-  // mostrar quién la atiende, ni aunque le lleguen datos de un `mesa.meseros` viejo.
-  it('no muestra qué mesero atiende la mesa aunque el dato venga en `mesa.meseros`', () => {
-    render(<MesaCard mesa={mesa({ meseros: [ROSA, BETO] })} />)
-    expect(screen.queryByText('Doña Rosa')).not.toBeInTheDocument()
-    expect(screen.queryByText('Don Beto')).not.toBeInTheDocument()
+  it('una mesa libre dice que está sin ocupar', () => {
+    const { container } = render(<MesaCard mesa={mesa()} />)
+    expect(container.textContent).toContain('Sin ocupar')
+  })
+
+  it('muestra el total de una cuenta abierta', () => {
+    render(<MesaCard mesa={mesa({ estado: 'abierta', total: 165 })} />)
+    expect(screen.getByText('$165.00')).toBeInTheDocument()
   })
 
   it('la principal de un grupo lleva el nombre de todas sus mesas', () => {
@@ -28,10 +27,5 @@ describe('MesaCard', () => {
     expect(container.textContent).toContain('Unida a Mesa 3')
     expect(container.textContent).not.toContain('Cuenta abierta')
     expect(screen.queryByText('$90.00')).not.toBeInTheDocument()
-  })
-
-  it('muestra el total de una cuenta abierta', () => {
-    render(<MesaCard mesa={mesa({ estado: 'abierta', total: 165 })} />)
-    expect(screen.getByText('$165.00')).toBeInTheDocument()
   })
 })

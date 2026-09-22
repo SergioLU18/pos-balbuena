@@ -27,8 +27,8 @@ export function firma() {
   return { p_mesero_id: id, p_mesero_nombre: nombre }
 }
 
-/** Firma para las dos RPCs donde `p_mesero_*` ya estaba tomado por el mesero AFECTADO
- *  (pos_set_mesas_mesero y pos_borrar_mesero): ahí el actor entra como `p_actor_*`. */
+/** Firma para las RPCs de meseros, donde `p_mesero_*` ya estaba tomado por el mesero
+ *  AFECTADO (pos_guardar_mesero, pos_borrar_mesero): ahí el actor entra como `p_actor_*`. */
 export function firmaActor() {
   const { id, nombre } = actorActual()
   return { p_actor_id: id, p_actor_nombre: nombre }
