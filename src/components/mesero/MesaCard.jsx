@@ -13,18 +13,20 @@ export const MESA_CARD_H = 158
 // cualquier parte del proceso; verde = mesa pagada (en tali o a mano por el mesero;
 // señal efímera que se apaga sola a los 3 minutos o al abrir una cuenta nueva, ver
 // useMesaPagadaStore). Gris punteado = mesa unida a otra: no tiene estado propio, todo
-// vive en su principal.
+// vive en su principal. Ámbar pulsante = hay platillos armados que no se mandaron a
+// cocina (draft sin enviar): se sobrepone a "abierta" porque es la señal urgente.
 const THEME = {
-  libre:   { bg: '#fff', border: 'var(--jb-line)', label: null, labelColor: 'var(--jb-gray)' },
-  abierta: { bg: 'var(--jb-pink-tint)', border: 'var(--jb-pink)', label: 'Cuenta abierta', labelColor: 'var(--jb-pink-dark)' },
-  pagada:  { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: '✓ Pagada', labelColor: '#2C7A50' },
-  unida:   { bg: 'var(--jb-cream)', border: 'var(--jb-gray)', label: null, labelColor: 'var(--jb-ink-soft)', dashed: true },
+  libre:      { bg: '#fff', border: 'var(--jb-line)', label: null, labelColor: 'var(--jb-gray)' },
+  abierta:    { bg: 'var(--jb-pink-tint)', border: 'var(--jb-pink)', label: 'Cuenta abierta', labelColor: 'var(--jb-pink-dark)' },
+  sinEnviar:  { bg: 'var(--jb-warn-bg)', border: 'var(--jb-warn)', label: 'Falta enviar a cocina', labelColor: '#8A6415' },
+  pagada:     { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: '✓ Pagada', labelColor: '#2C7A50' },
+  unida:      { bg: 'var(--jb-cream)', border: 'var(--jb-gray)', label: null, labelColor: 'var(--jb-ink-soft)', dashed: true },
 }
 
 /** `seleccionada` y `deshabilitada` solo se usan en el modo "Unir mesas" del piso. */
 export function MesaCard({ mesa, onClick, seleccionada = false, deshabilitada = false }) {
   // La secundaria de un grupo unido no tiene estado propio: todo vive en su principal.
-  const visual = mesa.unidaA ? 'unida' : mesa.estado
+  const visual = mesa.unidaA ? 'unida' : mesa.tieneDraftSinEnviar ? 'sinEnviar' : mesa.estado
   const theme = THEME[visual] ?? THEME.libre
   // La principal lleva el nombre del grupo completo ("3 + 4") para que en el piso se lea
   // que ahí están sentadas las dos.
@@ -34,6 +36,7 @@ export function MesaCard({ mesa, onClick, seleccionada = false, deshabilitada = 
     <button
       onClick={onClick}
       disabled={deshabilitada}
+      className={visual === 'sinEnviar' ? 'jb-warn-pulse' : undefined}
       style={{
         position: 'relative',
         background: theme.bg,

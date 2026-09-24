@@ -38,6 +38,10 @@ export function useMesas() {
       total,
       itemCount: cuenta?.items?.length ?? 0,
       createdAt: cuenta?.createdAt ?? null,
+      // Hay platillos armados en el draft que todavía no se mandaron a cocina
+      // (el mesero los agregó y se le olvidó tocar "Enviar a cocina"). El piso
+      // lo marca distinto para que no se quede ahí sin que nadie lo note.
+      tieneDraftSinEnviar: draft.length > 0,
     }
   })
 
