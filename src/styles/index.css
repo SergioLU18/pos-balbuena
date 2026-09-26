@@ -82,6 +82,14 @@ body {
   font-weight: 700;
 }
 
+/* Placeholder "sugerido" (p. ej. el resto que falta por pagar en el reparto
+   efectivo/tarjeta): tenue a propósito para que no se confunda con un número que el
+   mesero ya escribió — el texto real del input usa var(--jb-ink), mucho más oscuro. */
+.jb-placeholder-tenue::placeholder {
+  color: var(--jb-gray);
+  opacity: 0.45;
+}
+
 @keyframes jb-fade-up {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }

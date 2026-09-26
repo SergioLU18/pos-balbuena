@@ -393,23 +393,37 @@ $$;
 -- ── Método de pago con el que el mesero cerró la mesa (tali no tiene esta columna) ──
 alter table cuentas add column if not exists metodo_pago text;
 
+-- ── Propina capturada al cerrar la mesa, repartida por método (el mesero la captura en
+-- efectivo y/o tarjeta por separado en MetodoPagoModal, aunque la cuenta se haya pagado
+-- entera con uno solo). Columnas propias en vez de solo bitácora, para poder reportar
+-- propinas en Estadísticas más adelante. ──
+alter table cuentas add column if not exists propina_efectivo numeric default 0;
+alter table cuentas add column if not exists propina_tarjeta numeric default 0;
+
 -- ============================================================================
 -- RPC: cerrar mesa (temporal, mientras el cierre real lo hará la app de pagos).
 -- Marca la cuenta activa como cerrada — igual que tali (activa=false,
--- estado='cerrada', closed_at=now()) — guarda el método de pago elegido por el
--- mesero, y borra los pedidos de cocina de la mesa.
+-- estado='cerrada', closed_at=now()) — guarda el método de pago y la propina
+-- elegidos por el mesero, y borra los pedidos de cocina de la mesa.
 -- ============================================================================
 drop function if exists pos_cerrar_mesa(uuid);
+-- Firma anterior (sin propina): se tira antes de crear la nueva de 8 parámetros para
+-- que no quede un overload viejo compitiendo por la resolución de sb.rpc(...).
+drop function if exists pos_cerrar_mesa(uuid, text, uuid, text, numeric, numeric);
 create or replace function pos_cerrar_mesa(
-  p_mesa_id         uuid,
-  p_metodo_pago     text default null,
-  p_mesero_id       uuid default null,
-  p_mesero_nombre   text default null,
+  p_mesa_id          uuid,
+  p_metodo_pago      text default null,
+  p_mesero_id        uuid default null,
+  p_mesero_nombre    text default null,
   -- Solo llegan con p_metodo_pago = 'ambos': cuánto de la cuenta se pagó en efectivo y
   -- cuánto con tarjeta (el POS ya validó que sumen el total antes de llamar la RPC).
   -- No hay columna propia para esto en `cuentas` — se registran en la bitácora.
-  p_monto_efectivo  numeric default null,
-  p_monto_tarjeta   numeric default null
+  p_monto_efectivo   numeric default null,
+  p_monto_tarjeta    numeric default null,
+  -- Propina que entró por cada método. Sí tienen columna propia (ver arriba): a
+  -- diferencia del reparto del total, la propina se captura sin importar el método.
+  p_propina_efectivo numeric default 0,
+  p_propina_tarjeta  numeric default 0
 ) returns void
 language plpgsql
 security definer
@@ -449,7 +463,9 @@ begin
     return;
   end if;
 
-  update cuentas set activa = false, estado = 'cerrada', closed_at = now(), metodo_pago = p_metodo_pago
+  update cuentas set
+    activa = false, estado = 'cerrada', closed_at = now(), metodo_pago = p_metodo_pago,
+    propina_efectivo = coalesce(p_propina_efectivo, 0), propina_tarjeta = coalesce(p_propina_tarjeta, 0)
   where mesa_id = p_mesa_id and activa;
   delete from pedidos where mesa_id = p_mesa_id;
 
@@ -464,11 +480,13 @@ begin
         select coalesce(sum((r->>'precio_unitario')::numeric * (r->>'cantidad')::integer), 0)
         from jsonb_array_elements(v_items) as r
       )),
-      'metodo_pago',    p_metodo_pago,
-      'monto_efectivo', p_monto_efectivo,
-      'monto_tarjeta',  p_monto_tarjeta,
-      'comandas',       v_comandas,
-      'items',          v_items
+      'metodo_pago',      p_metodo_pago,
+      'monto_efectivo',   p_monto_efectivo,
+      'monto_tarjeta',    p_monto_tarjeta,
+      'propina_efectivo', p_propina_efectivo,
+      'propina_tarjeta',  p_propina_tarjeta,
+      'comandas',         v_comandas,
+      'items',            v_items
     )
   );
 end;
