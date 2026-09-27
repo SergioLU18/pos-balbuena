@@ -24,7 +24,6 @@ const GRUPO_DE = {
   'mesa.separar': 'operacion',
   'llevar.crear': 'operacion',
   'llevar.pagar': 'operacion',
-  'llevar.recoger': 'operacion',
   'llevar.cerrar': 'operacion',
   'llevar.descartar': 'operacion',
   'cliente.guardar': 'operacion',
@@ -153,8 +152,7 @@ export function describir(ev) {
     case 'mesero.mesas': return `Cambió sus mesas: ${d.antes?.length ?? 0} → ${d.despues?.length ?? 0}`
 
     case 'llevar.crear': return 'Abrió la orden para llevar'
-    case 'llevar.pagar': return `Cobró la orden para llevar${d.metodo_pago ? ` (${METODO_PAGO[d.metodo_pago] ?? d.metodo_pago})` : ''}`
-    case 'llevar.recoger': return 'Entregó la orden para llevar'
+    case 'llevar.pagar': return `Cobró y entregó la orden para llevar${d.metodo_pago ? ` (${METODO_PAGO[d.metodo_pago] ?? d.metodo_pago})` : ''}`
     case 'llevar.cerrar': return d.estado === 'cancelada' ? 'Canceló la orden para llevar' : 'Entregó la orden para llevar'
     case 'llevar.descartar': return 'Descartó la orden para llevar (sin platillos)'
     case 'cliente.guardar': return d.alta ? 'Dio de alta al cliente' : 'Editó los datos del cliente'

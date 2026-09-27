@@ -36,15 +36,14 @@ describe('describir', () => {
     expect(describir(ev('mesero.editar', d))).toBe('Le dio permisos de admin, le cambió el PIN')
   })
 
-  it('distingue entregar de cancelar una orden para llevar (registros de antes de separar pagar/recoger)', () => {
+  it('distingue entregar de cancelar una orden para llevar (registros de antes de llevar_pagos.sql)', () => {
     expect(describir(ev('llevar.cerrar', { estado: 'cancelada' }))).toBe('Canceló la orden para llevar')
     expect(describir(ev('llevar.cerrar', { estado: 'entregada' }))).toBe('Entregó la orden para llevar')
   })
 
-  it('dice cómo se cobró una orden para llevar, y que recogerla es una entrega', () => {
-    expect(describir(ev('llevar.pagar', { metodo_pago: 'tarjeta' }))).toBe('Cobró la orden para llevar (tarjeta)')
-    expect(describir(ev('llevar.pagar', { metodo_pago: 'ambos' }))).toBe('Cobró la orden para llevar (efectivo y tarjeta)')
-    expect(describir(ev('llevar.recoger', {}))).toBe('Entregó la orden para llevar')
+  it('dice que se cobró Y entregó la orden en el mismo paso, con qué se pagó', () => {
+    expect(describir(ev('llevar.pagar', { metodo_pago: 'tarjeta' }))).toBe('Cobró y entregó la orden para llevar (tarjeta)')
+    expect(describir(ev('llevar.pagar', { metodo_pago: 'ambos' }))).toBe('Cobró y entregó la orden para llevar (efectivo y tarjeta)')
   })
 
   it('nombra la mesa que se unió o separó, y el dinero que traía', () => {
@@ -80,9 +79,8 @@ describe('importe', () => {
     expect(importe(ev('orden.enviar', { importe: 150 }))).toBe(150)
   })
 
-  it('cobrar una orden para llevar es la venta; recogerla ya no mueve dinero', () => {
+  it('cobrar y entregar una orden para llevar es la venta', () => {
     expect(importe(ev('llevar.pagar', { total: 260 }))).toBe(260)
-    expect(importe(ev('llevar.recoger', { total: 260 }))).toBeNull()
   })
 
   it('las acciones sin dinero no tienen importe', () => {

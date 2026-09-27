@@ -70,8 +70,8 @@ describe('useOrdenLlevar — enviar a cocina', () => {
   })
 })
 
-describe('useOrdenLlevar — cobrar y recoger la orden', () => {
-  it('cobrar congela total y renglones, guarda el método de pago y deja las comandas en el tablero', async () => {
+describe('useOrdenLlevar — cobrar y entregar la orden en un solo paso', () => {
+  it('congela total y renglones, guarda el método de pago y saca sus comandas del tablero de cocina', async () => {
     const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
     act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
     act(() => { result.current.enviarACocina() })
@@ -79,25 +79,10 @@ describe('useOrdenLlevar — cobrar y recoger la orden', () => {
     await act(async () => { await result.current.pagarOrden('efectivo') })
 
     const [orden] = useLlevarStore.getState().ordenes
-    expect(orden.estado).toBe('pagada')
-    expect(orden.total).toBe(110)
-    expect(orden.items).toHaveLength(1)
-    expect(orden.metodoPago).toBe('efectivo')
-    // Cobrar no es lo mismo que recoger: cocina la sigue viendo en el tablero.
-    expect(usePedidosStore.getState().pedidos).toHaveLength(1)
-  })
-
-  it('recoger, después de cobrada, cierra la orden y por fin saca sus comandas del tablero', async () => {
-    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
-    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
-    act(() => { result.current.enviarACocina() })
-    rerender()
-    await act(async () => { await result.current.pagarOrden('tarjeta') })
-    rerender()
-    await act(async () => { await result.current.recogerOrden() })
-
-    const [orden] = useLlevarStore.getState().ordenes
     expect(orden.estado).toBe('entregada')
+    expect(orden.total).toBe(110)
+    expect(orden.items).toHaveLength(1) // la copia que sostiene el historial del cliente
+    expect(orden.metodoPago).toBe('efectivo')
     expect(orden.closedAt).toBeTruthy()
     expect(usePedidosStore.getState().pedidos).toHaveLength(0)
   })

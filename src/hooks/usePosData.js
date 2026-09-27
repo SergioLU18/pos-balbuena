@@ -172,10 +172,9 @@ export async function cargarTodo(rid) {
     // un restaurante, no de un catálogo) para que la búsqueda por teléfono responda al
     // instante en la tablet; el historial de compras sí se pide por cliente y bajo demanda.
     sb.from('clientes').select('*').eq('restaurante_id', rid).eq('activo', true).order('nombre'),
-    // Las órdenes para llevar EN CURSO: abiertas (en cocina) y pagadas (esperando que
-    // las recojan). Las cerradas (entregada/cancelada) se leen por cliente cuando se
-    // abre su ficha (ver historialCliente en useLlevar).
-    sb.from('ordenes_llevar').select('*').eq('restaurante_id', rid).in('estado', ['abierta', 'pagada']),
+    // Solo las órdenes para llevar ABIERTAS: son las del turno. Las cerradas se leen por
+    // cliente cuando se abre su ficha (ver historialCliente en useLlevar).
+    sb.from('ordenes_llevar').select('*').eq('restaurante_id', rid).eq('estado', 'abierta'),
   ])
 
   const { setMesas, setMeseros, setPlatillos, setIngredientes, setModificadores, setExtras, setCategoriasOrden } = usePosStore.getState()

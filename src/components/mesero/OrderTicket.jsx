@@ -87,17 +87,15 @@ function DraftRow({ item, onQty, onEdit, onRemove }) {
   )
 }
 
-function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, bloqueado, onStage, onRevert, onEdit, onRemove }) {
+function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove }) {
   // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
   // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
   const precio = esRico ? calcItemPrecio(item) : Number(item.precio_unitario)
   const nombre = esRico ? `${item.platilloNombre} · ${item.tier.nombre}` : item.nombre
-  // Editable mientras su comanda siga en Nuevo — salvo que la orden ya esté bloqueada
-  // (p. ej. una orden para llevar ya cobrada: la comanda puede seguir 'pendiente' del
-  // lado de cocina, pero ya no se le puede tocar nada). Si no se encuentra el pedido de
-  // origen (caso legado, o cuenta_items sin pedido asociado), se trata como no editable.
-  const editable = !bloqueado && pedido?.estado === 'pendiente'
+  // Editable mientras su comanda siga en Nuevo. Si no se encuentra el pedido de origen
+  // (caso legado, o cuenta_items sin pedido asociado), se trata como no editable.
+  const editable = pedido?.estado === 'pendiente'
   // El renglón "rico" completo vive en pedidos.items (no en cuenta_items). Solo se puede
   // reeditar si ese renglón existe y su platillo sigue en el menú.
   const itemRico = pedido?.items?.find((it) => it.id === pedidoItemId)
@@ -168,7 +166,7 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, b
 // lo originó — de eso dependen los −/+, el "Editar" y el "Quitar" de un renglón ya
 // enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
 // (ver src/lib/renglones.js).
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, bloqueado = false, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   const vertical = useVertical()
 
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
@@ -239,7 +237,6 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
               pedidoItemId={origen?.itemId}
               staged={origen ? edits[origen.itemId] : undefined}
               puedeEditarPlatillo={puedeEditarPlatillo}
-              bloqueado={bloqueado}
               onStage={stageQty}
               onRevert={revertQty}
               onEdit={onEditarEnviado}
@@ -249,11 +246,9 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
         })}
 
         {draft.length === 0 ? (
-          bloqueado ? null : (
-            <p style={{ textAlign: 'center', color: 'var(--jb-gray)', fontSize: 14, padding: '32px 0' }}>
-              Toca un platillo para agregarlo a la orden.
-            </p>
-          )
+          <p style={{ textAlign: 'center', color: 'var(--jb-gray)', fontSize: 14, padding: '32px 0' }}>
+            Toca un platillo para agregarlo a la orden.
+          </p>
         ) : (
           draft.map((item) => (
             <DraftRow
@@ -283,18 +278,16 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
           <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink-soft)' }}>Total</span>
           <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--jb-ink)' }}>{f(totalGeneral)}</span>
         </div>
-        {!bloqueado && (
-          <Button
-            onClick={enviarTodo}
-            disabled={!puedeEnviar || enviando}
-            className={puedeEnviar && !enviando ? 'jb-cta-pulse' : undefined}
-            style={vertical ? { flex: 1 } : { width: '100%' }}
-          >
-            {enviando ? 'Enviando…' : draft.length > 0
-              ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
-              : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}
-          </Button>
-        )}
+        <Button
+          onClick={enviarTodo}
+          disabled={!puedeEnviar || enviando}
+          className={puedeEnviar && !enviando ? 'jb-cta-pulse' : undefined}
+          style={vertical ? { flex: 1 } : { width: '100%' }}
+        >
+          {enviando ? 'Enviando…' : draft.length > 0
+            ? `Enviar ${draft.length} platillo${draft.length > 1 ? 's' : ''}${hayEdits ? ' y cambios' : ''} a cocina`
+            : hayEdits ? 'Enviar cambios a cocina' : 'Enviar a cocina'}
+        </Button>
       </div>
     </div>
   )

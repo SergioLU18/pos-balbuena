@@ -193,7 +193,7 @@ export const useLlevarStore = create(
     (set) => ({
       clientes: [], // { id, telefono (solo dígitos), nombre, direccion, nota }
       // { id, folio, clienteId, clienteNombre, clienteTelefono, direccion, meseroId,
-      //   meseroNombre, estado: 'abierta'|'pagada'|'entregada'|'cancelada', metodoPago,
+      //   meseroNombre, estado: 'abierta'|'entregada'|'cancelada', metodoPago,
       //   total, items, createdAt, closedAt }
       ordenes: [],
 

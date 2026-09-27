@@ -30,8 +30,7 @@ export default function MeseroFloorPage() {
   const { ordenesAbiertas, pedidos } = useLlevar()
   // Las órdenes para llevar no tienen mesa que pintar en este listado, así que aquí solo
   // va la cuenta: el badge es lo que evita que una orden de mostrador se quede olvidada
-  // porque nada en esta pantalla la menciona. Cuenta tanto las recién enviadas a cocina
-  // como las ya pagadas que esperan a que las recojan — las dos siguen sin resolverse.
+  // porque nada en esta pantalla la menciona.
   const llevarAbiertas = ordenesAbiertas.length
   const mesasAbiertas = mesas.filter((m) => m.estado === 'abierta')
   const pedidosAbiertosCount = mesasAbiertas.length + llevarAbiertas

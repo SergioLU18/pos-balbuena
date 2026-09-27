@@ -12,8 +12,6 @@ import { OrderTicket } from '../../components/mesero/OrderTicket'
 import { claveRenglonPorId } from '../../lib/renglones'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 
-const ETIQUETA_METODO = { efectivo: 'efectivo', tarjeta: 'tarjeta', ambos: 'efectivo y tarjeta' }
-
 /** Toma de orden PARA LLEVAR. Es la misma pantalla que la de una mesa —mismo catálogo,
  *  mismo pop-up de configuración, mismo ticket— cambiando quién recibe la orden: en vez
  *  de "Mesa 7", el cliente que se buscó por teléfono. Lo que se manda a cocina es un
@@ -25,22 +23,19 @@ export default function LlevarOrdenPage() {
   const { menu, categorias, ingredientes, modificadores, extras } = useMenu()
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
-  const [cerrando, setCerrando] = useState(null) // 'recogida' | 'cancelada' | 'descartar' | null
+  const [cerrando, setCerrando] = useState(null) // 'cancelada' | 'descartar' | null
   const [pagando, setPagando] = useState(false)
 
   const {
     orden, draft, pedidos, enviados, subtotalDraft, subtotalEnviado,
     agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina, enviando,
-    fijarCantidadEnviado, quitarItemEnviado, pagarOrden, recogerOrden, cancelarOrden, descartarOrden,
+    fijarCantidadEnviado, quitarItemEnviado, pagarOrden, cancelarOrden, descartarOrden,
   } = useOrdenLlevar(ordenId)
 
   // Nada enviado a cocina todavía. Una orden así no se cancela ni se deja abierta: se
   // descarta (ver descartarOrden), para que no queden órdenes fantasma de $0 colgadas
   // del cliente — que además impedían darlo de baja.
   const vacia = enviados.length === 0
-  // Ya se cobró: el ticket queda de solo lectura (OrderTicket con bloqueado) y el menú
-  // ni se muestra — si falta algo, es un pedido nuevo, no una edición de este.
-  const pagada = orden?.estado === 'pagada'
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
 
@@ -70,7 +65,7 @@ export default function LlevarOrdenPage() {
     const accion = cerrando
     setCerrando(null)
     if (accion === 'descartar') { descartar(); return }
-    const { error } = accion === 'recogida' ? await recogerOrden() : await cancelarOrden()
+    const { error } = await cancelarOrden()
     if (!error) navigate('/mesero/llevar')
   }
 
@@ -101,11 +96,6 @@ export default function LlevarOrdenPage() {
       titulo: '¿Cancelar la orden?',
       mensaje: `${quien} se marcará como cancelada${cocinando ? ' y sus comandas saldrán del tablero de cocina, aunque todavía se estén preparando' : ''}.`,
       confirmar: 'Sí, cancelar',
-    },
-    recogida: {
-      titulo: '¿Marcar como recogida?',
-      mensaje: `${quien} quedará cerrada y guardada en su historial de compras.`,
-      confirmar: 'Sí, recogida',
     },
     descartar: {
       titulo: '¿Descartar la orden?',
@@ -145,25 +135,16 @@ export default function LlevarOrdenPage() {
         >
           Cancelar orden
         </button>
-        {pagada ? (
-          <button
-            onClick={() => setCerrando('recogida')}
-            style={{ ...botonSecundario, background: 'var(--jb-teal)', color: '#fff', borderColor: 'var(--jb-teal)' }}
-          >
-            Marcar como recogido
-          </button>
-        ) : (
-          <button
-            onClick={() => setPagando(true)}
-            disabled={vacia}
-            style={{
-              ...botonSecundario, background: 'var(--jb-teal)', color: '#fff', borderColor: 'var(--jb-teal)',
-              opacity: vacia ? 0.45 : 1, cursor: vacia ? 'default' : 'pointer',
-            }}
-          >
-            Marcar como pagado
-          </button>
-        )}
+        <button
+          onClick={() => setPagando(true)}
+          disabled={vacia}
+          style={{
+            ...botonSecundario, background: 'var(--jb-teal)', color: '#fff', borderColor: 'var(--jb-teal)',
+            opacity: vacia ? 0.45 : 1, cursor: vacia ? 'default' : 'pointer',
+          }}
+        >
+          Marcar como pagado y entregado
+        </button>
       </div>
 
       <div
@@ -176,48 +157,31 @@ export default function LlevarOrdenPage() {
             : { gridTemplateColumns: 'minmax(0, 1.5fr) 380px' }),
         }}
       >
-        {pagada ? (
-          <div
-            className="flex flex-col items-center justify-center"
-            style={{
-              background: 'var(--jb-teal-bg)', border: '2.5px dashed var(--jb-teal)', borderRadius: 24,
-              gap: 6, padding: 32, textAlign: 'center',
-            }}
-          >
-            <span style={{ fontSize: 20, fontWeight: 900, color: '#1B5E66' }}>
-              ✓ Pagada{orden.metodoPago ? ` (${ETIQUETA_METODO[orden.metodoPago] ?? orden.metodoPago})` : ''}
-            </span>
-            <p style={{ margin: 0, fontSize: 15, color: 'var(--jb-ink-soft)' }}>
-              Esperando que el cliente la recoja. Ya no se le pueden agregar platillos.
-            </p>
+        <div className="flex flex-col min-h-0 min-w-0" style={{ gap: 4 }}>
+          <div className={categoriaActiva === null ? 'flex-1 min-h-0' : 'flex-shrink-0'}>
+            <CategoriaGrid
+              categorias={categorias}
+              activa={categoriaActiva}
+              onSelect={seleccionarCategoria}
+              compact={categoriaActiva !== null}
+            />
           </div>
-        ) : (
-          <div className="flex flex-col min-h-0 min-w-0" style={{ gap: 4 }}>
-            <div className={categoriaActiva === null ? 'flex-1 min-h-0' : 'flex-shrink-0'}>
-              <CategoriaGrid
-                categorias={categorias}
-                activa={categoriaActiva}
-                onSelect={seleccionarCategoria}
-                compact={categoriaActiva !== null}
-              />
-            </div>
 
-            {categoriaActiva !== null && (
-              <div
-                key={categoriaActiva}
-                className="jb-slide-in flex-1 min-h-0 no-scrollbar"
-                style={{
-                  overflowY: 'auto', display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start',
-                }}
-              >
-                {platillosCategoria.map((p) => (
-                  <PlatilloCard key={p.id} platillo={p} onClick={() => setPlatilloEnConfig(p)} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          {categoriaActiva !== null && (
+            <div
+              key={categoriaActiva}
+              className="jb-slide-in flex-1 min-h-0 no-scrollbar"
+              style={{
+                overflowY: 'auto', display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start',
+              }}
+            >
+              {platillosCategoria.map((p) => (
+                <PlatilloCard key={p.id} platillo={p} onClick={() => setPlatilloEnConfig(p)} />
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* El ticket es el mismo de las mesas. La diferencia está en `clave`: aquí los
             renglones mostrados SON los de las comandas (no hay cuenta_items detrás), así
@@ -230,7 +194,6 @@ export default function LlevarOrdenPage() {
           clave={claveRenglonPorId}
           subtotalDraft={subtotalDraft}
           subtotalCuenta={subtotalEnviado}
-          bloqueado={pagada}
           onQty={cambiarCantidad}
           onRemove={quitarItem}
           onFijarEnviado={fijarCantidadEnviado}
@@ -265,7 +228,7 @@ export default function LlevarOrdenPage() {
           mensaje={dialogo.mensaje}
           confirmarLabel={dialogo.confirmar}
           cancelarLabel="Volver"
-          danger={cerrando !== 'recogida'}
+          danger
           onConfirm={confirmarCierre}
           onClose={() => setCerrando(null)}
         />

@@ -21,13 +21,14 @@ export function totalDeOrden(orden, pedidos) {
   return sumaCuenta(itemsDeOrden(orden?.id, pedidos, orden))
 }
 
-/** Los 3 estados que ve el mesero para una orden en curso (las cerradas — entregada o
- *  cancelada — ya no aparecen en ningún listado en vivo, solo en el historial del
- *  cliente). Mismo objeto que antes usaban las tarjetas de OrdenesAbiertas: texto +
- *  color de letra + fondo/borde de la tarjeta. */
+/** Solo dos estados existen para una orden para llevar, igual que en el piso de mesas:
+ *  "Enviado a Cocina" (abierta, verde) mientras sigue en curso, y "Pagado y Entregado"
+ *  (entregada, rosa) una vez cobrada — cobrar y entregar son el mismo paso, así que no
+ *  hay un estado intermedio. Una orden entregada o cancelada ya no aparece en ningún
+ *  listado en vivo, solo en el historial del cliente. */
 export const ESTADO_LLEVAR = {
-  abierta: { texto: 'Enviado a Cocina', color: '#A8471F', fondo: 'var(--jb-queued-bg)', borde: 'var(--jb-queued)' },
-  pagada: { texto: 'Pagado', color: '#1B5E66', fondo: 'var(--jb-teal-bg)', borde: 'var(--jb-teal)' },
+  abierta: { texto: 'Enviado a Cocina', color: '#2C7A50', fondo: 'var(--jb-ok-bg)', borde: 'var(--jb-ok)' },
+  entregada: { texto: 'Pagado y Entregado', color: 'var(--jb-pink-dark)', fondo: 'var(--jb-pink-tint)', borde: 'var(--jb-pink)' },
 }
 
 /** Padrón de clientes y órdenes para llevar: buscar por teléfono, dar de alta/editar la
@@ -51,10 +52,8 @@ export function useLlevar() {
   const meseros = usePosStore((s) => s.meseros)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
 
-  // "Abiertas" para efectos de este listado = todavía no se recoge: incluye tanto las
-  // que apenas van a cocina como las ya cobradas que esperan a que el cliente pase.
   const ordenesAbiertas = ordenes
-    .filter((o) => o.estado === 'abierta' || o.estado === 'pagada')
+    .filter((o) => o.estado === 'abierta')
     .slice()
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
 
@@ -157,7 +156,7 @@ export function useLlevar() {
    *  en cocina: las vacías (se abrió la orden y no se llegó a pedir nada) se descartan
    *  junto con la baja — en backend eso lo hace pos_desactivar_cliente. */
   async function borrarCliente(clienteId) {
-    const abiertas = ordenes.filter((o) => o.clienteId === clienteId && (o.estado === 'abierta' || o.estado === 'pagada'))
+    const abiertas = ordenes.filter((o) => o.clienteId === clienteId && o.estado === 'abierta')
     const vacias = abiertas.filter((o) => itemsDeOrden(o.id, pedidos, o).length === 0)
     if (vacias.length < abiertas.length) {
       return { error: 'No se puede borrar un cliente con una orden para llevar abierta.' }

@@ -140,7 +140,7 @@ export function PagarLlevarModal({ total = 0, onSelect, onClose }) {
               Confirmación
             </h2>
             <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--jb-ink)', lineHeight: 1.4, textAlign: 'center' }}>
-              Se va a marcar como pagada {CONFIRMACION[metodo]}. Ya no se le podrán agregar platillos — si falta algo, es un pedido nuevo.
+              Se va a marcar como pagada y entregada {CONFIRMACION[metodo]}. Esto no se puede deshacer.
             </p>
 
             <div style={{
@@ -158,7 +158,7 @@ export function PagarLlevarModal({ total = 0, onSelect, onClose }) {
             </div>
 
             <Button variant="primary" size="lg" onClick={confirmar} style={{ width: '100%', marginTop: 8 }}>
-              Sí, marcar como pagada
+              Sí, pagada y entregada
             </Button>
             <Button variant="ghost" size="md" onClick={() => setPaso(metodo === 'ambos' ? 'ambos' : 'elegir')} style={{ marginTop: 0 }}>
               ← No, volver

@@ -111,19 +111,6 @@ describe('useLlevar — borrar cliente', () => {
     expect(useLlevarStore.getState().clientes).toHaveLength(1)
     expect(useLlevarStore.getState().ordenes[0].estado).toBe('abierta')
   })
-
-  it('una orden YA PAGADA (esperando que la recojan) también bloquea la baja', async () => {
-    const { result, rerender } = renderHook(() => useLlevar())
-    const { cliente, orden } = await clienteConOrden(result)
-    useLlevarStore.getState().actualizarOrdenLocal(orden.id, { estado: 'pagada', items: [{ id: 'i1' }] })
-    rerender()
-
-    let error
-    await act(async () => { ({ error } = await result.current.borrarCliente(cliente.id)) })
-    expect(error).toBeTruthy()
-    expect(useLlevarStore.getState().clientes).toHaveLength(1)
-    expect(useLlevarStore.getState().ordenes[0].estado).toBe('pagada')
-  })
 })
 
 describe('totalDeOrden', () => {
