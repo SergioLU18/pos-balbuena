@@ -39,6 +39,11 @@ export default function MeseroOrdenPage() {
   // confirmación antes de cerrar).
   const [eligiendoMetodoPago, setEligiendoMetodoPago] = useState(false)
   const [separando, setSeparando] = useState(null)
+  // "Imprimir cuenta" todavía no imprime nada de verdad: solo desbloquea "Cerrar mesa".
+  // Local al montaje de esta pantalla a propósito — al volver a entrar a la mesa se
+  // vuelve a pedir, en vez de confiar en que lo impreso hace rato siga vigente.
+  const [cuentaImpresa, setCuentaImpresa] = useState(false)
+  const [avisoImprimir, setAvisoImprimir] = useState(false)
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
@@ -108,6 +113,21 @@ export default function MeseroOrdenPage() {
     navigate('/mesero')
   }
 
+  // Mientras no se haya "impreso" la cuenta, el botón se ve desactivado pero sigue
+  // respondiendo al toque: en vez de no hacer nada, explica qué falta y ofrece
+  // resolverlo ahí mismo.
+  function handleCerrarMesa() {
+    if (!cuentaImpresa) { setAvisoImprimir(true); return }
+    setEligiendoMetodoPago(true)
+  }
+
+  function handleImprimirCuenta() {
+    // Sin funcionalidad real todavía (no manda nada a ninguna impresora): solo marca
+    // que ya se puede cerrar la mesa.
+    setCuentaImpresa(true)
+    setAvisoImprimir(false)
+  }
+
   function handleSeparar() {
     const secundaria = separando
     setSeparando(null)
@@ -147,16 +167,32 @@ export default function MeseroOrdenPage() {
         ))}
 
         {cuenta && (
-          <button
-            onClick={() => setEligiendoMetodoPago(true)}
-            style={{
-              fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
-              padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
-              background: '#fff', border: '2px solid #E0B4B4', color: '#A83232',
-            }}
-          >
-            Cerrar mesa
-          </button>
+          <>
+            <button
+              onClick={handleImprimirCuenta}
+              style={{
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
+                padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
+                background: '#fff', border: '2px solid var(--jb-line)', color: 'var(--jb-ink)',
+              }}
+            >
+              Imprimir cuenta
+            </button>
+            <button
+              onClick={handleCerrarMesa}
+              title={cuentaImpresa ? undefined : 'Imprime la cuenta antes de cerrarla'}
+              style={{
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
+                padding: '10px 16px', borderRadius: 12, cursor: cuentaImpresa ? 'pointer' : 'not-allowed',
+                background: '#fff',
+                border: `2px solid ${cuentaImpresa ? '#E0B4B4' : 'var(--jb-line)'}`,
+                color: cuentaImpresa ? '#A83232' : 'var(--jb-gray)',
+                opacity: cuentaImpresa ? 1 : 0.6,
+              }}
+            >
+              Cerrar mesa
+            </button>
+          </>
         )}
       </div>
 
@@ -243,6 +279,17 @@ export default function MeseroOrdenPage() {
           total={subtotalCuenta}
           onSelect={handleSeleccionarMetodoPago}
           onClose={() => setEligiendoMetodoPago(false)}
+        />
+      )}
+
+      {avisoImprimir && (
+        <ConfirmModal
+          titulo="Imprime la cuenta primero"
+          mensaje="Por favor, imprime la cuenta antes de cerrarla."
+          confirmarLabel="Imprimir cuenta"
+          cancelarLabel="Cancelar"
+          onConfirm={handleImprimirCuenta}
+          onClose={() => setAvisoImprimir(false)}
         />
       )}
 
