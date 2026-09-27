@@ -30,9 +30,9 @@ function renderModal(platillo, onConfirm = () => {}) {
 const dish = (id) => MENU.find((p) => p.id === id)
 
 describe('ConfigurarPlatilloModal — allowlists por platillo', () => {
-  it('una bebida no muestra Personaliza ni extras de catálogo (no le corresponden)', () => {
+  it('una bebida no muestra Modificar ni extras de catálogo (no le corresponden)', () => {
     renderModal(dish('bebida'))
-    expect(screen.queryByText('Personaliza')).toBeNull()
+    expect(screen.queryByText('Modificar')).toBeNull()
     // Ninguno de los extras de comida debe aparecer
     expect(screen.queryByText('Crema')).toBeNull()
     expect(screen.queryByText('Chile Habanero')).toBeNull()
@@ -40,7 +40,7 @@ describe('ConfigurarPlatilloModal — allowlists por platillo', () => {
 
   it('una quesadilla muestra solo sus 2 modificadores, no los de otros platillos', () => {
     renderModal(dish('quesadilla'))
-    expect(screen.getByText('Personaliza')).toBeTruthy()
+    expect(screen.getByText('Modificar')).toBeTruthy()
     expect(screen.getByText('Sin Crema')).toBeTruthy()
     expect(screen.getByText('Sin Salsa Verde')).toBeTruthy()
     // La quesadilla no tiene frijol/lechuga que quitar
@@ -56,7 +56,11 @@ describe('ConfigurarPlatilloModal — extra libre', () => {
   // catálogo ("un huevo"), y el mesero tiene que poder cobrarlo sin salir de la orden.
   it('el campo abierto está en TODOS los platillos, incluso donde no hay extras de catálogo', () => {
     renderModal(dish('bebida'))
-    expect(screen.getByText('Extras')).toBeTruthy()
+    // Sin catálogo de extras ni ninguno agregado, la sección "Extras" no tiene nada que
+    // mostrar y no se renderiza; el control para agregar uno libre vive aparte y siempre
+    // está presente, bajo su propio encabezado "Otro extra".
+    expect(screen.queryByText('Extras')).toBeNull()
+    expect(screen.getByText('Otro extra')).toBeTruthy()
     expect(screen.getByLabelText('Otro extra')).toBeTruthy()
     expect(screen.getByLabelText('Precio del extra')).toBeTruthy()
   })

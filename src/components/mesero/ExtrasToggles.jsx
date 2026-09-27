@@ -8,20 +8,19 @@ import { chipGrid } from '../ui/chipStyles'
  *
  *  Dos orígenes conviven en ese mismo arreglo:
  *   - Catálogo (Aguacate +$30, Crema +$10, …): los que el platillo declara; se prenden
- *     y apagan por nombre.
+ *     y apagan por nombre. Se muestran aquí, junto al selector de tier/tortillas.
  *   - Libres (`libre: true`): lo que el mesero escribe en el momento — "un huevo",
  *     "doble carne" — con su precio. Se ofrecen en TODOS los platillos, porque el caso
  *     que resuelven es justamente el que nadie va a dar de alta en el catálogo. Se
  *     quitan por posición, no por nombre, para que dos libres homónimos con distinto
- *     precio no se estorben.
+ *     precio no se estorben. Ya elegidos, se muestran en esta misma rejilla; el control
+ *     para AGREGAR uno nuevo vive en `ExtraLibreForm`, más abajo del modal (después de
+ *     "Modificar"), a pedido explícito de producto.
  */
 
 const MAX_NOMBRE = 40
 
 export function ExtrasToggles({ extras, seleccionados, onChange }) {
-  const [nombre, setNombre] = useState('')
-  const [precio, setPrecio] = useState('')
-
   const estaEnCatalogo = (nom) => seleccionados.some((e) => !e.libre && e.nombre === nom)
 
   function toggle(ex) {
@@ -35,6 +34,49 @@ export function ExtrasToggles({ extras, seleccionados, onChange }) {
   function quitarLibre(index) {
     onChange(seleccionados.filter((_, i) => i !== index))
   }
+
+  if (extras.length === 0 && seleccionados.length === 0) return null
+
+  return (
+    <div>
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Extras</p>
+
+      {/* Los libres van en la MISMA rejilla que los del catálogo: son la misma clase de
+          cosa para el mesero, y separarlos en dos filas de distinto ancho se leía como si
+          fueran dos controles distintos. */}
+      <div style={chipGrid}>
+        {extras.map((ex) => (
+          <Chip
+            key={ex.nombre}
+            active={estaEnCatalogo(ex.nombre)}
+            onClick={() => toggle(ex)}
+            sublabel={ex.precio > 0 ? `+${f(ex.precio)}` : undefined}
+          >
+            {ex.nombre}
+          </Chip>
+        ))}
+        {seleccionados.map((e, i) => e.libre && (
+          <Chip
+            key={`libre-${i}`}
+            active
+            onClick={() => quitarLibre(i)}
+            sublabel={`+${f(e.precio)} · quitar`}
+          >
+            {e.nombre} ✕
+          </Chip>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Control para agregar un extra libre (no viene en el catálogo del platillo). Se
+ *  muestra por separado de `ExtrasToggles`, debajo de "Modificar" (modificadores),
+ *  a pedido de producto. Comparte el mismo arreglo `seleccionados`/`onChange` que
+ *  `ExtrasToggles`: lo que se agrega aquí aparece en la rejilla de ahí arriba. */
+export function ExtraLibreForm({ seleccionados, onChange }) {
+  const [nombre, setNombre] = useState('')
+  const [precio, setPrecio] = useState('')
 
   // El precio tiene que venir escrito: en blanco NO vale $0. Un extra que se cobra mal
   // por un campo que se quedó vacío no se nota hasta la cuenta, y para el agregado que
@@ -60,36 +102,7 @@ export function ExtrasToggles({ extras, seleccionados, onChange }) {
 
   return (
     <div>
-      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Extras</p>
-
-      {/* Los libres van en la MISMA rejilla que los del catálogo: son la misma clase de
-          cosa para el mesero, y separarlos en dos filas de distinto ancho se leía como si
-          fueran dos controles distintos. */}
-      {(extras.length > 0 || seleccionados.length > 0) && (
-        <div style={{ ...chipGrid, marginBottom: 12 }}>
-          {extras.map((ex) => (
-            <Chip
-              key={ex.nombre}
-              active={estaEnCatalogo(ex.nombre)}
-              onClick={() => toggle(ex)}
-              sublabel={ex.precio > 0 ? `+${f(ex.precio)}` : undefined}
-            >
-              {ex.nombre}
-            </Chip>
-          ))}
-          {seleccionados.map((e, i) => e.libre && (
-            <Chip
-              key={`libre-${i}`}
-              active
-              onClick={() => quitarLibre(i)}
-              sublabel={`+${f(e.precio)} · quitar`}
-            >
-              {e.nombre} ✕
-            </Chip>
-          ))}
-        </div>
-      )}
-
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Otro extra</p>
       <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
         <input
           value={nombre}

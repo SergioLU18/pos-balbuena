@@ -28,7 +28,7 @@ export const INGREDIENTES = [
   { nombre: 'Tinga de Res', extra: 15 },
 ]
 
-// Catálogo global de modificadores de remoción ("Personaliza"). Unión de los que usa
+// Catálogo global de modificadores de remoción ("Modificar"). Unión de los que usa
 // cada platillo; cada platillo elige su subconjunto (ver p.modificadores).
 export const MODIFICADORES = [
   'Sin Crema',

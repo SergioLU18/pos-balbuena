@@ -13,7 +13,7 @@ export function ModificadorToggles({ modificadores, seleccionados, onChange }) {
 
   return (
     <div>
-      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Personaliza</p>
+      <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-ink-soft)', margin: '0 0 10px' }}>Modificar</p>
       <div style={chipGrid}>
         {modificadores.map((mod) => (
           <Chip key={mod} active={seleccionados.includes(mod)} onClick={() => toggle(mod)}>

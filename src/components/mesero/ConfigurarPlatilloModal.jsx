@@ -7,7 +7,7 @@ import { TierPicker } from './TierPicker'
 import { MitadSwitch } from './MitadSwitch'
 import { IngredienteChecklist } from './IngredienteChecklist'
 import { ModificadorToggles } from './ModificadorToggles'
-import { ExtrasToggles } from './ExtrasToggles'
+import { ExtrasToggles, ExtraLibreForm } from './ExtrasToggles'
 import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio } from '../../hooks/useOrderDraft'
 
 const MITAD_LABEL = { completo: 'Ingredientes', izquierda: 'Mitad 1', derecha: 'Mitad 2' }
@@ -88,15 +88,15 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
 
   // Solo los modificadores y extras de CATÁLOGO que este platillo declara (el sitio real
   // los asocia por platillo: una quesadilla no tiene frijol que quitar, una bebida no
-  // lleva extras de comida). modificadores == null => todos (platillo heredado sin
-  // lista); extras == null => ninguno (evita mostrar extras de comida donde no aplican).
+  // lleva extras de comida). En ambos casos, == null => todos (platillo heredado sin
+  // lista), igual que arranca el formulario de admin al editar un platillo nuevo.
   // El campo de extra libre que trae ExtrasToggles no pasa por esta allowlist: se ofrece
   // en todos los platillos, incluidos los que no tienen ningún extra de catálogo.
   const modsAplicables = platillo.modificadores == null
     ? modificadores
     : modificadores.filter((m) => platillo.modificadores.includes(m))
   const extrasAplicables = platillo.extras == null
-    ? []
+    ? extras
     : extras.filter((e) => platillo.extras.includes(e.nombre))
 
   return (
@@ -171,6 +171,11 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
                     onChange={(v) => cambiarMitad(mitad.lado, 'ingredientes', v)}
                   />
                 )}
+                <ExtrasToggles
+                  extras={extrasAplicables}
+                  seleccionados={item.extras}
+                  onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
+                />
                 <ModificadorToggles
                   modificadores={modsAplicables}
                   seleccionados={mitad.modificadores}
@@ -180,8 +185,7 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             ))}
           </div>
 
-          <ExtrasToggles
-            extras={extrasAplicables}
+          <ExtraLibreForm
             seleccionados={item.extras}
             onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
           />

@@ -50,8 +50,11 @@ function mapPlatillos(rows) {
     tiers: p.tiers ?? [],
     tortillas: p.tortillas ?? undefined,
     // Allowlists por platillo de qué modificadores/extras aplican (null = heredado).
-    modificadores: p.modificadores ?? null,
-    extras: p.extras ?? null,
+    // La columna en Supabase es NOT NULL DEFAULT '[]', así que un platillo nunca
+    // configurado (p. ej. creado desde tali) llega como [] y no como null: se
+    // normaliza aquí para que "sin lista" se siga tratando como heredado.
+    modificadores: p.modificadores?.length ? p.modificadores : null,
+    extras: p.extras?.length ? p.extras : null,
     permiteMitades: p.permite_mitades ?? false,
     permiteNota: p.permite_nota ?? false,
     orden: p.orden ?? 0,
