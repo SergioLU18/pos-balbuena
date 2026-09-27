@@ -72,6 +72,41 @@ describe('useAvisoListo — a quién le suena', () => {
   })
 })
 
+describe('useAvisoListo — tiempo de preparación por platillo', () => {
+  // Cada item trae su propio tiempoPrepMin (copiado del catálogo al construir el
+  // renglón — ver buildDraftItem). Si la comanda mezcla platillos de distinta
+  // duración, avisa cuando ya pasó el tiempo del MÁS RÁPIDO de todos.
+  it('usa el tiempo del platillo más rápido cuando la comanda mezcla duraciones', () => {
+    const enviadoAt = new Date(Date.now() - 3 * 60 * 1000 - 1000).toISOString() // 3 min y pico
+    const pedido = pedidoVencido('p-mezcla', {
+      meseroId: ROSA.id,
+      enviadoAt,
+      items: [{ tiempoPrepMin: 10 }, { tiempoPrepMin: 3 }],
+    })
+    expect(sonoPara(ROSA.id, pedido)).toBe(true)
+  })
+
+  it('no avisa antes de que pase el tiempo del platillo más lento, si es el único de la comanda', () => {
+    const enviadoAt = new Date(Date.now() - 3 * 60 * 1000 - 1000).toISOString() // 3 min y pico
+    const pedido = pedidoVencido('p-lento', {
+      meseroId: ROSA.id,
+      enviadoAt,
+      items: [{ tiempoPrepMin: 10 }],
+    })
+    expect(sonoPara(ROSA.id, pedido)).toBe(false)
+  })
+
+  it('cae a 5 minutos si el renglón es de antes de que existiera tiempoPrepMin', () => {
+    const enviadoAt = new Date(Date.now() - 5 * 60 * 1000 - 1000).toISOString()
+    const pedido = pedidoVencido('p-legado', {
+      meseroId: ROSA.id,
+      enviadoAt,
+      items: [{ nombre: 'Renglón viejo sin tiempoPrepMin' }],
+    })
+    expect(sonoPara(ROSA.id, pedido)).toBe(true)
+  })
+})
+
 describe('useAvisoListo — pedidos sin mesero_id (base anterior a la FK)', () => {
   it('cae al nombre para identificar al dueño', () => {
     expect(sonoPara(ROSA.id, pedidoVencido('p-nombre-mio', { meseroNombre: ROSA.nombre }))).toBe(true)

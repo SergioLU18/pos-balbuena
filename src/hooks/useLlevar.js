@@ -72,8 +72,9 @@ export function useLlevar() {
 
   /** Alta o edición de la ficha. En backend es un upsert por (restaurante, teléfono):
    *  dos meseros pueden estar dando de alta al mismo número desde dos tablets.
-   *  `cruzamientos`, `cumpleanos` y `genero` son los únicos campos opcionales — el resto
-   *  (nombre, apellidos y la dirección salvo cruzamientos) se valida también en el RPC. */
+   *  `cruzamientos`, `codigoPostal`, `cumpleanos` y `genero` son los únicos campos
+   *  opcionales — el resto (nombre, apellidos, calle, número y colonia) se valida
+   *  también en el RPC. */
   async function guardarCliente({
     id, telefono, nombre, apellidos, calle, numero, cruzamientos, colonia, codigoPostal, cumpleanos, genero, nota,
   }) {

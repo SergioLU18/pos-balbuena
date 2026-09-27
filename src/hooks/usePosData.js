@@ -58,6 +58,9 @@ function mapPlatillos(rows) {
     permiteNota: p.permite_nota ?? false,
     orden: p.orden ?? 0,
     activo: p.activo,
+    // Minutos que en promedio tarda en prepararse: define cuándo useAvisoListo avisa
+    // al mesero que ya debería pasar por él (ver src/hooks/useAvisoListo.js).
+    tiempoPrepMin: p.tiempo_prep_min ?? 5,
   }))
 }
 

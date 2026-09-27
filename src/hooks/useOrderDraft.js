@@ -33,6 +33,10 @@ export function buildDraftItem(platillo, tierIndex, tortillaId) {
     tortillaId: tortilla?.id,
     categoria: platillo.categoria,
     permiteNota: platillo.permiteNota,
+    // Se copia del catálogo al renglón (igual que platilloNombre o el precio de un
+    // extra) para que un pedido ya enviado conserve su tiempo aunque el admin edite
+    // después el platillo. Alimenta el aviso de useAvisoListo.js.
+    tiempoPrepMin: platillo.tiempoPrepMin ?? 5,
     tierIndex,
     tier,
     // El renglón guarda la personalización en `mitades` — un arreglo por si algún día

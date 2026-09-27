@@ -53,6 +53,10 @@ alter table platillos add column if not exists extras          jsonb not null de
 -- orden: posición del platillo DENTRO de su categoría (menor = primero). El orden
 -- de las CATEGORÍAS vive aparte, en pos_categorias.
 alter table platillos add column if not exists orden           int   not null default 0;
+-- Tiempo promedio de preparación (minutos): alimenta el aviso al mesero de
+-- useAvisoListo.js — hoy ese umbral es un fijo de 5 min para todos los platillos, así
+-- que el default aquí es 5 para que nada cambie hasta que el admin ajuste cada platillo.
+alter table platillos add column if not exists tiempo_prep_min int   not null default 5;
 
 -- ── 3. Ingredientes y modificadores (catálogos GLOBALes del restaurante) ────
 -- En el POS no son por-platillo: el tier del platillo solo dice CUÁNTOS
@@ -110,6 +114,7 @@ create table if not exists pos_categorias (
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb);
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb);
 drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int);
+drop function if exists pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int, uuid, text);
 create or replace function pos_guardar_platillo(
   p_id              uuid,
   p_restaurante_id  uuid,
@@ -124,6 +129,7 @@ create or replace function pos_guardar_platillo(
   p_modificadores   jsonb default '[]',
   p_extras          jsonb default '[]',
   p_orden           int   default null,
+  p_tiempo_prep_min int   default 5,
   p_mesero_id       uuid  default null,
   p_mesero_nombre   text  default null
 ) returns uuid
@@ -167,10 +173,10 @@ begin
 
   if v_id is null then
     insert into platillos (restaurante_id, nombre, categoria, descripcion, precio,
-                           base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden)
+                           base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden, tiempo_prep_min)
     values (p_restaurante_id, p_nombre, p_categoria, p_base, v_precio,
             p_base, coalesce(p_tiers, '[]'::jsonb), p_tortillas, p_permite_mitades, p_permite_nota, p_activo,
-            coalesce(p_modificadores, '[]'::jsonb), coalesce(p_extras, '[]'::jsonb), coalesce(v_orden, 0))
+            coalesce(p_modificadores, '[]'::jsonb), coalesce(p_extras, '[]'::jsonb), coalesce(v_orden, 0), coalesce(p_tiempo_prep_min, 5))
     returning id into v_id;
   else
     update platillos set
@@ -178,7 +184,7 @@ begin
       base = p_base, tiers = coalesce(p_tiers, '[]'::jsonb), tortillas = p_tortillas,
       permite_mitades = p_permite_mitades, permite_nota = p_permite_nota, activo = p_activo,
       modificadores = coalesce(p_modificadores, '[]'::jsonb), extras = coalesce(p_extras, '[]'::jsonb),
-      orden = coalesce(p_orden, orden)
+      orden = coalesce(p_orden, orden), tiempo_prep_min = coalesce(p_tiempo_prep_min, tiempo_prep_min)
     where id = v_id;
   end if;
 
@@ -674,7 +680,7 @@ create policy "pos categorias lectura" on pos_categorias for select to anon, aut
 drop policy if exists "pos platillos lectura anon" on platillos;
 create policy "pos platillos lectura anon" on platillos for select to anon using (true);
 
-grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int, uuid, text) to anon, authenticated;
+grant execute on function pos_guardar_platillo(uuid, uuid, text, text, text, jsonb, boolean, boolean, boolean, jsonb, jsonb, jsonb, int, int, uuid, text) to anon, authenticated;
 grant execute on function pos_borrar_platillo(uuid, uuid, text) to anon, authenticated;
 grant execute on function pos_reordenar_platillos(uuid[], uuid, text) to anon, authenticated;
 grant execute on function pos_set_extra_en_platillos(uuid, text, uuid[], text, uuid, text) to anon, authenticated;

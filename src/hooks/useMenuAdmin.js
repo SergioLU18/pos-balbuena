@@ -27,7 +27,7 @@ export function useMenuAdmin() {
 
   // ── Platillos ──────────────────────────────────────────────────────────────
   // p (forma de la app): { id?, nombre, categoria, base, tiers, tortillas?,
-  //                        permiteNota, activo }
+  //                        permiteNota, activo, tiempoPrepMin }
   function guardarPlatillo(p) {
     if (IS_MOCK) {
       if (p.id && platillos.some((x) => x.id === p.id)) {
@@ -35,7 +35,7 @@ export function useMenuAdmin() {
       } else {
         // Platillo nuevo: se agrega al final de su categoría.
         const orden = platillos.filter((x) => x.categoria === p.categoria).length
-        setPlatillos([...platillos, { id: uid('plat'), activo: true, orden, ...p }])
+        setPlatillos([...platillos, { id: uid('plat'), activo: true, orden, tiempoPrepMin: 5, ...p }])
       }
       return Promise.resolve({ error: null })
     }
@@ -56,6 +56,7 @@ export function useMenuAdmin() {
         p_modificadores: p.modificadores ?? [],
         p_extras: p.extras ?? [],
         p_orden: p.orden ?? null,
+        p_tiempo_prep_min: Number(p.tiempoPrepMin) || 5,
         ...firma(),
       })
       .then(({ error }) => ({ error: error?.message ?? null }))

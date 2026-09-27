@@ -41,8 +41,8 @@ function GeneroBtn({ active, onClick, children }) {
  *  se convierta sin querer en pisarle la ficha a otra persona.
  *
  *  La dirección va en columnas separadas (calle/número/cruzamientos/colonia/CP) y es
- *  obligatoria salvo `cruzamientos` — no siempre se conoce, y no debe bloquear el alta
- *  por eso. Cumpleaños y género son enteramente opcionales. */
+ *  obligatoria salvo `cruzamientos` y `codigoPostal` — no siempre se conocen, y no deben
+ *  bloquear el alta por eso. Cumpleaños y género son enteramente opcionales. */
 export function ClienteForm({
   telefono, cliente, guardando, onGuardar, onCancelar,
   subtituloAlta, labelGuardarAlta = 'Registrar y tomar orden',
@@ -59,10 +59,12 @@ export function ClienteForm({
   const [nota, setNota] = useState(cliente?.nota ?? '')
   const [mostrandoFecha, setMostrandoFecha] = useState(false)
 
+  // El código postal es opcional, pero si el mesero empieza a teclearlo no lo deja
+  // enviar a medias: o se borra, o se completa a 5 dígitos.
   const puedeGuardar = telefonoCompleto(telefono)
     && nombre.trim().length > 0 && apellidos.trim().length > 0
     && calle.trim().length > 0 && numero.trim().length > 0
-    && colonia.trim().length > 0 && codigoPostal.length === 5
+    && colonia.trim().length > 0 && (codigoPostal.length === 0 || codigoPostal.length === 5)
     && !guardando
 
   function guardar() {

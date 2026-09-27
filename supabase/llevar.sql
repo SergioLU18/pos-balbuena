@@ -161,10 +161,11 @@ begin
     raise exception 'Los apellidos son obligatorios.';
   end if;
   if coalesce(btrim(p_calle), '') = '' or coalesce(btrim(p_numero), '') = ''
-     or coalesce(btrim(p_colonia), '') = '' or coalesce(btrim(p_codigo_postal), '') = '' then
-    raise exception 'La dirección (calle, número, colonia y código postal) es obligatoria.';
+     or coalesce(btrim(p_colonia), '') = '' then
+    raise exception 'La dirección (calle, número y colonia) es obligatoria.';
   end if;
-  if btrim(p_codigo_postal) !~ '^\d{5}$' then
+  -- Código postal: opcional, pero si se captura debe venir completo (5 dígitos).
+  if coalesce(btrim(p_codigo_postal), '') <> '' and btrim(p_codigo_postal) !~ '^\d{5}$' then
     raise exception 'El código postal debe tener 5 dígitos.';
   end if;
   if v_genero is not null and v_genero not in ('hombre', 'mujer') then
@@ -184,7 +185,7 @@ begin
   )
   values (
     p_restaurante_id, v_tel, btrim(p_nombre), btrim(p_apellidos),
-    btrim(p_calle), btrim(p_numero), nullif(btrim(p_cruzamientos), ''), btrim(p_colonia), btrim(p_codigo_postal),
+    btrim(p_calle), btrim(p_numero), nullif(btrim(p_cruzamientos), ''), btrim(p_colonia), coalesce(btrim(p_codigo_postal), ''),
     p_cumpleanos, v_genero, nullif(btrim(p_nota), '')
   )
   on conflict (restaurante_id, telefono) do update

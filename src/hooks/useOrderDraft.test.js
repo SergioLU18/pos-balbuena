@@ -30,6 +30,16 @@ describe('buildDraftItem', () => {
     expect(item.mitades[0].lado).toBe('completo')
     expect(calcItemPrecio(item)).toBe(165)
   })
+
+  it('copia el tiempo de preparación del platillo al renglón', () => {
+    const item = buildDraftItem({ ...sope, tiempoPrepMin: 12 }, I_SENCILLO)
+    expect(item.tiempoPrepMin).toBe(12)
+  })
+
+  it('cae a 5 minutos si el platillo no declara tiempo de preparación', () => {
+    const item = buildDraftItem(sope, I_SENCILLO) // el mock de Sope no trae tiempoPrepMin
+    expect(item.tiempoPrepMin).toBe(5)
+  })
 })
 
 describe('calcItemPrecio — ejemplo real: sope con Pollo Deshebrado sin crema y Chicharrón Prensado sin frijol', () => {

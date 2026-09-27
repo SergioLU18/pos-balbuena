@@ -6,11 +6,20 @@ import { sonarListo } from '../lib/sonidos'
 // a partir de que el pedido se mandó a cocina (enviadoAt). Cocina tarda variable y el
 // mesero necesita un recordatorio confiable para ir a preguntar, sin depender de que
 // alguien en cocina toque el tablero.
-const AVISO_MS = 5 * 60 * 1000
+//
+// El plazo ya NO es un fijo de 5 minutos para todo: cada platillo declara su propio
+// tiempo de preparación (tiempoPrepMin, elegido en el admin y copiado al renglón al
+// armarlo — ver buildDraftItem en useOrderDraft.js). Si la comanda trae varios
+// platillos, se avisa cuando el MÁS RÁPIDO de todos ya debería estar listo: ese es el
+// que se enfría primero esperando a los demás. 5 min de respaldo para renglones viejos
+// que se enviaron antes de que existiera este campo.
+const DEFAULT_PREP_MIN = 5
+const minutosAviso = (pedido) =>
+  pedido.items?.length ? Math.min(...pedido.items.map((it) => it.tiempoPrepMin ?? DEFAULT_PREP_MIN)) : DEFAULT_PREP_MIN
 
 // Red de seguridad contra sonar de más al ABRIR la app: si el mesero entra y ya hay
-// pedidos cuyos 5 minutos vencieron hace rato, no queremos una ráfaga de campanas
-// anunciando cosas viejas de golpe. Si el vencimiento fue reciente, sí se avisa.
+// pedidos cuyo plazo venció hace rato, no queremos una ráfaga de campanas anunciando
+// cosas viejas de golpe. Si el vencimiento fue reciente, sí se avisa.
 const RECIENTE_MS = 120_000
 
 // Un ÚNICO recordatorio si el plato sigue sin recogerse, pensado contra la falla de oír
@@ -21,7 +30,7 @@ const RECORDATORIO_ACTIVO = false
 const RECORDATORIO_MS = 90_000
 
 // Qué pedidos ya se avisaron (para no repetir) y qué temporizadores siguen esperando su
-// marca de 5 minutos. Viven en el MÓDULO, no en el efecto: usePosData reemplaza el
+// plazo. Viven en el MÓDULO, no en el efecto: usePosData reemplaza el
 // arreglo completo de pedidos en cada evento de Realtime (cargarTodo), así que sin esta
 // memoria no habría forma de saber "a este ya lo programé/avisé" entre una recarga y
 // otra. Al vivir fuera del componente también sobreviven a un remontaje. Mismo patrón
@@ -77,17 +86,19 @@ function programarRecordatorio(pedidoId) {
 function dispararAviso(p) {
   avisados.add(p.id)
   sonarListo()
+  const min = minutosAviso(p)
   useAvisosStore.getState().agregarAviso({
     tipo: 'listo',
     titulo: `${dueño(p)} · pedido listo`,
-    detalle: 'Ya pasaron 5 minutos desde que se mandó a cocina',
+    detalle: `Ya pasaron ${min} minuto${min === 1 ? '' : 's'} desde que se mandó a cocina`,
     mesaId: p.mesaId,
     ruta: rutaDelPedido(p),
   })
   programarRecordatorio(p.id)
 }
 
-/** Avisa 5 minutos después de que el mesero actual mandó un pedido a cocina, sin
+/** Avisa cuando ya debería estar listo el platillo más rápido de un pedido que mandó
+ *  el mesero actual a cocina (según el tiempo de preparación de cada uno), sin
  *  esperar a que cocina lo marque "listo" en su tablero.
  *
  *  Se sigue el pedido y no la mesa: una mesa puede tener varios meseros, y sonarles a
@@ -133,7 +144,7 @@ export function useAvisoListo() {
       // Ya lo recogieron: no tiene caso avisar que "sigue esperando" de algo entregado.
       if (p.estado === 'entregado') { avisados.add(p.id); continue }
 
-      const objetivo = new Date(p.enviadoAt).getTime() + AVISO_MS
+      const objetivo = new Date(p.enviadoAt).getTime() + minutosAviso(p) * 60_000
       const faltante = objetivo - ahora
       if (faltante <= 0) {
         // El plazo ya venció: si venció hace poco, se avisa ahora; si es viejo (la app se

@@ -399,6 +399,7 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
   const [tortillas, setTortillas] = useState(platillo.tortillas ?? [{ id: uid('tor'), nombre: '', tiers: [{ nombre: '1 Ingrediente', ingredientes: 1, precio: '' }] }])
   const [permiteNota, setPermiteNota] = useState(!!platillo.permiteNota)
   const [activo, setActivo] = useState(platillo.activo !== false)
+  const [tiempoPrepMin, setTiempoPrepMin] = useState(platillo.tiempoPrepMin ?? 5)
 
   // Catálogos globales para las allowlists. Un platillo nuevo (o heredado sin lista)
   // arranca con todos seleccionados; el admin destilda los que no apliquen.
@@ -450,6 +451,7 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
       activo,
       modificadores: modsSel,
       extras: extrasSel,
+      tiempoPrepMin: Math.max(1, Number(tiempoPrepMin) || 5),
     })
     setGuardando(false)
     if (err) { setError(err); return }
@@ -515,6 +517,21 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
           </div>
         )}
       </Campo>
+
+      <div style={{ maxWidth: 220 }}>
+        <Campo label="Tiempo de preparación (min)">
+          <input
+            value={tiempoPrepMin}
+            onChange={(e) => setTiempoPrepMin(e.target.value.replace(/[^\d]/g, ''))}
+            inputMode="numeric"
+            style={inputStyle}
+            placeholder="5"
+          />
+        </Campo>
+        <p style={{ margin: '-4px 0 0', fontSize: 12, color: 'var(--jb-gray)' }}>
+          Avisa al mesero si pasa este tiempo sin recoger el pedido (el más rápido de la comanda manda).
+        </p>
+      </div>
 
       <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>
         <Toggle checked={permiteNota} onChange={setPermiteNota} label="Permite nota" />
@@ -584,6 +601,10 @@ function PlatilloVistaModal({ platillo, onClose }) {
 
       <Campo label="Extras que aplican">
         <div style={valorLeer}>{lista(platillo.extras)}</div>
+      </Campo>
+
+      <Campo label="Tiempo de preparación">
+        <div style={valorLeer}>{platillo.tiempoPrepMin ?? 5} min</div>
       </Campo>
 
       <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
