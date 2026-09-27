@@ -249,7 +249,8 @@ function MeseroModal({ mesero, esUltimoAdmin, onGuardar, onClose }) {
             <div style={{
               background: '#fff', borderRadius: 26, width: 420, maxWidth: '100%',
               fontFamily: "'Inter Tight', sans-serif", boxShadow: '0 24px 60px rgba(51,34,42,0.3)',
-              padding: '28px 28px 32px',
+              padding: '28px 28px 32px', boxSizing: 'border-box',
+              maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto',
             }}>
               <PinPad
                 titulo="Confirmar"

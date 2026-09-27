@@ -71,12 +71,13 @@ export default function AdminApp() {
     return (
       <div
         className="h-dvh w-full flex flex-col items-center justify-center"
-        style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif", padding: 20 }}
+        style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif", padding: 20, overflowY: 'auto' }}
       >
         <div
           style={{
             background: '#fff', borderRadius: 26, width: 420, maxWidth: '100%',
             boxShadow: '0 24px 60px rgba(51,34,42,0.3)', padding: '28px 28px 32px',
+            boxSizing: 'border-box', maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto', flexShrink: 0,
           }}
         >
           <PinPad
