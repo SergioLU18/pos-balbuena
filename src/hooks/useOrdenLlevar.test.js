@@ -70,16 +70,49 @@ describe('useOrdenLlevar — enviar a cocina', () => {
   })
 })
 
-describe('useOrdenLlevar — cerrar la orden', () => {
+describe('useOrdenLlevar — cobrar y recoger la orden', () => {
+  it('cobrar congela total y renglones, guarda el método de pago y deja las comandas en el tablero', async () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.enviarACocina() })
+    rerender()
+    await act(async () => { await result.current.pagarOrden('efectivo') })
+
+    const [orden] = useLlevarStore.getState().ordenes
+    expect(orden.estado).toBe('pagada')
+    expect(orden.total).toBe(110)
+    expect(orden.items).toHaveLength(1)
+    expect(orden.metodoPago).toBe('efectivo')
+    // Cobrar no es lo mismo que recoger: cocina la sigue viendo en el tablero.
+    expect(usePedidosStore.getState().pedidos).toHaveLength(1)
+  })
+
+  it('recoger, después de cobrada, cierra la orden y por fin saca sus comandas del tablero', async () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.enviarACocina() })
+    rerender()
+    await act(async () => { await result.current.pagarOrden('tarjeta') })
+    rerender()
+    await act(async () => { await result.current.recogerOrden() })
+
+    const [orden] = useLlevarStore.getState().ordenes
+    expect(orden.estado).toBe('entregada')
+    expect(orden.closedAt).toBeTruthy()
+    expect(usePedidosStore.getState().pedidos).toHaveLength(0)
+  })
+})
+
+describe('useOrdenLlevar — cancelar la orden', () => {
   it('congela total y renglones en la orden y saca sus comandas del tablero de cocina', async () => {
     const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
     act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
     act(() => { result.current.enviarACocina() })
     rerender()
-    await act(async () => { await result.current.cerrarOrden('entregada') })
+    await act(async () => { await result.current.cancelarOrden() })
 
     const [orden] = useLlevarStore.getState().ordenes
-    expect(orden.estado).toBe('entregada')
+    expect(orden.estado).toBe('cancelada')
     expect(orden.total).toBe(110)
     expect(orden.items).toHaveLength(1) // la copia que sostiene el historial del cliente
     expect(orden.closedAt).toBeTruthy()
@@ -91,7 +124,7 @@ describe('useOrdenLlevar — cerrar la orden', () => {
       pedidos: [{ id: 'p-otra', tipo: 'llevar', ordenLlevarId: 'otra-orden', items: [], estado: 'pendiente' }],
     })
     const { result } = renderHook(() => useOrdenLlevar(ORDEN_ID))
-    await act(async () => { await result.current.cerrarOrden('cancelada') })
+    await act(async () => { await result.current.cancelarOrden() })
 
     expect(usePedidosStore.getState().pedidos.map((p) => p.id)).toEqual(['p-otra'])
     expect(useLlevarStore.getState().ordenes[0].estado).toBe('cancelada')

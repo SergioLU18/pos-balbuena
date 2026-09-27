@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useLlevar, totalDeOrden } from '../../hooks/useLlevar'
+import { useLlevar, totalDeOrden, ESTADO_LLEVAR } from '../../hooks/useLlevar'
 import { useVertical } from '../../hooks/useVertical'
 import { formatearTelefono, telefonoCompleto } from '../../lib/telefono'
 import { nombreCompleto, formatearDireccion } from '../../lib/cliente'
@@ -241,16 +241,7 @@ function OrdenesAbiertas({ ordenes, pedidos, onAbrir }) {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
           {ordenes.map((orden) => {
-            const suyos = pedidos.filter((p) => p.ordenLlevarId === orden.id)
-            const listo = suyos.some((p) => p.estado === 'listo')
-            const cocinando = suyos.some((p) => p.estado === 'preparando')
-            const estado = listo
-              ? { texto: '¡Listo para entregar!', color: '#1B5E66', fondo: 'var(--jb-teal-bg)', borde: 'var(--jb-teal)' }
-              : cocinando
-              ? { texto: 'En preparación', color: '#2C5F86', fondo: 'var(--jb-info-bg)', borde: 'var(--jb-info)' }
-              : suyos.length > 0
-              ? { texto: 'Pedido enviado', color: '#A8471F', fondo: 'var(--jb-queued-bg)', borde: 'var(--jb-queued)' }
-              : { texto: 'Sin platillos', color: 'var(--jb-gray)', fondo: '#fff', borde: 'var(--jb-line)' }
+            const estado = ESTADO_LLEVAR[orden.estado] ?? { texto: orden.estado, color: 'var(--jb-gray)', fondo: '#fff', borde: 'var(--jb-line)' }
 
             return (
               <button

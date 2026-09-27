@@ -169,14 +169,61 @@ export function useOrdenLlevar(ordenId) {
       })
   }
 
-  /** Cierra la orden: 'entregada' cuando el cliente ya se la llevó, 'cancelada' si no la
-   *  recogió. En los dos casos el total y los renglones quedan congelados en la fila —
-   *  es de ahí que sale el historial de compras del cliente — y sus comandas salen del
-   *  tablero de cocina, igual que al cerrar una mesa. */
-  function cerrarOrden(estado = 'entregada') {
+  /** Cobra la orden: de 'abierta' a 'pagada'. Congela renglones y total — a partir de
+   *  aquí ya no se le pueden agregar platillos, si falta algo es un pedido nuevo — pero
+   *  sus comandas SIGUEN en el tablero de cocina: cobrar no es lo mismo que recogerla. */
+  function pagarOrden(metodoPago, detalle = {}) {
+    const total = sumaCuenta(enviados)
+    if (IS_MOCK) {
+      actualizarOrdenLocal(ordenId, { estado: 'pagada', total, items: enviados, metodoPago })
+      clearDraft(ordenId)
+      return Promise.resolve({ error: null })
+    }
+    return sb.rpc('pos_pagar_orden_llevar', {
+      p_orden_id: ordenId,
+      p_metodo_pago: metodoPago,
+      p_monto_efectivo: detalle.efectivo ?? null,
+      p_monto_tarjeta: detalle.tarjeta ?? null,
+      ...firma(),
+    }).then(({ error }) => {
+      if (error) {
+        console.error('[llevar] pagarOrden falló:', error)
+        avisarError('no se pudo cobrar la orden', 'Sigue abierta — revisa la conexión e inténtalo otra vez')
+        return { error: error.message }
+      }
+      // Optimista: no se espera a Realtime para que la pantalla pase al modo "pagada"
+      // (ticket de solo lectura + botón de recoger) en el acto.
+      actualizarOrdenLocal(ordenId, { estado: 'pagada', total, items: enviados, metodoPago })
+      clearDraft(ordenId)
+      return { error: null }
+    })
+  }
+
+  /** Recoge la orden: de 'pagada' a 'entregada' (el cliente ya se la llevó). Los
+   *  renglones y el total ya quedaron congelados al cobrar. */
+  function recogerOrden() {
+    if (IS_MOCK) {
+      actualizarOrdenLocal(ordenId, { estado: 'entregada', closedAt: new Date().toISOString() })
+      eliminarPedidosDeOrdenLlevar(ordenId)
+      return Promise.resolve({ error: null })
+    }
+    return sb.rpc('pos_recoger_orden_llevar', { p_orden_id: ordenId, ...firma() }).then(({ error }) => {
+      if (error) {
+        console.error('[llevar] recogerOrden falló:', error)
+        avisarError('no se pudo marcar como recogida', 'Sigue pagada, sin recoger')
+        return { error: error.message }
+      }
+      return { error: null }
+    })
+  }
+
+  /** Cancela la orden, desde 'abierta' o 'pagada'. El total y los renglones quedan
+   *  congelados en la fila — es de ahí que sale el historial de compras del cliente —
+   *  y sus comandas salen del tablero de cocina, igual que al cerrar una mesa. */
+  function cancelarOrden() {
     if (IS_MOCK) {
       actualizarOrdenLocal(ordenId, {
-        estado,
+        estado: 'cancelada',
         total: sumaCuenta(enviados),
         items: enviados,
         closedAt: new Date().toISOString(),
@@ -185,11 +232,11 @@ export function useOrdenLlevar(ordenId) {
       clearDraft(ordenId)
       return Promise.resolve({ error: null })
     }
-    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: estado, ...firma() })
+    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, ...firma() })
       .then(({ error }) => {
         if (error) {
-          console.error('[llevar] cerrarOrden falló:', error)
-          avisarError('no se pudo cerrar la orden', 'La orden sigue abierta')
+          console.error('[llevar] cancelarOrden falló:', error)
+          avisarError('no se pudo cancelar la orden', 'La orden sigue abierta')
           return { error: error.message }
         }
         clearDraft(ordenId)
@@ -231,7 +278,9 @@ export function useOrdenLlevar(ordenId) {
     enviando,
     fijarCantidadEnviado,
     quitarItemEnviado,
-    cerrarOrden,
+    pagarOrden,
+    recogerOrden,
+    cancelarOrden,
     descartarOrden,
   }
 }

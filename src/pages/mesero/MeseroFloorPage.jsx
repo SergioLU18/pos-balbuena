@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useMesas } from '../../hooks/useMesas'
 import { useMesasUnidas } from '../../hooks/useMesasUnidas'
 import { useVertical } from '../../hooks/useVertical'
-import { useLlevarStore } from '../../store/appStore'
+import { useLlevar } from '../../hooks/useLlevar'
 import { puedeSerPrincipal, puedeUnirse, nombreGrupo } from '../../lib/mesasUnidas'
 import { f } from '../../lib/utils'
 import { MesaCard, MESA_CARD_W } from '../../components/mesero/MesaCard'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
-import { IconUnirMesas, IconParaLlevar } from '../../components/ui/icons'
+import { PedidosModal } from '../../components/mesero/PedidosModal'
+import { IconUnirMesas, IconParaLlevar, IconPedidos } from '../../components/ui/icons'
 
 const botonHeader = {
   fontFamily: "'Inter Tight', sans-serif", fontSize: 16, fontWeight: 800,
@@ -23,12 +24,17 @@ export default function MeseroFloorPage() {
   // paso 2 marca las que se le juntan.
   const [unir, setUnir] = useState(null)
   const [confirmandoUnion, setConfirmandoUnion] = useState(false)
+  const [pedidosAbierto, setPedidosAbierto] = useState(false)
   const { mesas, mesero } = useMesas()
   const { unirMesas } = useMesasUnidas()
+  const { ordenesAbiertas, pedidos } = useLlevar()
   // Las órdenes para llevar no tienen mesa que pintar en este listado, así que aquí solo
   // va la cuenta: el badge es lo que evita que una orden de mostrador se quede olvidada
-  // porque nada en esta pantalla la menciona.
-  const llevarAbiertas = useLlevarStore((s) => s.ordenes).filter((o) => o.estado === 'abierta').length
+  // porque nada en esta pantalla la menciona. Cuenta tanto las recién enviadas a cocina
+  // como las ya pagadas que esperan a que las recojan — las dos siguen sin resolverse.
+  const llevarAbiertas = ordenesAbiertas.length
+  const mesasAbiertas = mesas.filter((m) => m.estado === 'abierta')
+  const pedidosAbiertosCount = mesasAbiertas.length + llevarAbiertas
 
   const principal = unir?.principalId ? mesas.find((m) => m.id === unir.principalId) ?? null : null
   const elegidas = unir ? mesas.filter((m) => unir.secundarias.includes(m.id)) : []
@@ -99,6 +105,27 @@ export default function MeseroFloorPage() {
             }}
           >
             <IconUnirMesas /> Unir mesas
+          </button>
+          <button
+            onClick={() => setPedidosAbierto(true)}
+            style={{
+              ...botonHeader,
+              position: 'relative',
+              border: '2.5px solid var(--jb-line)', background: '#fff', color: 'var(--jb-ink)',
+            }}
+          >
+            <IconPedidos /> Pedidos
+            {pedidosAbiertosCount > 0 && (
+              <span
+                style={{
+                  position: 'absolute', top: -8, right: -8, minWidth: 24, height: 24, borderRadius: 12,
+                  background: 'var(--jb-pink)', color: '#fff', fontSize: 13, fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px',
+                }}
+              >
+                {pedidosAbiertosCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => navigate('/mesero/llevar')}
@@ -195,6 +222,15 @@ export default function MeseroFloorPage() {
           cancelarLabel="Volver"
           onConfirm={confirmarUnion}
           onClose={() => setConfirmandoUnion(false)}
+        />
+      )}
+
+      {pedidosAbierto && (
+        <PedidosModal
+          mesas={mesasAbiertas}
+          ordenesLlevar={ordenesAbiertas}
+          pedidos={pedidos}
+          onClose={() => setPedidosAbierto(false)}
         />
       )}
     </div>

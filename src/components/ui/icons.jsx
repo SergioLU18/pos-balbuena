@@ -13,6 +13,19 @@ export function IconUnirMesas({ size = 20 }) {
   )
 }
 
+/** Comanda: una hoja con clip arriba y renglones — el gesto de "ver los pedidos
+ *  abiertos". */
+export function IconPedidos({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...BASE}>
+      <rect x="5" y="3.5" width="14" height="17" rx="3" />
+      <path d="M9 3.5v-1a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M8.5 11h7" />
+      <path d="M8.5 15h7" />
+    </svg>
+  )
+}
+
 /** Bolsa de comida para llevar, con vapor arriba — así no se confunde con una bolsa
  *  de compras genérica. */
 export function IconParaLlevar({ size = 20 }) {

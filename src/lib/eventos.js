@@ -23,6 +23,8 @@ const GRUPO_DE = {
   'mesa.unir': 'operacion',
   'mesa.separar': 'operacion',
   'llevar.crear': 'operacion',
+  'llevar.pagar': 'operacion',
+  'llevar.recoger': 'operacion',
   'llevar.cerrar': 'operacion',
   'llevar.descartar': 'operacion',
   'cliente.guardar': 'operacion',
@@ -67,6 +69,8 @@ export function accionesDelGrupo(grupo) {
 
 // Columnas del tablero de cocina con el nombre que ve el personal, no el del dato.
 const COLUMNA = { pendiente: 'Nuevo', preparando: 'Preparando', listo: 'Listo', entregado: 'Entregado' }
+// Cómo se pagó una orden para llevar (pos_pagar_orden_llevar), para la frase de la bitácora.
+const METODO_PAGO = { efectivo: 'efectivo', tarjeta: 'tarjeta', ambos: 'efectivo y tarjeta' }
 
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -149,6 +153,8 @@ export function describir(ev) {
     case 'mesero.mesas': return `Cambió sus mesas: ${d.antes?.length ?? 0} → ${d.despues?.length ?? 0}`
 
     case 'llevar.crear': return 'Abrió la orden para llevar'
+    case 'llevar.pagar': return `Cobró la orden para llevar${d.metodo_pago ? ` (${METODO_PAGO[d.metodo_pago] ?? d.metodo_pago})` : ''}`
+    case 'llevar.recoger': return 'Entregó la orden para llevar'
     case 'llevar.cerrar': return d.estado === 'cancelada' ? 'Canceló la orden para llevar' : 'Entregó la orden para llevar'
     case 'llevar.descartar': return 'Descartó la orden para llevar (sin platillos)'
     case 'cliente.guardar': return d.alta ? 'Dio de alta al cliente' : 'Editó los datos del cliente'
@@ -183,6 +189,7 @@ export function importe(ev) {
     case 'orden.enviar': return num(d.importe)
     case 'item.eliminar': return d.importe == null ? null : -Number(d.importe)
     case 'mesa.cerrar':
+    case 'llevar.pagar':
     case 'llevar.cerrar': return num(d.total)
     default: return null
   }

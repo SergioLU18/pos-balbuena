@@ -75,7 +75,10 @@ create index if not exists pos_eventos_accion_idx       on pos_eventos (accion, 
 --   mesero.mesas        se le fijaron las mesas que atiende
 --   mesero.baja         se dio de baja a un mesero
 --   llevar.crear        se abrió una orden para llevar
---   llevar.cerrar       se entregó o canceló (trae el ticket congelado)
+--   llevar.pagar        se cobró la orden (queda pagada; sus comandas siguen en cocina)
+--   llevar.recoger      se recogió una orden ya pagada (trae el ticket congelado)
+--   llevar.cerrar       se canceló una orden (en registros de antes de llevar_pagos.sql,
+--                       también se usó para "se entregó" — ver detalle.estado)
 --   cliente.guardar     alta o edición de un cliente del padrón
 --   platillo.crear / platillo.editar / platillo.borrar / platillo.reordenar
 --   extra.platillos     cambió a qué platillos aplica un extra
