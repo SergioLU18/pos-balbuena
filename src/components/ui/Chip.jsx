@@ -1,9 +1,13 @@
 /** Chip grande de selección (ingredientes, modificadores). Pensado para dedos, no cursores.
  *  `disabled` bloquea el clic (cursor not-allowed). `dimmed` solo lo atenúa visualmente
  *  para resaltar el ya elegido, pero sigue siendo tocable (p. ej. para intercambiar).
+ *  `sublabel` ocupa su propia línea (empuja el texto principal hacia arriba, ej. el
+ *  costo extra de un ingrediente). `badge` en cambio flota en la esquina inferior
+ *  derecha sin mover nada más (ej. "×2" de un ingrediente elegido dos veces): la
+ *  palabra principal se queda centrada igual que sin badge.
  *  Dentro de `chipGrid` se estira solo al ancho de su celda; en un flex normal se
  *  ajusta a su contenido. */
-export function Chip({ active, disabled, dimmed, onClick, children, sublabel }) {
+export function Chip({ active, disabled, dimmed, onClick, children, sublabel, badge }) {
   const atenuado = (disabled || dimmed) && !active
   return (
     <button
@@ -11,6 +15,7 @@ export function Chip({ active, disabled, dimmed, onClick, children, sublabel }) 
       onClick={onClick}
       disabled={disabled && !active}
       style={{
+        position: 'relative',
         fontFamily: "'Inter Tight', sans-serif",
         fontSize: 20,
         fontWeight: 800,
@@ -38,6 +43,17 @@ export function Chip({ active, disabled, dimmed, onClick, children, sublabel }) 
       {sublabel && (
         <span style={{ fontSize: 15, fontWeight: 700, color: active ? 'var(--jb-pink)' : 'var(--jb-gray)' }}>
           {sublabel}
+        </span>
+      )}
+      {badge && (
+        <span
+          style={{
+            position: 'absolute', bottom: 6, right: 10,
+            fontSize: 13, fontWeight: 800,
+            color: active ? 'var(--jb-pink-dark)' : 'var(--jb-gray)',
+          }}
+        >
+          {badge}
         </span>
       )}
     </button>
