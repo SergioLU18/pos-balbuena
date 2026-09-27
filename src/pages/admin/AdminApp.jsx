@@ -101,11 +101,14 @@ export default function AdminApp() {
     >
       <header
         className="flex items-center justify-between flex-shrink-0"
-        style={{ padding: '12px 24px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)' }}
+        style={{
+          padding: '12px 24px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)',
+          flexWrap: 'wrap', rowGap: 10, columnGap: 16,
+        }}
       >
-        <div className="flex items-center" style={{ gap: 18 }}>
-          <span style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Ajustes</span>
-          <nav className="flex items-center" style={{ gap: 8 }}>
+        <div className="flex items-center" style={{ gap: 14, flexWrap: 'wrap', rowGap: 8 }}>
+          <span style={{ fontSize: 20, fontWeight: 900, color: '#fff', flexShrink: 0 }}>Ajustes</span>
+          <nav className="flex items-center" style={{ gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
             <TabLink to="/admin/menu">Menú</TabLink>
             <TabLink to="/admin/mesas">Mesas</TabLink>
             <TabLink to="/admin/meseros">Meseros</TabLink>
@@ -113,14 +116,14 @@ export default function AdminApp() {
             <TabLink to="/admin/clientes">Clientes</TabLink>
           </nav>
         </div>
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{mesero.nombre}</span>
+        <div className="flex items-center" style={{ gap: 12, flexShrink: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.9)', whiteSpace: 'nowrap' }}>{mesero.nombre}</span>
           <button
             onClick={salir}
             style={{
               fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
               padding: '12px 18px', minHeight: 44, borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: 'rgba(255,255,255,0.92)', color: 'var(--jb-pink-dark)',
+              background: 'rgba(255,255,255,0.92)', color: 'var(--jb-pink-dark)', whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
             ← Salir
@@ -149,8 +152,8 @@ function TabLink({ to, end, children }) {
       end={end}
       style={({ isActive }) => ({
         fontFamily: "'Inter Tight', sans-serif", fontWeight: 800, fontSize: 15,
-        width: 118, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 11, textDecoration: 'none', textAlign: 'center',
+        padding: '0 18px', height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 11, textDecoration: 'none', textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0,
         background: isActive ? '#fff' : 'rgba(255,255,255,0.18)',
         color: isActive ? 'var(--jb-pink-dark)' : '#fff',
       })}
