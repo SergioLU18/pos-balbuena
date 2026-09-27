@@ -9,17 +9,17 @@ export const MESA_CARD_W = 180
 export const MESA_CARD_H = 158
 
 // Solo dos estados de cuenta se ven desde el piso (el detalle de cocina — armando,
-// enviado, cocinando, listo — vive en CocinaPage, no aquí): rosa = cuenta abierta, en
-// cualquier parte del proceso; verde = mesa pagada (en tali o a mano por el mesero;
+// enviado, cocinando, listo — vive en CocinaPage, no aquí): verde = cuenta abierta, en
+// cualquier parte del proceso; rosa = mesa pagada (en tali o a mano por el mesero;
 // señal efímera que se apaga sola a los 3 minutos o al abrir una cuenta nueva, ver
 // useMesaPagadaStore). Gris punteado = mesa unida a otra: no tiene estado propio, todo
 // vive en su principal. Ámbar pulsante = hay platillos armados que no se mandaron a
 // cocina (draft sin enviar): se sobrepone a "abierta" porque es la señal urgente.
 const THEME = {
   libre:      { bg: '#fff', border: 'var(--jb-line)', label: null, labelColor: 'var(--jb-gray)' },
-  abierta:    { bg: 'var(--jb-pink-tint)', border: 'var(--jb-pink)', label: 'Cuenta abierta', labelColor: 'var(--jb-pink-dark)' },
+  abierta:    { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: 'Cuenta abierta', labelColor: '#2C7A50' },
   sinEnviar:  { bg: 'var(--jb-warn-bg)', border: 'var(--jb-warn)', label: 'Falta enviar a cocina', labelColor: '#8A6415' },
-  pagada:     { bg: 'var(--jb-ok-bg)', border: 'var(--jb-ok)', label: '✓ Pagada', labelColor: '#2C7A50' },
+  pagada:     { bg: 'var(--jb-pink-tint)', border: 'var(--jb-pink)', label: '✓ Pagada', labelColor: 'var(--jb-pink-dark)' },
   unida:      { bg: 'var(--jb-cream)', border: 'var(--jb-gray)', label: null, labelColor: 'var(--jb-ink-soft)', dashed: true },
 }
 
@@ -98,10 +98,10 @@ export function MesaCard({ mesa, onClick, seleccionada = false, deshabilitada = 
       )}
 
       {visual !== 'unida' && mesa.estado === 'abierta' && (
-        <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(mesa.total)}</span>
+        <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
       )}
       {visual !== 'unida' && mesa.estado === 'pagada' && mesa.total > 0 && (
-        <span style={{ fontSize: 20, fontWeight: 800, color: '#2C7A50' }}>{f(mesa.total)}</span>
+        <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{f(mesa.total)}</span>
       )}
     </button>
   )

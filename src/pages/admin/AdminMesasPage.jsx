@@ -8,9 +8,9 @@ import { CrearMesaModal } from '../../components/mesero/CrearMesaModal'
 import { RenombrarMesaModal } from '../../components/mesero/RenombrarMesaModal'
 
 const ESTADO = {
-  abierta: { texto: 'Cuenta abierta', color: 'var(--jb-pink)' },
+  abierta: { texto: 'Cuenta abierta', color: 'var(--jb-ok)' },
   preparando: { texto: 'Armando pedido', color: 'var(--jb-warn)' },
-  pagada: { texto: 'Pagada', color: 'var(--jb-ok)' },
+  pagada: { texto: 'Pagada', color: 'var(--jb-pink)' },
   libre: { texto: 'Libre', color: 'var(--jb-gray)' },
 }
 
