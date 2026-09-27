@@ -100,7 +100,6 @@ export const MENU = [
     ],
     modificadores: ['Sin Crema', 'Sin Frijol', 'Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Lechuga (Romanita)'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -111,7 +110,6 @@ export const MENU = [
     tiers: tiers(120, [140, 165, 190]),
     modificadores: ['Sin Crema', 'Sin Salsa Verde'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -139,7 +137,6 @@ export const MENU = [
     ],
     modificadores: ['Sin Crema', 'Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Lechuga (Romanita)'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -154,7 +151,6 @@ export const MENU = [
     ],
     modificadores: ['Sin Aguacate', 'Sin Frijol', 'Sin Crema'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -165,7 +161,6 @@ export const MENU = [
     tiers: tiers(110, [130, 155, 180]),
     modificadores: ['Sin Aguacate', 'Sin Queso Oaxaca', 'Sin Salsa Roja', 'Sin Crema'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -176,7 +171,6 @@ export const MENU = [
     tiers: tiers(120, [140, 165, 190]),
     modificadores: ['Sin Aguacate', 'Sin Queso Oaxaca', 'Sin Salsa Roja', 'Sin Crema'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: true,
     permiteNota: true,
   },
   {
@@ -190,7 +184,6 @@ export const MENU = [
     ],
     modificadores: ['Sin Salsa Verde', 'Sin Queso Oaxaca', 'Sin Crema'],
     extras: EXTRAS_COMIDA,
-    permiteMitades: false,
     permiteNota: true,
   },
   {
@@ -202,7 +195,6 @@ export const MENU = [
     tortillas: saboresBebida(40),
     modificadores: [],
     extras: [],
-    permiteMitades: false,
     permiteNota: false,
   },
   {
@@ -213,7 +205,6 @@ export const MENU = [
     tiers: [{ ingredientes: 0, nombre: 'Único', precio: 70 }],
     modificadores: [],
     extras: [],
-    permiteMitades: false,
     permiteNota: false,
   },
 ]

@@ -92,6 +92,45 @@ function useFlip(nodos, dep) {
   }, [dep])
 }
 
+// Orden optimista para un catálogo plano con id + `orden` (modificadores, extras):
+// mismo patrón que PlatillosTab/CategoriasTab — el clic reacomoda la copia local al
+// instante y lo manda al backend con debounce; se suelta cuando el backend confirma,
+// cambia el juego de items, o tras un tope de seguridad.
+function useOrdenOptimista(listaOrdenada, reordenar) {
+  const [ordenOpt, setOrdenOpt] = useState(null) // ids[] | null
+  const rpcTimer = useRef(null)
+
+  const idsStore = listaOrdenada.map((x) => x.id)
+  const idsStoreSet = new Set(idsStore)
+  const optVigente = !!ordenOpt
+    && ordenOpt.length === idsStoreSet.size
+    && ordenOpt.every((id) => idsStoreSet.has(id))
+    && ordenOpt.join(',') !== idsStore.join(',')
+  if (ordenOpt && !optVigente) setOrdenOpt(null)
+
+  const lista = optVigente ? ordenOpt.map((id) => listaOrdenada.find((x) => x.id === id)) : listaOrdenada
+
+  useEffect(() => {
+    if (!ordenOpt) return
+    const t = setTimeout(() => setOrdenOpt(null), 4000)
+    return () => clearTimeout(t)
+  }, [ordenOpt])
+
+  useEffect(() => () => clearTimeout(rpcTimer.current), [])
+
+  function mover(idx, dir) {
+    const destino = idx + dir
+    if (destino < 0 || destino >= lista.length) return
+    const nuevo = lista.map((x) => x.id)
+    ;[nuevo[idx], nuevo[destino]] = [nuevo[destino], nuevo[idx]]
+    setOrdenOpt(nuevo)
+    clearTimeout(rpcTimer.current)
+    rpcTimer.current = setTimeout(() => reordenar(nuevo), 250)
+  }
+
+  return { lista, mover }
+}
+
 // ── Platillos ────────────────────────────────────────────────────────────────
 function preciosDe(p) {
   const tiers = p.tortillas ? p.tortillas.flatMap((t) => t.tiers) : (p.tiers ?? [])
@@ -358,7 +397,6 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
   const [usaTortillas, setUsaTortillas] = useState(!!platillo.tortillas)
   const [tiers, setTiers] = useState(platillo.tiers?.length ? platillo.tiers : [{ nombre: 'Sencillo', ingredientes: 0, precio: '' }])
   const [tortillas, setTortillas] = useState(platillo.tortillas ?? [{ id: uid('tor'), nombre: '', tiers: [{ nombre: '1 Ingrediente', ingredientes: 1, precio: '' }] }])
-  const [permiteMitades, setPermiteMitades] = useState(!!platillo.permiteMitades)
   const [permiteNota, setPermiteNota] = useState(!!platillo.permiteNota)
   const [activo, setActivo] = useState(platillo.activo !== false)
 
@@ -408,7 +446,6 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
       base: base.trim(),
       tiers: payloadTiers,
       tortillas: payloadTortillas,
-      permiteMitades,
       permiteNota,
       activo,
       modificadores: modsSel,
@@ -480,7 +517,6 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
       </Campo>
 
       <div className="flex" style={{ gap: 20, flexWrap: 'wrap' }}>
-        <Toggle checked={permiteMitades} onChange={setPermiteMitades} label="Permite mitades" />
         <Toggle checked={permiteNota} onChange={setPermiteNota} label="Permite nota" />
         <Toggle checked={activo} onChange={setActivo} label="Disponible en el menú" />
       </div>
@@ -551,7 +587,6 @@ function PlatilloVistaModal({ platillo, onClose }) {
       </Campo>
 
       <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
-        <BanderaVista ok={!!platillo.permiteMitades}>Permite mitades</BanderaVista>
         <BanderaVista ok={!!platillo.permiteNota}>Permite nota</BanderaVista>
         <BanderaVista ok={platillo.activo !== false}>Disponible en el menú</BanderaVista>
       </div>
@@ -675,25 +710,40 @@ function IngredientesTab() {
 
 // ── Modificadores ────────────────────────────────────────────────────────────
 function ModificadoresTab() {
-  const modificadores = usePosStore((s) => s.modificadores)
-  const { guardarModificador, borrarModificador } = useMenuAdmin()
+  const modificadoresStore = usePosStore((s) => s.modificadores)
+  const { guardarModificador, borrarModificador, reordenarModificadores } = useMenuAdmin()
   const [editando, setEditando] = useState(null)
   const [borrando, setBorrando] = useState(null)
+
+  const ordenados = modificadoresStore
+    .slice()
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre))
+  const { lista: modificadores, mover } = useOrdenOptimista(ordenados, reordenarModificadores)
+
+  const nodos = useRef(new Map())
+  useFlip(nodos, modificadores.map((m) => m.id).join(','))
 
   return (
     <>
       <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>Modificadores de remoción ("Sin crema", "Sin frijol"…).</p>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>
+          Modificadores de remoción ("Sin crema", "Sin frijol"…) · usa ▲▼ para ordenar como los ve el mesero.
+        </p>
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo</Button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-        {modificadores.map((m) => (
+        {modificadores.map((m, idx) => (
           <FilaSimple
             key={m.id}
+            nodeRef={(el) => { if (el) nodos.current.set(m.id, el); else nodos.current.delete(m.id) }}
             nombre={m.nombre}
             inactivo={m.activo === false}
             onEdit={() => setEditando(m)}
             onDelete={() => setBorrando(m)}
+            onUp={() => mover(idx, -1)}
+            onDown={() => mover(idx, 1)}
+            disableUp={idx === 0}
+            disableDown={idx === modificadores.length - 1}
           />
         ))}
       </div>
@@ -716,33 +766,48 @@ function ModificadoresTab() {
 
 // ── Extras (agregados de pago) ───────────────────────────────────────────────
 function ExtrasTab() {
-  const extras = usePosStore((s) => s.extras)
+  const extrasStore = usePosStore((s) => s.extras)
   const platillos = usePosStore((s) => s.platillos)
-  const { guardarExtra, borrarExtra, asignarExtraAProductos } = useMenuAdmin()
+  const { guardarExtra, borrarExtra, asignarExtraAProductos, reordenarExtras } = useMenuAdmin()
   const [editando, setEditando] = useState(null)
   const [borrando, setBorrando] = useState(null)
 
   // Para cada extra, en cuántos platillos aplica (para mostrarlo en la lista).
   const cuentaProductos = (nombre) => platillos.filter((p) => (p.extras ?? []).includes(nombre)).length
 
+  const ordenados = extrasStore
+    .slice()
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre))
+  const { lista: extras, mover } = useOrdenOptimista(ordenados, reordenarExtras)
+
+  const nodos = useRef(new Map())
+  useFlip(nodos, extras.map((x) => x.id).join(','))
+
   return (
     <>
       <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>Agregados de pago. Al editar uno, eliges su precio y en qué platillos aparece.</p>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--jb-ink-soft)' }}>
+          Agregados de pago. Al editar uno, eliges su precio y en qué platillos aparece · usa ▲▼ para ordenar como los ve el mesero.
+        </p>
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo</Button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-        {extras.map((x) => {
+        {extras.map((x, idx) => {
           const n = cuentaProductos(x.nombre)
           const precioTxt = x.precio > 0 ? `+${f(x.precio)}` : 'Sin cargo'
           return (
             <FilaSimple
               key={x.id}
+              nodeRef={(el) => { if (el) nodos.current.set(x.id, el); else nodos.current.delete(x.id) }}
               nombre={x.nombre}
               sub={`${precioTxt} · ${n} ${n === 1 ? 'platillo' : 'platillos'}`}
               inactivo={x.activo === false}
               onEdit={() => setEditando(x)}
               onDelete={() => setBorrando(x)}
+              onUp={() => mover(idx, -1)}
+              onDown={() => mover(idx, 1)}
+              disableUp={idx === 0}
+              disableDown={idx === extras.length - 1}
             />
           )
         })}
@@ -838,17 +903,52 @@ function ExtraModal({ extra, onGuardarExtra, onAsignar, onClose }) {
   )
 }
 
-function FilaSimple({ nombre, sub, inactivo, onEdit, onDelete }) {
+// `onUp`/`onDown` son opcionales: solo los pasan los catálogos que se pueden
+// reordenar (modificadores, extras). Con ellos, el nombre pasa a su propio renglón
+// (con ancho completo, sin cortarse) y las flechas + editar/borrar bajan a uno propio;
+// sin ellos, la fila se ve igual que antes (nombre y botones en una sola línea).
+function FilaSimple({ nodeRef, nombre, sub, inactivo, onEdit, onDelete, onUp, onDown, disableUp, disableDown }) {
+  const editarBorrar = (
+    <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
+      <button onClick={onEdit} title="Editar" style={{ ...quitarBtn, color: 'var(--jb-pink-dark)', background: 'var(--jb-pink-light)' }}>✎</button>
+      <button onClick={onDelete} title="Borrar" style={quitarBtn}>✕</button>
+    </div>
+  )
+
+  if (onUp) {
+    return (
+      <div
+        ref={nodeRef}
+        style={{
+          background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: '12px 14px',
+          display: 'flex', flexDirection: 'column', gap: 8, opacity: inactivo ? 0.5 : 1, willChange: 'transform',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', overflowWrap: 'break-word' }}>{nombre}</div>
+          {sub && <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>{sub}</div>}
+        </div>
+        <div className="flex items-center justify-between">
+          <MoveButtons onUp={onUp} onDown={onDown} disableUp={disableUp} disableDown={disableDown} />
+          {editarBorrar}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={{ background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, opacity: inactivo ? 0.5 : 1 }}>
+    <div
+      ref={nodeRef}
+      style={{
+        background: '#fff', border: '2.5px solid var(--jb-line)', borderRadius: 14, padding: '12px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, opacity: inactivo ? 0.5 : 1,
+      }}
+    >
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
         {sub && <div style={{ fontSize: 12, color: 'var(--jb-gray)' }}>{sub}</div>}
       </div>
-      <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
-        <button onClick={onEdit} title="Editar" style={{ ...quitarBtn, color: 'var(--jb-pink-dark)', background: 'var(--jb-pink-light)' }}>✎</button>
-        <button onClick={onDelete} title="Borrar" style={quitarBtn}>✕</button>
-      </div>
+      {editarBorrar}
     </div>
   )
 }

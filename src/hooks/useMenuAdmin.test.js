@@ -22,7 +22,7 @@ describe('useMenuAdmin — platillos', () => {
       await result.current.guardarPlatillo({
         nombre: 'Gordita', categoria: 'Gorditas', base: 'Masa',
         tiers: [{ nombre: 'Sencillo', ingredientes: 0, precio: 90 }],
-        permiteMitades: false, permiteNota: true, activo: true,
+        permiteNota: true, activo: true,
       })
     })
     const nuevo = usePosStore.getState().platillos.find((p) => p.nombre === 'Gordita')

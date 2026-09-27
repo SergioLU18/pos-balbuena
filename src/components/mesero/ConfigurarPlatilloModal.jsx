@@ -4,19 +4,15 @@ import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { chipGrid } from '../ui/chipStyles'
 import { TierPicker } from './TierPicker'
-import { MitadSwitch } from './MitadSwitch'
 import { IngredienteChecklist } from './IngredienteChecklist'
 import { ModificadorToggles } from './ModificadorToggles'
 import { ExtrasToggles, ExtraLibreForm } from './ExtrasToggles'
-import { buildDraftItem, toggleDividido, setMitadField, calcItemPrecio } from '../../hooks/useOrderDraft'
-
-const MITAD_LABEL = { completo: 'Ingredientes', izquierda: 'Mitad 1', derecha: 'Mitad 2' }
+import { buildDraftItem, setMitadField, calcItemPrecio } from '../../hooks/useOrderDraft'
 
 // Reconstruye un renglón a partir del platillo actual del menú (para que el tier
 // tome precios frescos) y le vuelve a poner lo que el mesero ya había elegido.
 function rehidratarItem(platillo, prev) {
-  let base = buildDraftItem(platillo, prev.tierIndex ?? 0, prev.tortillaId)
-  if (prev.dividido) base = toggleDividido(base)
+  const base = buildDraftItem(platillo, prev.tierIndex ?? 0, prev.tortillaId)
   return {
     ...base,
     id: prev.id ?? base.id,
@@ -39,7 +35,6 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   function cambiarTier(tierIndex) {
     setError(null)
     let next = buildDraftItem(platillo, tierIndex, item.tortillaId)
-    if (item.dividido) next = toggleDividido(next)
     // conserva modificadores elegidos (no dependen del tier); los ingredientes se reinician
     // porque el máximo permitido puede cambiar con el nuevo nivel. Los extras (nivel
     // platillo) también se conservan.
@@ -50,36 +45,26 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   function cambiarTortilla(tortillaId) {
     setError(null)
     let next = buildDraftItem(platillo, item.tierIndex, tortillaId)
-    if (item.dividido) next = toggleDividido(next)
     next = { ...next, mitades: next.mitades.map((m, i) => ({ ...m, modificadores: item.mitades[i]?.modificadores ?? [] })) }
     setItem({ ...next, cantidad: item.cantidad, nota: item.nota, extras: item.extras })
   }
 
-  function toggleMitades() {
+  // El renglón guarda su personalización en `mitades` (heredado de cuando el platillo
+  // se podía dividir); ahora siempre trae exactamente una, con lado 'completo'.
+  const mitad = item.mitades[0]
+
+  function cambiarMitad(field, value) {
     setError(null)
-    setItem((it) => toggleDividido(it))
+    setItem((it) => setMitadField(it, mitad.lado, field, value))
   }
 
-  function cambiarMitad(lado, field, value) {
-    setError(null)
-    setItem((it) => setMitadField(it, lado, field, value))
-  }
-
-  // Cada mitad debe llegar al número de ingredientes que pide el nivel elegido.
   function intentarAgregar() {
     const requeridos = item.tier.ingredientes
-    if (requeridos > 0) {
-      const incompletas = item.mitades.filter((m) => (m.ingredientes?.length ?? 0) < requeridos)
-      if (incompletas.length) {
-        const n = requeridos
-        const cuantos = `${n} ${n === 1 ? 'ingrediente' : 'ingredientes'}`
-        setError(
-          item.dividido
-            ? `Elige ${cuantos} en cada mitad antes de agregar.`
-            : `Elige ${cuantos} antes de agregar (llevas ${item.mitades[0].ingredientes.length}).`,
-        )
-        return
-      }
+    if (requeridos > 0 && mitad.ingredientes.length < requeridos) {
+      const n = requeridos
+      const cuantos = `${n} ${n === 1 ? 'ingrediente' : 'ingredientes'}`
+      setError(`Elige ${cuantos} antes de agregar (llevas ${mitad.ingredientes.length}).`)
+      return
     }
     onConfirm(item)
   }
@@ -148,41 +133,26 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             onSelect={cambiarTier}
           />
 
-          {platillo.permiteMitades && <MitadSwitch dividido={item.dividido} onToggle={toggleMitades} />}
-
-          <div style={{ display: 'grid', gridTemplateColumns: item.dividido ? '1fr 1fr' : '1fr', gap: 20 }}>
-            {item.mitades.map((mitad) => (
-              <div
-                key={mitad.lado}
-                style={{
-                  display: 'flex', flexDirection: 'column', gap: 16,
-                  ...(item.dividido && { padding: 16, border: '2px dashed var(--jb-line)', borderRadius: 16 }),
-                }}
-              >
-                {item.dividido && (
-                  <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--jb-pink-dark)' }}>{MITAD_LABEL[mitad.lado]}</span>
-                )}
-                {item.tier.ingredientes > 0 && (
-                  <IngredienteChecklist
-                    ingredientes={ingredientes}
-                    seleccionados={mitad.ingredientes}
-                    max={item.tier.ingredientes}
-                    resaltarFalta={!!error}
-                    onChange={(v) => cambiarMitad(mitad.lado, 'ingredientes', v)}
-                  />
-                )}
-                <ExtrasToggles
-                  extras={extrasAplicables}
-                  seleccionados={item.extras}
-                  onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
-                />
-                <ModificadorToggles
-                  modificadores={modsAplicables}
-                  seleccionados={mitad.modificadores}
-                  onChange={(v) => cambiarMitad(mitad.lado, 'modificadores', v)}
-                />
-              </div>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {item.tier.ingredientes > 0 && (
+              <IngredienteChecklist
+                ingredientes={ingredientes}
+                seleccionados={mitad.ingredientes}
+                max={item.tier.ingredientes}
+                resaltarFalta={!!error}
+                onChange={(v) => cambiarMitad('ingredientes', v)}
+              />
+            )}
+            <ExtrasToggles
+              extras={extrasAplicables}
+              seleccionados={item.extras}
+              onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
+            />
+            <ModificadorToggles
+              modificadores={modsAplicables}
+              seleccionados={mitad.modificadores}
+              onChange={(v) => cambiarMitad('modificadores', v)}
+            />
           </div>
 
           <ExtraLibreForm

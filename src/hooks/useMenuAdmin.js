@@ -27,7 +27,7 @@ export function useMenuAdmin() {
 
   // ── Platillos ──────────────────────────────────────────────────────────────
   // p (forma de la app): { id?, nombre, categoria, base, tiers, tortillas?,
-  //                        permiteMitades, permiteNota, activo }
+  //                        permiteNota, activo }
   function guardarPlatillo(p) {
     if (IS_MOCK) {
       if (p.id && platillos.some((x) => x.id === p.id)) {
@@ -47,7 +47,9 @@ export function useMenuAdmin() {
         p_categoria: p.categoria?.trim() || null,
         p_base: p.base?.trim() || null,
         p_tiers: p.tiers ?? [],
-        p_permite_mitades: !!p.permiteMitades,
+        // El plato ya no se puede dividir en mitades; queda fijo en false (la columna
+        // sigue en la base, pero ningún flujo del POS vuelve a leerla ni a ofrecerla).
+        p_permite_mitades: false,
         p_permite_nota: !!p.permiteNota,
         p_activo: p.activo !== false,
         p_tortillas: p.tortillas ?? null,
@@ -153,6 +155,16 @@ export function useMenuAdmin() {
     return sb.rpc('pos_borrar_modificador', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
+  // Reordenar modificadores: recibe los ids en el orden deseado y les asigna orden = posición.
+  function reordenarModificadores(orderedIds) {
+    if (IS_MOCK) {
+      const rank = new Map(orderedIds.map((id, i) => [id, i]))
+      setModificadores(modificadores.map((m) => (rank.has(m.id) ? { ...m, orden: rank.get(m.id) } : m)))
+      return Promise.resolve({ error: null })
+    }
+    return sb.rpc('pos_reordenar_modificadores', { p_ids: orderedIds, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
+  }
+
   // ── Extras (pos_extras) ─────────────────────────────────────────────────────
   // e: { id?, nombre, precio, activo, orden }
   function guardarExtra(e) {
@@ -185,6 +197,16 @@ export function useMenuAdmin() {
     return sb.rpc('pos_borrar_extra', { p_id: id, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 
+  // Reordenar extras: recibe los ids en el orden deseado y les asigna orden = posición.
+  function reordenarExtras(orderedIds) {
+    if (IS_MOCK) {
+      const rank = new Map(orderedIds.map((id, i) => [id, i]))
+      setExtras(extras.map((e) => (rank.has(e.id) ? { ...e, orden: rank.get(e.id) } : e)))
+      return Promise.resolve({ error: null })
+    }
+    return sb.rpc('pos_reordenar_extras', { p_ids: orderedIds, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
+  }
+
   // Fija a qué platillos aplica un extra (edición desde el lado del extra): lo agrega
   // a los platillos de `platilloIds` y lo quita de los demás. Si `oldNombre` difiere
   // (renombre), primero limpia el nombre viejo de todos.
@@ -214,7 +236,7 @@ export function useMenuAdmin() {
   return {
     guardarPlatillo, borrarPlatillo, reordenarPlatillos, reordenarCategorias,
     guardarIngrediente, borrarIngrediente,
-    guardarModificador, borrarModificador,
-    guardarExtra, borrarExtra, asignarExtraAProductos,
+    guardarModificador, borrarModificador, reordenarModificadores,
+    guardarExtra, borrarExtra, asignarExtraAProductos, reordenarExtras,
   }
 }

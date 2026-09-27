@@ -55,7 +55,6 @@ function mapPlatillos(rows) {
     // normaliza aquí para que "sin lista" se siga tratando como heredado.
     modificadores: p.modificadores?.length ? p.modificadores : null,
     extras: p.extras?.length ? p.extras : null,
-    permiteMitades: p.permite_mitades ?? false,
     permiteNota: p.permite_nota ?? false,
     orden: p.orden ?? 0,
     activo: p.activo,

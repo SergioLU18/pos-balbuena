@@ -557,6 +557,64 @@ begin
 end;
 $$;
 
+-- Reordenar modificadores: recibe los ids en el orden deseado y les asigna
+-- orden = posición (0,1,2,…). Mismo patrón que pos_reordenar_platillos, pero sobre
+-- una tabla propia del POS (no hace falta agrupar por categoría: es una sola lista).
+create or replace function pos_reordenar_modificadores(
+  p_ids           uuid[],
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rest uuid;
+begin
+  update pos_modificadores m
+  set orden = pos.idx
+  from (select id, (ord - 1) as idx from unnest(p_ids) with ordinality as t(id, ord)) pos
+  where m.id = pos.id;
+
+  select restaurante_id into v_rest from pos_modificadores where id = p_ids[1];
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'modificador.reordenar', null, null, null,
+    jsonb_build_object('modificadores', coalesce(array_length(p_ids, 1), 0))
+  );
+end;
+$$;
+
+-- Reordenar extras: mismo patrón que pos_reordenar_modificadores.
+create or replace function pos_reordenar_extras(
+  p_ids           uuid[],
+  p_mesero_id     uuid default null,
+  p_mesero_nombre text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rest uuid;
+begin
+  update pos_extras e
+  set orden = pos.idx
+  from (select id, (ord - 1) as idx from unnest(p_ids) with ordinality as t(id, ord)) pos
+  where e.id = pos.id;
+
+  select restaurante_id into v_rest from pos_extras where id = p_ids[1];
+
+  perform pos_log(
+    v_rest, p_mesero_id, p_mesero_nombre,
+    'extra.reordenar', null, null, null,
+    jsonb_build_object('extras', coalesce(array_length(p_ids, 1), 0))
+  );
+end;
+$$;
+
 -- Reordenar categorías: recibe los NOMBRES en el orden deseado. Sigue siendo un
 -- upsert por (restaurante, nombre) como cuando lo hacía el cliente; lo que cambia
 -- es que ahora ocurre del lado del servidor y deja su línea en la bitácora.
@@ -626,6 +684,8 @@ grant execute on function pos_guardar_modificador(uuid, uuid, text, boolean, int
 grant execute on function pos_borrar_modificador(uuid, uuid, text) to anon, authenticated;
 grant execute on function pos_guardar_extra(uuid, uuid, text, numeric, boolean, int, uuid, text) to anon, authenticated;
 grant execute on function pos_borrar_extra(uuid, uuid, text) to anon, authenticated;
+grant execute on function pos_reordenar_modificadores(uuid[], uuid, text) to anon, authenticated;
+grant execute on function pos_reordenar_extras(uuid[], uuid, text) to anon, authenticated;
 grant execute on function pos_reordenar_categorias(uuid, text[], uuid, text) to anon, authenticated;
 
 -- ── 7. Realtime (un cambio de menú/mesero se refleja en todas las tablets) ──

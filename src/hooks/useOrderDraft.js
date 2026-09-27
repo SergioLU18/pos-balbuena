@@ -32,11 +32,11 @@ export function buildDraftItem(platillo, tierIndex, tortillaId) {
     platilloNombre: tortilla ? `${platillo.nombre} (${tortilla.nombre})` : platillo.nombre,
     tortillaId: tortilla?.id,
     categoria: platillo.categoria,
-    permiteMitades: platillo.permiteMitades,
     permiteNota: platillo.permiteNota,
     tierIndex,
     tier,
-    dividido: false,
+    // El renglón guarda la personalización en `mitades` — un arreglo por si algún día
+    // vuelve a hacer falta más de una — pero hoy siempre trae exactamente una.
     mitades: [{ lado: 'completo', ingredientes: [], modificadores: [] }],
     // extras: agregados de pago a nivel platillo (no por mitad), como [{ nombre, precio }].
     // El precio se guarda en el propio renglón para que calcItemPrecio no dependa de un
@@ -44,22 +44,6 @@ export function buildDraftItem(platillo, tierIndex, tortillaId) {
     extras: [],
     cantidad: 1,
     nota: '',
-  }
-}
-
-/** Activa/desactiva la división en mitades, preservando lo ya elegido en la primera mitad. */
-export function toggleDividido(item) {
-  if (item.dividido) {
-    return { ...item, dividido: false, mitades: [{ ...item.mitades[0], lado: 'completo' }] }
-  }
-  const primera = item.mitades[0] ?? { ingredientes: [], modificadores: [] }
-  return {
-    ...item,
-    dividido: true,
-    mitades: [
-      { lado: 'izquierda', ingredientes: primera.ingredientes ?? [], modificadores: primera.modificadores ?? [] },
-      { lado: 'derecha', ingredientes: [], modificadores: [] },
-    ],
   }
 }
 
@@ -155,12 +139,6 @@ export function useOrderDraft(mesaId) {
     if (!item) return
     const cantidad = Math.max(1, item.cantidad + delta)
     updateDraftItem(mesaId, itemId, { cantidad })
-  }
-
-  function cambiarDividido(itemId) {
-    const item = draft.find((i) => i.id === itemId)
-    if (!item) return
-    updateDraftItem(mesaId, itemId, toggleDividido(item))
   }
 
   function cambiarMitad(itemId, lado, field, value) {
@@ -383,7 +361,6 @@ export function useOrderDraft(mesaId) {
     agregarItemConstruido,
     reemplazarItem,
     cambiarCantidad,
-    cambiarDividido,
     cambiarMitad,
     cambiarNota,
     quitarItem,
