@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { totalDeOrden, ESTADO_LLEVAR } from '../../hooks/useLlevar'
 import { f, minutosTranscurridos } from '../../lib/utils'
 import { nombreGrupo } from '../../lib/mesasUnidas'
+import { sonarConfirmacion } from '../../lib/sonidos'
+import { Button } from '../ui/Button'
+import { IconExito } from '../ui/icons'
 
 const tabBtn = (activo) => ({
   flex: 1, padding: '10px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
@@ -14,12 +17,15 @@ const tabBtn = (activo) => ({
 
 /** Todo lo que sigue abierto ahora mismo — mesas con cuenta y órdenes para llevar sin
  *  entregar — en un solo pop-up, separado por pestaña para no mezclar los dos flujos.
- *  Es solo un directorio para saltar rápido a la cuenta: tocar una fila cierra el
- *  pop-up y navega a esa cuenta, igual que tocar la mesa o la tarjeta de la orden en
- *  sus propias pantallas. */
+ *  Tocar una fila no navega directo: abre un selector ("Ver cuenta" / "Reimprimir
+ *  ticket") porque desde este directorio a veces solo hace falta el ticket, sin entrar
+ *  a la comanda. */
 export function PedidosModal({ mesas, ordenesLlevar, pedidos, onClose }) {
   const navigate = useNavigate()
   const [tab, setTab] = useState('llevar')
+  // Qué fila se tocó, en lo que se elige "Ver cuenta" o "Reimprimir ticket".
+  const [accion, setAccion] = useState(null) // { tipo: 'mesa'|'llevar', item } | null
+  const [reimpreso, setReimpreso] = useState(false)
 
   function abrirMesa(mesa) {
     onClose()
@@ -29,6 +35,19 @@ export function PedidosModal({ mesas, ordenesLlevar, pedidos, onClose }) {
   function abrirLlevar(orden) {
     onClose()
     navigate(`/mesero/llevar/orden/${orden.id}`)
+  }
+
+  function verCuenta() {
+    if (accion?.tipo === 'mesa') abrirMesa(accion.item)
+    else if (accion?.tipo === 'llevar') abrirLlevar(accion.item)
+  }
+
+  // Placeholder: todavía no hay impresora conectada, solo se confirma el gesto. La
+  // conexión real con la impresora se hace después.
+  function reimprimirTicket() {
+    setAccion(null)
+    sonarConfirmacion()
+    setReimpreso(true)
   }
 
   return (
@@ -83,7 +102,7 @@ export function PedidosModal({ mesas, ordenesLlevar, pedidos, onClose }) {
               mesas.map((mesa) => (
                 <button
                   key={mesa.id}
-                  onClick={() => abrirMesa(mesa)}
+                  onClick={() => setAccion({ tipo: 'mesa', item: mesa })}
                   className="jb-fade-up"
                   style={{
                     background: 'var(--jb-ok-bg)', border: '2.5px solid var(--jb-ok)', borderRadius: 18,
@@ -115,7 +134,7 @@ export function PedidosModal({ mesas, ordenesLlevar, pedidos, onClose }) {
               return (
                 <button
                   key={orden.id}
-                  onClick={() => abrirLlevar(orden)}
+                  onClick={() => setAccion({ tipo: 'llevar', item: orden })}
                   className="jb-fade-up"
                   style={{
                     background: estado.fondo, border: `2.5px solid ${estado.borde}`, borderRadius: 18,
@@ -142,6 +161,89 @@ export function PedidosModal({ mesas, ordenesLlevar, pedidos, onClose }) {
             })
           )}
         </div>
+      </div>
+
+      {accion && (
+        <OrdenAccionesModal
+          titulo={accion.tipo === 'mesa'
+            ? `Mesa ${nombreGrupo(accion.item.numero, accion.item.unidas)}`
+            : `L-${accion.item.folio} · ${accion.item.clienteNombre}`}
+          onVerCuenta={verCuenta}
+          onReimprimir={reimprimirTicket}
+          onClose={() => setAccion(null)}
+        />
+      )}
+
+      {reimpreso && (
+        <TicketReimpresoModal onClose={() => setReimpreso(false)} />
+      )}
+    </div>
+  )
+}
+
+/** Elegir qué hacer con una fila de "Pedidos abiertos": ver la comanda (lo de siempre)
+ *  o reimprimir su ticket. Va ENCIMA del pop-up de Pedidos, sin cerrarlo — el clic
+ *  afuera o "Cancelar" regresan a la lista tal cual. */
+function OrdenAccionesModal({ titulo, onVerCuenta, onReimprimir, onClose }) {
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(51,34,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20,
+      }}
+    >
+      <div
+        className="jb-pop"
+        style={{
+          background: '#fff', borderRadius: 26, width: 380, maxWidth: '100%',
+          fontFamily: "'Inter Tight', sans-serif", boxShadow: '0 24px 60px rgba(51,34,42,0.3)',
+          padding: '28px 30px', display: 'flex', flexDirection: 'column', gap: 10,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: 'var(--jb-ink)' }}>{titulo}</h2>
+        <p style={{ margin: '0 0 4px', fontSize: 14, color: 'var(--jb-ink-soft)' }}>¿Qué necesitas hacer?</p>
+
+        <Button variant="primary" size="lg" onClick={onVerCuenta} style={{ width: '100%' }}>
+          Ver cuenta
+        </Button>
+        <Button variant="secondary" size="lg" onClick={onReimprimir} style={{ width: '100%' }}>
+          Reimprimir ticket
+        </Button>
+        <Button variant="ghost" size="md" onClick={onClose} style={{ marginTop: 4 }}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Placeholder de confirmación: por ahora reimprimir solo avisa que "funcionó", sin
+ *  hablar de verdad con ninguna impresora — eso se conecta más adelante. */
+function TicketReimpresoModal({ onClose }) {
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(51,34,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20,
+      }}
+    >
+      <div
+        className="jb-pop"
+        style={{
+          background: '#fff', borderRadius: 26, width: 380, maxWidth: '100%', textAlign: 'center',
+          fontFamily: "'Inter Tight', sans-serif", boxShadow: '0 24px 60px rgba(51,34,42,0.3)',
+          padding: '32px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        }}
+      >
+        <IconExito />
+        <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--jb-ink)' }}>
+          Tu ticket se ha reimpreso con éxito
+        </p>
+        <Button size="md" onClick={onClose} style={{ width: '100%' }}>
+          Entendido
+        </Button>
       </div>
     </div>
   )

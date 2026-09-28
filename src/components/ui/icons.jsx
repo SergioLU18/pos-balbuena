@@ -38,3 +38,15 @@ export function IconParaLlevar({ size = 20 }) {
     </svg>
   )
 }
+
+/** Insignia de "listo/hecho": cuadrado verde con una palomita blanca — a diferencia de
+ *  los de arriba, trae su propio color fijo (no `currentColor`) porque es una insignia
+ *  de estado, no un ícono que vaya a heredar el color del botón que lo contiene. */
+export function IconExito({ size = 56 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 56 56" fill="none">
+      <rect width="56" height="56" rx="16" fill="var(--jb-ok)" />
+      <path d="M16 29.5L23.5 37L40 19" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
