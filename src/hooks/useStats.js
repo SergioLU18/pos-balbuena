@@ -69,6 +69,37 @@ export function useVentasSerie(desde, hasta) {
   return { datos: datos ?? [], cargando, error }
 }
 
+/** Corte de caja de un horario específico (no del día calendario completo): salón +
+ *  para llevar juntos, por método de pago, más propina (ver supabase/cierre_dia.sql).
+ *  A diferencia de los demás hooks de este archivo, este no se dispara solo al
+ *  cambiar `desde`/`hasta` — lo llama el propio modal de "Cierre del Día" con
+ *  `calcular()`, para que abrir el modal no dispare la consulta antes de que el
+ *  admin confirme el horario. */
+export function useCierreDia() {
+  const restauranteId = usePosStore((s) => s.restauranteId)
+  const [estado, setEstado] = useState({ datos: null, cargando: false, error: null })
+
+  function calcular(desde, hasta) {
+    if (IS_MOCK || !restauranteId) return
+    setEstado({ datos: null, cargando: true, error: null })
+    sb.rpc('pos_stats_cierre_dia', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[stats] pos_stats_cierre_dia falló:', error)
+          setEstado({ datos: null, cargando: false, error: error.message })
+          return
+        }
+        setEstado({ datos: data, cargando: false, error: null })
+      })
+  }
+
+  function limpiar() {
+    setEstado({ datos: null, cargando: false, error: null })
+  }
+
+  return { ...estado, calcular, limpiar }
+}
+
 /** Frecuencia de compra del padrón para llevar — de siempre, no por periodo (ver
  *  supabase/stats.sql: es la única identidad de cliente que el POS conoce). */
 export function useFrecuenciaClientesStats() {

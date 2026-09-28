@@ -8,6 +8,7 @@ import { DiaModal } from '../../components/admin/DiaModal'
 import { GRUPOS, describir, esSensible, grupoDe, importe, renglones, sujeto } from '../../lib/eventos'
 import { Section } from '../../components/admin/stats/Section'
 import { EstadisticasSection } from '../../components/admin/stats/EstadisticasSection'
+import { CierreDiaModal } from '../../components/admin/CierreDiaModal'
 
 const FILTROS = [['', 'Todo'], ['operacion', 'Operación'], ['menu', 'Menú'], ['config', 'Configuración']]
 
@@ -44,6 +45,7 @@ export default function AdminBitacoraPage() {
   const [meseroId, setMeseroId] = useState('')
   const [grupo, setGrupo] = useState('')
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const [mostrandoCierre, setMostrandoCierre] = useState(false)
   const bitacora = useBitacora({ dia, meseroId: meseroId || null, grupo: grupo || null })
 
   // Esc cierra la pantalla completa — es un overlay que tapa todo lo demás, y
@@ -75,12 +77,42 @@ export default function AdminBitacoraPage() {
         </div>
       </Section>
 
+      <CierreDiaSection onAbrir={() => setMostrandoCierre(true)} />
+
       <EstadisticasSection />
 
       {pantallaCompleta && (
         <BitacoraPantallaCompleta filtros={filtros} bitacora={bitacora} onCerrar={() => setPantallaCompleta(false)} />
       )}
+
+      {mostrandoCierre && (
+        <CierreDiaModal onClose={() => setMostrandoCierre(false)} />
+      )}
     </div>
+  )
+}
+
+function CierreDiaSection({ onAbrir }) {
+  return (
+    <button
+      type="button"
+      onClick={onAbrir}
+      className="flex items-center justify-between"
+      style={{
+        width: '100%', textAlign: 'left', cursor: 'pointer',
+        background: 'var(--jb-pink)', border: '2px solid var(--jb-pink)', borderRadius: 20,
+        padding: '18px 20px', fontFamily: "'Inter Tight', sans-serif", gap: 12,
+        boxShadow: '0 6px 18px rgba(219,39,119,0.25)',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: '#fff' }}>Cierre del Día</h3>
+        <p style={{ margin: '3px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4 }}>
+          Corte de caja de un horario: cuentas, Efectivo/Tarjeta/Tali y propina.
+        </p>
+      </div>
+      <span aria-hidden style={{ fontSize: 24, color: '#fff', flexShrink: 0 }}>›</span>
+    </button>
   )
 }
 

@@ -67,12 +67,14 @@ as $$
       and accion = 'mesa.cerrar'
       and ocurrido_at >= p_desde and ocurrido_at < p_hasta
   ),
+  -- Desde llevar_pagos.sql, cobrar y entregar una orden para llevar es un solo paso
+  -- que registra 'llevar.pagar' (no 'llevar.cerrar' con estado='entregada', que ahora
+  -- solo se usa para cancelaciones — ver llevar_canceladas abajo).
   llevar_entregadas as (
     select (detalle->>'total')::numeric as total
     from pos_eventos
     where restaurante_id = p_restaurante_id
-      and accion = 'llevar.cerrar'
-      and coalesce(detalle->>'estado', 'entregada') = 'entregada'
+      and accion = 'llevar.pagar'
       and ocurrido_at >= p_desde and ocurrido_at < p_hasta
   ),
   llevar_canceladas as (

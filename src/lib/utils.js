@@ -63,3 +63,16 @@ export function duracionMin(inicioIso, finIso) {
   const min = Math.floor((new Date(finIso).getTime() - new Date(inicioIso).getTime()) / 60000)
   return min < 1 ? '<1 min' : `${min} min`
 }
+
+/** "4:00 PM" a partir de `{ h: 1-12, m, ampm: 'AM'|'PM' }` — para el botón que abre
+ *  HoraModal. */
+export function formatearHora12({ h, m, ampm }) {
+  return `${h}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+/** `{ h, m, ampm }` (hora en 12h, la que usa HoraModal) a la hora 24h que espera
+ *  `new Date(...)`. */
+export function hora24(h12, ampm) {
+  if (ampm === 'AM') return h12 === 12 ? 0 : h12
+  return h12 === 12 ? 12 : h12 + 12
+}
