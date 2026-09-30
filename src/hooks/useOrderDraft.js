@@ -4,6 +4,7 @@ import { sb } from '../lib/supabase'
 import { IS_MOCK } from '../lib/config'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
+import { empaqueTexto } from '../lib/empaque'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore, useMesaPagadaStore } from '../store/appStore'
 import { firma } from '../lib/bitacora'
 import { cargarTodo } from './usePosData'
@@ -56,14 +57,15 @@ export function setMitadField(item, lado, field, value) {
 }
 
 /** Precio unitario del renglón: precio del tier + recargos de los ingredientes elegidos
- *  (ambas mitades) + los extras de pago del platillo. */
+ *  (ambas mitades) + los extras de pago del platillo + el ajuste de empaque (solo para
+ *  llevar: + desechable, − tupper; ver lib/empaque.js). */
 export function calcItemPrecio(item) {
   const recargos = item.mitades.reduce(
     (sum, m) => sum + m.ingredientes.reduce((s, ing) => s + extraCost(ing), 0),
     0,
   )
   const extras = (item.extras ?? []).reduce((s, e) => s + (e.precio ?? 0), 0)
-  return item.tier.precio + recargos + extras
+  return item.tier.precio + recargos + extras + Number(item.ajusteEmpaque ?? 0)
 }
 
 export function calcSubtotal(items) {
@@ -79,6 +81,8 @@ export function nombreItem(item) {
     .filter((t) => t && !/Sin personalizar$/.test(t))
   const extras = extrasTexto(item)
   if (extras) partes.push(extras)
+  const empaque = empaqueTexto(item)
+  if (empaque) partes.push(empaque)
   return partes.length ? `${base} (${partes.join(' / ')})` : base
 }
 

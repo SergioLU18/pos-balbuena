@@ -409,6 +409,18 @@ export const usePedidosStore = create(
           ),
         })),
 
+      // Sin el candado de 'pendiente' de arriba: el empaque de un renglón para llevar se
+      // puede cambiar mientras la orden siga abierta, aunque cocina ya lo haya tomado
+      // (ver pos_empaque_item_llevar).
+      actualizarItemPedido: (pedidoId, itemId, patch) =>
+        set((s) => ({
+          pedidos: s.pedidos.map((p) =>
+            p.id === pedidoId
+              ? { ...p, items: p.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) }
+              : p,
+          ),
+        })),
+
       quitarItemPedido: (pedidoId, itemId) =>
         set((s) => ({
           pedidos: s.pedidos

@@ -9,6 +9,7 @@ import {
 } from '../store/appStore'
 import { calcItemPrecio, calcSubtotal, nombreItem, sumaCuenta } from './useOrderDraft'
 import { cargarTodo } from './usePosData'
+import { conEmpaque } from '../lib/empaque'
 
 // Referencia estable para el fallback del selector (ver la nota en useOrderDraft: un
 // array literal nuevo en cada llamada mete a useSyncExternalStore en un loop).
@@ -39,6 +40,7 @@ export function useOrdenLlevar(ordenId) {
   const meseros = usePosStore((s) => s.meseros)
   const agregarPedido = usePedidosStore((s) => s.agregarPedido)
   const actualizarCantidadItemPedido = usePedidosStore((s) => s.actualizarCantidadItemPedido)
+  const actualizarItemPedido = usePedidosStore((s) => s.actualizarItemPedido)
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const eliminarPedidosDeOrdenLlevar = usePedidosStore((s) => s.eliminarPedidosDeOrdenLlevar)
   const pedidos = usePedidosStore((s) => s.pedidos).filter((p) => p.ordenLlevarId === ordenId)
@@ -62,8 +64,17 @@ export function useOrdenLlevar(ordenId) {
   // ticket los pinta igual que los de una cuenta de mesa (ver OrderTicket).
   const enviados = pedidos.flatMap((p) => p.items ?? [])
 
+  // Todo lo que se pide para llevar, bebidas incluidas, entra en desechable (lo normal);
+  // el mesero lo cambia a tupper en el ticket, renglón por renglón.
   function agregarItemConstruido(item) {
-    addDraftItem(ordenId, item)
+    addDraftItem(ordenId, conEmpaque(item, 'plastico'))
+  }
+
+  function cambiarEmpaque(itemId, empaque) {
+    const item = draft.find((i) => i.id === itemId)
+    if (!item?.empaque) return
+    const { empaque: e, ajusteEmpaque } = conEmpaque(item, empaque)
+    updateDraftItem(ordenId, itemId, { empaque: e, ajusteEmpaque })
   }
 
   function cambiarCantidad(itemId, delta) {
@@ -169,6 +180,39 @@ export function useOrdenLlevar(ordenId) {
       })
   }
 
+  /** Cambia el empaque de un renglón YA enviado (p. ej. el cliente llegó con su tupper
+   *  a recoger). A diferencia de la cantidad, se permite en cualquier columna de cocina
+   *  mientras la orden no se cobre: no cambia qué se cocina, solo cuánto se cobra. */
+  function cambiarEmpaqueEnviado(pedidoId, itemId, empaque) {
+    const pedido = pedidos.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (!item?.empaque || item.empaque === empaque) return
+    const nuevo = conEmpaque(item, empaque)
+    const patch = {
+      empaque: nuevo.empaque,
+      ajusteEmpaque: nuevo.ajusteEmpaque,
+      nombre: nombreItem(nuevo),
+      precio_unitario: Number(item.precio_unitario) - Number(item.ajusteEmpaque ?? 0) + nuevo.ajusteEmpaque,
+    }
+    actualizarItemPedido(pedidoId, itemId, patch)
+    if (IS_MOCK) return
+
+    sb.rpc('pos_empaque_item_llevar', {
+      p_pedido_id: pedidoId,
+      p_item_id: itemId,
+      p_empaque: patch.empaque,
+      p_ajuste: patch.ajusteEmpaque,
+      p_nombre: patch.nombre,
+      ...firma(),
+    }).then(({ error }) => {
+      if (error) {
+        console.error('[llevar] cambiarEmpaqueEnviado falló:', error)
+        avisarError('no se pudo cambiar el empaque', 'El platillo se quedó como estaba')
+        recargarDesdeBackend()
+      }
+    })
+  }
+
   /** Cobra y entrega la orden en un solo paso: de 'abierta' a 'entregada'. Congela
    *  renglones y total, guarda el método de pago, y sus comandas salen del tablero de
    *  cocina — mismo momento que antes hacía "Entregar y cerrar", solo que ahora
@@ -258,6 +302,8 @@ export function useOrdenLlevar(ordenId) {
     subtotalDraft: calcSubtotal(draft),
     subtotalEnviado: sumaCuenta(enviados),
     agregarItemConstruido,
+    cambiarEmpaque,
+    cambiarEmpaqueEnviado,
     cambiarCantidad,
     quitarItem,
     enviarACocina,

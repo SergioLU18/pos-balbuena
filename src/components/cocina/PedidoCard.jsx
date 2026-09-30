@@ -43,6 +43,11 @@ export function ItemLine({ item }) {
       {item.nota && (
         <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--jb-pink-dark)' }}>“{item.nota}”</p>
       )}
+      {/* Para llevar, lo normal es el desechable; solo se avisa cuando NO lo es, que es
+          cuando cocina tiene que hacer algo distinto (servir en el recipiente del cliente). */}
+      {item.empaque === 'tupper' && (
+        <p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 900, color: 'var(--jb-teal)' }}>♻ Va en su tupper</p>
+      )}
     </div>
   )
 }

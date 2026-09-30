@@ -6,6 +6,7 @@ import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
 import { useVertical } from '../../hooks/useVertical'
 import { claveRenglonPorNombre } from '../../lib/renglones'
+import { EMPAQUES } from '../../lib/empaque'
 
 function DescripcionItem({ item }) {
   const extras = extrasTexto(item)
@@ -35,6 +36,35 @@ const ESTADO_LABEL = {
   entregado: { texto: 'Entregado', color: 'var(--jb-gray)' },
 }
 
+// Desechable / tupper de un renglón para llevar. Solo se pinta si el renglón lleva
+// empaque (los de mesa no, y los enviados antes de que existiera) y el flujo pasó con
+// qué cambiarlo.
+function EmpaqueToggle({ item, onChange }) {
+  if (!item.empaque || !onChange) return null
+  return (
+    <div role="group" aria-label="Empaque" className="flex" style={{ marginTop: 8, gap: 6 }}>
+      {Object.entries(EMPAQUES).map(([id, { texto, ajuste }]) => {
+        const activo = item.empaque === id
+        return (
+          <button
+            key={id}
+            aria-pressed={activo}
+            onClick={() => { if (!activo) onChange(id) }}
+            style={{
+              flex: 1, padding: '6px 8px', borderRadius: 10, cursor: activo ? 'default' : 'pointer',
+              fontFamily: "'Inter Tight', sans-serif", fontSize: 12, fontWeight: 800,
+              border: `2px solid ${activo ? 'var(--jb-teal)' : 'var(--jb-line)'}`,
+              background: activo ? 'var(--jb-teal)' : '#fff', color: activo ? '#fff' : 'var(--jb-ink-soft)',
+            }}
+          >
+            {texto} {ajuste < 0 ? '−' : '+'}{f(Math.abs(ajuste))}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove }) {
   return (
     <div className="flex items-center justify-between" style={{ marginTop: 8, gap: 8 }}>
@@ -57,7 +87,7 @@ function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove }) {
   )
 }
 
-function DraftRow({ item, onQty, onEdit, onRemove }) {
+function DraftRow({ item, onQty, onEdit, onRemove, onEmpaque }) {
   const precio = calcItemPrecio(item)
   return (
     <div className="jb-fade-up" style={{ padding: '12px 0', borderBottom: '1.5px solid var(--jb-line)' }}>
@@ -76,6 +106,7 @@ function DraftRow({ item, onQty, onEdit, onRemove }) {
         </div>
         <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--jb-ink)', flexShrink: 0 }}>{f(precio * item.cantidad)}</span>
       </div>
+      <EmpaqueToggle item={item} onChange={onEmpaque ? (e) => onEmpaque(item.id, e) : undefined} />
       <CantidadControles
         cantidad={item.cantidad}
         onDec={() => onQty(item.id, -1)}
@@ -87,7 +118,7 @@ function DraftRow({ item, onQty, onEdit, onRemove }) {
   )
 }
 
-function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove }) {
+function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove, onEmpaque }) {
   // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
   // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
@@ -129,6 +160,12 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
       <span style={{ display: 'block', marginTop: 4, fontSize: 11, fontWeight: 700, color: editado ? 'var(--jb-pink-dark)' : (estadoLabel?.color ?? 'var(--jb-ok)') }}>
         {editado ? `Cambio sin enviar (antes ${enviada})` : (estadoLabel?.texto ?? 'Enviado a cocina ✓')}
       </span>
+      {/* El empaque sí se puede cambiar aunque cocina ya haya tomado la comanda: no cambia
+          qué se cocina, solo cuánto se cobra (ver cambiarEmpaqueEnviado). */}
+      <EmpaqueToggle
+        item={item}
+        onChange={onEmpaque && pedido ? (e) => onEmpaque(pedido.id, pedidoItemId, e) : undefined}
+      />
       {editable && (
         <CantidadControles
           cantidad={cantidad}
@@ -166,7 +203,7 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
 // lo originó — de eso dependen los −/+, el "Editar" y el "Quitar" de un renglón ya
 // enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
 // (ver src/lib/renglones.js).
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEmpaque, onEmpaqueEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   const vertical = useVertical()
 
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
@@ -241,6 +278,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
               onRevert={revertQty}
               onEdit={onEditarEnviado}
               onRemove={quitarEnviado}
+              onEmpaque={onEmpaqueEnviado}
             />
           )
         })}
@@ -257,6 +295,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
               onQty={onQty}
               onEdit={puedeEditarPlatillo?.(item.platilloId) ? onEditarDraft : undefined}
               onRemove={onRemove}
+              onEmpaque={onEmpaque}
             />
           ))
         )}

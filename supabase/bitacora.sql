@@ -66,6 +66,8 @@ create index if not exists pos_eventos_accion_idx       on pos_eventos (accion, 
 --   orden.enviar        se mandaron platillos a cocina (mesa o para llevar)
 --   item.editar         cambió la cantidad de un renglón YA enviado
 --   item.eliminar       se quitó un renglón YA enviado
+--   item.empaque        un renglón para llevar pasó de desechable a tupper o al revés
+--                       (llevar_empaque.sql)
 --   cocina.estado       una comanda cambió de columna en el tablero
 --   mesa.cerrar         se cerró la cuenta de una mesa (trae el ticket congelado)
 --   mesa.unir           se juntó una mesa a otra (sobre la principal; la cuenta de la

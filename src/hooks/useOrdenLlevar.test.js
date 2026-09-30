@@ -55,7 +55,7 @@ describe('useOrdenLlevar — enviar a cocina', () => {
 
     const [item] = usePedidosStore.getState().pedidos[0].items
     expect(item.nombre).toContain('Sope')
-    expect(item.precio_unitario).toBe(110)
+    expect(item.precio_unitario).toBe(115) // 110 del menú + 5 del desechable
   })
 
   it('vacía el draft y deja el renglón del lado de "ya enviado"', () => {
@@ -66,7 +66,7 @@ describe('useOrdenLlevar — enviar a cocina', () => {
 
     expect(result.current.draft).toHaveLength(0)
     expect(result.current.enviados).toHaveLength(1)
-    expect(result.current.subtotalEnviado).toBe(110)
+    expect(result.current.subtotalEnviado).toBe(115)
   })
 })
 
@@ -80,7 +80,7 @@ describe('useOrdenLlevar — cobrar y entregar la orden en un solo paso', () => 
 
     const [orden] = useLlevarStore.getState().ordenes
     expect(orden.estado).toBe('entregada')
-    expect(orden.total).toBe(110)
+    expect(orden.total).toBe(115)
     expect(orden.items).toHaveLength(1) // la copia que sostiene el historial del cliente
     expect(orden.metodoPago).toBe('efectivo')
     expect(orden.closedAt).toBeTruthy()
@@ -98,7 +98,7 @@ describe('useOrdenLlevar — cancelar la orden', () => {
 
     const [orden] = useLlevarStore.getState().ordenes
     expect(orden.estado).toBe('cancelada')
-    expect(orden.total).toBe(110)
+    expect(orden.total).toBe(115)
     expect(orden.items).toHaveLength(1) // la copia que sostiene el historial del cliente
     expect(orden.closedAt).toBeTruthy()
     expect(usePedidosStore.getState().pedidos).toHaveLength(0)
@@ -135,5 +135,53 @@ describe('useOrdenLlevar — descartar una orden vacía', () => {
 
     expect(useLlevarStore.getState().ordenes[0].estado).toBe('abierta')
     expect(usePedidosStore.getState().pedidos).toHaveLength(1)
+  })
+})
+
+describe('useOrdenLlevar — empaque (desechable +$5 / tupper −$5, por pieza)', () => {
+  const bebida = MENU.find((p) => p.id === 'bebida')
+
+  it('todo entra en desechable, bebidas incluidas', () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(bebida, 0)) })
+    rerender()
+
+    const [platillo, refresco] = result.current.draft
+    expect(platillo.empaque).toBe('plastico')
+    expect(refresco.empaque).toBe('plastico')
+    expect(result.current.subtotalDraft).toBe(115 + 45)
+  })
+
+  it('con tupper se cobra el precio del menú menos 5, por cada pieza', () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    rerender()
+    const id = result.current.draft[0].id
+    act(() => { result.current.cambiarCantidad(id, 1) })
+    act(() => { result.current.cambiarEmpaque(id, 'tupper') })
+    rerender()
+
+    expect(result.current.subtotalDraft).toBe(2 * 105)
+    act(() => { result.current.enviarACocina() })
+    const [item] = usePedidosStore.getState().pedidos[0].items
+    expect(item.precio_unitario).toBe(105)
+    expect(item.nombre).toContain('tupper') // el renglón congelado explica el precio
+  })
+
+  it('el empaque de un renglón ya enviado se puede cambiar aunque cocina ya lo haya tomado', () => {
+    const { result, rerender } = renderHook(() => useOrdenLlevar(ORDEN_ID))
+    act(() => { result.current.agregarItemConstruido(buildDraftItem(sope, I_SENCILLO)) })
+    act(() => { result.current.enviarACocina() })
+    const [pedido] = usePedidosStore.getState().pedidos
+    usePedidosStore.setState({ pedidos: [{ ...pedido, estado: 'preparando' }] })
+    rerender()
+    act(() => { result.current.cambiarEmpaqueEnviado(pedido.id, pedido.items[0].id, 'tupper') })
+    rerender()
+
+    const [item] = usePedidosStore.getState().pedidos[0].items
+    expect(item.empaque).toBe('tupper')
+    expect(item.precio_unitario).toBe(105)
+    expect(result.current.subtotalEnviado).toBe(105)
   })
 })

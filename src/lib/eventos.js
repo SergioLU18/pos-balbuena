@@ -18,6 +18,7 @@ const GRUPO_DE = {
   'orden.enviar': 'operacion',
   'item.editar': 'operacion',
   'item.eliminar': 'operacion',
+  'item.empaque': 'operacion',
   'cocina.estado': 'operacion',
   'mesa.cerrar': 'operacion',
   'mesa.unir': 'operacion',
@@ -132,6 +133,9 @@ export function describir(ev) {
     case 'orden.enviar': return `Mandó ${plural(piezas(d.items), 'platillo', 'platillos')} a cocina`
     case 'item.editar': return `Cambió ${d.platillo} de ${d.de} a ${d.a}`
     case 'item.eliminar': return `Quitó ${d.cantidad}× ${d.platillo} ya enviado`
+    case 'item.empaque': return d.a === 'tupper'
+      ? `Cambió ${d.platillo} a su tupper`
+      : `Cambió ${d.platillo} a desechable`
     case 'cocina.estado': return `Movió la comanda de ${COLUMNA[d.de] ?? d.de} a ${COLUMNA[d.a] ?? d.a}`
     case 'mesa.cerrar': return d.comandas ? `Cerró la cuenta (${plural(d.comandas, 'comanda', 'comandas')})` : 'Cerró la cuenta'
     // El sujeto es la principal ("Mesa 3"); la secundaria va en la frase. El dinero que
@@ -186,6 +190,7 @@ export function importe(ev) {
   switch (ev.accion) {
     case 'orden.enviar': return num(d.importe)
     case 'item.eliminar': return d.importe == null ? null : -Number(d.importe)
+    case 'item.empaque': return num(d.importe)
     case 'mesa.cerrar':
     case 'llevar.pagar':
     case 'llevar.cerrar': return num(d.total)

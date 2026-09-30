@@ -28,7 +28,7 @@ export default function LlevarOrdenPage() {
 
   const {
     orden, draft, pedidos, enviados, subtotalDraft, subtotalEnviado,
-    agregarItemConstruido, cambiarCantidad, quitarItem, enviarACocina, enviando,
+    agregarItemConstruido, cambiarEmpaque, cambiarEmpaqueEnviado, cambiarCantidad, quitarItem, enviarACocina, enviando,
     fijarCantidadEnviado, quitarItemEnviado, pagarOrden, cancelarOrden, descartarOrden,
   } = useOrdenLlevar(ordenId)
 
@@ -198,6 +198,8 @@ export default function LlevarOrdenPage() {
           onRemove={quitarItem}
           onFijarEnviado={fijarCantidadEnviado}
           onRemoveEnviado={quitarItemEnviado}
+          onEmpaque={cambiarEmpaque}
+          onEmpaqueEnviado={cambiarEmpaqueEnviado}
           onEnviar={enviarACocina}
           enviando={enviando}
         />
