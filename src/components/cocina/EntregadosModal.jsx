@@ -68,7 +68,7 @@ export function EntregadosModal({ pedidos, onClose }) {
                   </span>
                 </div>
                 <div>
-                  {p.items.map((item) => <ItemLine key={item.id} item={item} />)}
+                  {p.items.map((item) => <ItemLine key={item.id} item={item} esLlevar={p.tipo === 'llevar'} />)}
                 </div>
                 <div className="flex items-center flex-wrap" style={{ gap: 14, marginTop: 8, paddingTop: 8, borderTop: '1.5px dashed var(--jb-line)' }}>
                   <TiempoTag label="En espera:" valor={duracionMin(p.enviadoAt, p.preparandoAt)} />

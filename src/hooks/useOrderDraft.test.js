@@ -122,3 +122,4 @@ describe('useOrderDraft — reabrir una mesa pagada', () => {
     expect(result.current.draft).toHaveLength(1)
   })
 })
+

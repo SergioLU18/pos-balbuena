@@ -8,6 +8,7 @@ import { IngredienteChecklist } from './IngredienteChecklist'
 import { ModificadorToggles } from './ModificadorToggles'
 import { ExtrasToggles, ExtraLibreForm } from './ExtrasToggles'
 import { buildDraftItem, setMitadField, calcItemPrecio } from '../../hooks/useOrderDraft'
+import { EMPAQUE_MONTO, conEmpaque } from '../../lib/empaque'
 
 // Reconstruye un renglón a partir del platillo actual del menú (para que el tier
 // tome precios frescos) y le vuelve a poner lo que el mesero ya había elegido.
@@ -27,8 +28,14 @@ function rehidratarItem(platillo, prev) {
   }
 }
 
-export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], itemInicial = null, onConfirm, onClose }) {
+// `permiteParaLlevar`: solo en una MESA, donde un platillo suelto puede pedirse para
+// llevar (+$5 del desechable). En una orden para llevar no se ofrece: ahí todo lleva
+// empaque y el tupper se elige en el ticket (ver useOrdenLlevar).
+export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores, extras = [], itemInicial = null, permiteParaLlevar = false, onConfirm, onClose }) {
   const editando = itemInicial != null
+  // Estado aparte y no dentro de `item`: cambiar de tier o de tortilla reconstruye el
+  // renglón desde cero, y se llevaría la marca con él.
+  const [paraLlevar, setParaLlevar] = useState(itemInicial?.empaque != null)
   const [item, setItem] = useState(() => (editando ? rehidratarItem(platillo, itemInicial) : buildDraftItem(platillo, 0)))
   const [error, setError] = useState(null)
 
@@ -66,10 +73,13 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
       setError(`Elige ${cuantos} antes de agregar (llevas ${mitad.ingredientes.length}).`)
       return
     }
-    onConfirm(item)
+    onConfirm(conPara(item))
   }
 
-  const precio = calcItemPrecio(item)
+  // Con permiteParaLlevar el renglón sale SIEMPRE con su empaque resuelto (puesto o
+  // quitado), para que reeditar uno que iba para llevar y desmarcarlo sí lo quite.
+  const conPara = (it) => (permiteParaLlevar ? conEmpaque(it, paraLlevar ? 'plastico' : null) : it)
+  const precio = calcItemPrecio(conPara(item))
 
   // Solo los modificadores y extras de CATÁLOGO que este platillo declara (el sitio real
   // los asocia por platillo: una quesadilla no tiene frijol que quitar, una bebida no
@@ -195,6 +205,23 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             >
               {error}
             </p>
+          )}
+          {permiteParaLlevar && (
+            <button
+              aria-pressed={paraLlevar}
+              onClick={() => setParaLlevar((v) => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '12px 16px', borderRadius: 14, cursor: 'pointer',
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 17, fontWeight: 800,
+                border: `2.5px solid ${paraLlevar ? 'var(--jb-pink)' : 'var(--jb-line)'}`,
+                background: paraLlevar ? 'var(--jb-pink-light)' : '#fff',
+                color: paraLlevar ? 'var(--jb-pink-dark)' : 'var(--jb-ink-soft)',
+              }}
+            >
+              <span>{paraLlevar ? '☑' : '☐'} 🥡 Para llevar</span>
+              <span>+{f(EMPAQUE_MONTO)} c/u</span>
+            </button>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div className="flex items-center" style={{ gap: 0, border: '2.5px solid var(--jb-line)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>

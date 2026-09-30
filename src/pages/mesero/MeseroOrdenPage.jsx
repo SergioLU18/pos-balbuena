@@ -257,6 +257,7 @@ export default function MeseroOrdenPage() {
           ingredientes={ingredientes}
           modificadores={modificadores}
           extras={extras}
+          permiteParaLlevar
           onConfirm={confirmarPlatillo}
           onClose={() => setPlatilloEnConfig(null)}
         />
@@ -269,6 +270,7 @@ export default function MeseroOrdenPage() {
           ingredientes={ingredientes}
           modificadores={modificadores}
           extras={extras}
+          permiteParaLlevar
           onConfirm={confirmarEdicion}
           onClose={() => setEditando(null)}
         />

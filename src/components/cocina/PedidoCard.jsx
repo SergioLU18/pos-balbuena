@@ -26,7 +26,7 @@ function urgencia(inicioAt) {
   return { border: 'var(--jb-line)', bg: '#fff', text: 'var(--jb-gray)' }
 }
 
-export function ItemLine({ item }) {
+export function ItemLine({ item, esLlevar = false }) {
   return (
     <div style={{ padding: '10px 0', borderBottom: '1.5px dashed var(--jb-line)' }}>
       <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--jb-ink)' }}>
@@ -43,10 +43,14 @@ export function ItemLine({ item }) {
       {item.nota && (
         <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--jb-pink-dark)' }}>“{item.nota}”</p>
       )}
-      {/* Para llevar, lo normal es el desechable; solo se avisa cuando NO lo es, que es
-          cuando cocina tiene que hacer algo distinto (servir en el recipiente del cliente). */}
+      {/* En una comanda para llevar lo normal es el desechable y no se repite en cada
+          renglón; solo se avisa lo que cambia qué hace cocina: el tupper del cliente, o
+          un platillo de MESA que se va para llevar. */}
       {item.empaque === 'tupper' && (
         <p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 900, color: 'var(--jb-teal)' }}>♻ Va en su tupper</p>
+      )}
+      {item.empaque === 'plastico' && !esLlevar && (
+        <p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 900, color: 'var(--jb-pink-dark)' }}>🥡 Para llevar</p>
       )}
     </div>
   )
@@ -105,7 +109,7 @@ export function PedidoCard({ pedido, onAvanzar }) {
       </div>
 
       <div>
-        {pedido.items.map((item) => <ItemLine key={item.id} item={item} />)}
+        {pedido.items.map((item) => <ItemLine key={item.id} item={item} esLlevar={esLlevar} />)}
       </div>
 
       <Button variant={accion.variant} onClick={() => onAvanzar(pedido.id, accion.estado)} style={{ width: '100%' }}>

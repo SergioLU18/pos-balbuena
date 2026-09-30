@@ -6,7 +6,7 @@ import { ConfirmModal } from '../ui/ConfirmModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
 import { useVertical } from '../../hooks/useVertical'
 import { claveRenglonPorNombre } from '../../lib/renglones'
-import { EMPAQUES } from '../../lib/empaque'
+import { EMPAQUES, empaqueTexto } from '../../lib/empaque'
 
 function DescripcionItem({ item }) {
   const extras = extrasTexto(item)
@@ -36,11 +36,14 @@ const ESTADO_LABEL = {
   entregado: { texto: 'Entregado', color: 'var(--jb-gray)' },
 }
 
-// Desechable / tupper de un renglón para llevar. Solo se pinta si el renglón lleva
-// empaque (los de mesa no, y los enviados antes de que existiera) y el flujo pasó con
-// qué cambiarlo.
+// Desechable / tupper de un renglón de una orden para llevar. Sin `onChange` (un
+// platillo de mesa marcado para llevar en el modal, que ya no se cambia) solo se lee.
 function EmpaqueToggle({ item, onChange }) {
-  if (!item.empaque || !onChange) return null
+  if (!onChange) {
+    const texto = empaqueTexto(item)
+    return texto ? <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 700, color: 'var(--jb-teal)' }}>{texto}</p> : null
+  }
+  if (!item.empaque) return null
   return (
     <div role="group" aria-label="Empaque" className="flex" style={{ marginTop: 8, gap: 6 }}>
       {Object.entries(EMPAQUES).map(([id, { texto, ajuste }]) => {

@@ -7,7 +7,7 @@ import { MENU } from '../../lib/mockMenu'
 import { f } from '../../lib/utils'
 
 // Render helper con los catálogos globales (como los pasa MeseroOrdenPage vía useMenu).
-function renderModal(platillo, onConfirm = () => {}) {
+function renderModal(platillo, onConfirm = () => {}, extra = {}) {
   let props
   function Harness() {
     const { ingredientes, modificadores, extras } = useMenu()
@@ -20,6 +20,7 @@ function renderModal(platillo, onConfirm = () => {}) {
         extras={extras}
         onConfirm={onConfirm}
         onClose={() => {}}
+        {...extra}
       />
     )
   }
@@ -125,5 +126,36 @@ describe('mockMenu — integridad de las allowlists', () => {
       for (const m of p.modificadores ?? []) expect(modSet.has(m)).toBe(true)
       for (const e of p.extras ?? []) expect(extraSet.has(e)).toBe(true)
     }
+  })
+})
+
+describe('ConfigurarPlatilloModal — un platillo de mesa para llevar', () => {
+  const refresco = dish('bebida') // $40, sin ingredientes que elegir
+
+  it('solo se ofrece en la mesa (permiteParaLlevar)', () => {
+    renderModal(refresco)
+    expect(screen.queryByText(/Para llevar/)).toBeNull()
+  })
+
+  it('marcado, el renglón sale en desechable y el botón ya cobra los $5', async () => {
+    const onConfirm = vi.fn()
+    renderModal(refresco, onConfirm, { permiteParaLlevar: true })
+    await userEvent.click(screen.getByRole('button', { name: /Para llevar/ }))
+    await userEvent.click(screen.getByRole('button', { name: `Agregar · ${f(45)}` }))
+
+    const item = onConfirm.mock.calls[0][0]
+    expect(item.empaque).toBe('plastico')
+    expect(item.ajusteEmpaque).toBe(5)
+  })
+
+  it('desmarcarlo al reeditar le quita el empaque', async () => {
+    const onConfirm = vi.fn()
+    const itemInicial = { tierIndex: 0, cantidad: 1, empaque: 'plastico', ajusteEmpaque: 5 }
+    renderModal(refresco, onConfirm, { permiteParaLlevar: true, itemInicial })
+    await userEvent.click(screen.getByRole('button', { name: /Para llevar/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Guardar cambios/ }))
+
+    expect(onConfirm.mock.calls[0][0].empaque).toBeUndefined()
+    expect(onConfirm.mock.calls[0][0].ajusteEmpaque).toBeUndefined()
   })
 })
