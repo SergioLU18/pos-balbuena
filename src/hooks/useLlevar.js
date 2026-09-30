@@ -1,8 +1,5 @@
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
-import { uid } from '../lib/utils'
 import { normalizarTelefono } from '../lib/telefono'
-import { nombreCompleto, formatearDireccion } from '../lib/cliente'
 import { firma } from '../lib/bitacora'
 import { useLlevarStore, useMeseroStore, useOrderStore, usePedidosStore, usePosStore } from '../store/appStore'
 import { sumaCuenta } from './useOrderDraft'
@@ -34,12 +31,12 @@ export const ESTADO_LLEVAR = {
 /** Padrón de clientes y órdenes para llevar: buscar por teléfono, dar de alta/editar la
  *  ficha, abrir una orden nueva y consultar el historial de compras.
  *
- *  El padrón es POR RESTAURANTE (en backend, todas las consultas van filtradas por
+ *  El padrón es POR RESTAURANTE (todas las consultas van filtradas por
  *  restaurante_id, y el índice único del teléfono también lo es): dos restaurantes del
  *  mismo proyecto no se ven los clientes.
  *
- *  Mismo patrón que useMesaAdmin/useMeseroAdmin: en mock muta el store; en backend
- *  escribe con RPC y deja que usePosData recargue por Realtime. */
+ *  Mismo patrón que useMesaAdmin/useMeseroAdmin: escribe con RPC y deja que usePosData
+ *  recargue por Realtime. */
 export function useLlevar() {
   const clientes = useLlevarStore((s) => s.clientes)
   const ordenes = useLlevarStore((s) => s.ordenes)
@@ -63,9 +60,6 @@ export function useLlevar() {
     const tel = normalizarTelefono(telefono)
     if (!tel) return { cliente: null, error: null }
 
-    if (IS_MOCK) {
-      return { cliente: clientes.find((c) => c.telefono === tel) ?? null, error: null }
-    }
     const { data, error } = await sb
       .from('clientes')
       .select('*')
@@ -80,37 +74,15 @@ export function useLlevar() {
     return { cliente: data ? mapCliente(data) : null, error: null }
   }
 
-  /** Alta o edición de la ficha. En backend es un upsert por (restaurante, teléfono):
+  /** Alta o edición de la ficha. Es un upsert por (restaurante, teléfono):
    *  dos meseros pueden estar dando de alta al mismo número desde dos tablets.
    *  `cruzamientos`, `codigoPostal`, `cumpleanos` y `genero` son los únicos campos
    *  opcionales — el resto (nombre, apellidos, calle, número y colonia) se valida
    *  también en el RPC. */
   async function guardarCliente({
-    id, telefono, nombre, apellidos, calle, numero, cruzamientos, colonia, codigoPostal, cumpleanos, genero, nota,
+    telefono, nombre, apellidos, calle, numero, cruzamientos, colonia, codigoPostal, cumpleanos, genero, nota,
   }) {
     const tel = normalizarTelefono(telefono)
-
-    if (IS_MOCK) {
-      // El teléfono identifica al cliente, así que reeditar una ficha existente por
-      // número no debe crear una segunda: se reusa el id que ya tenía.
-      const existente = clientes.find((c) => c.id === id) ?? clientes.find((c) => c.telefono === tel)
-      const cliente = {
-        id: existente?.id ?? uid('cliente'),
-        telefono: tel,
-        nombre: nombre?.trim(),
-        apellidos: apellidos?.trim(),
-        calle: calle?.trim(),
-        numero: numero?.trim(),
-        cruzamientos: cruzamientos?.trim() || null,
-        colonia: colonia?.trim(),
-        codigoPostal: codigoPostal?.trim(),
-        cumpleanos: cumpleanos || null,
-        genero: genero || null,
-        nota: nota?.trim() || null,
-      }
-      guardarClienteLocal(cliente)
-      return { cliente, error: null }
-    }
 
     const { data, error } = await sb.rpc('pos_guardar_cliente', {
       ...firma(),
@@ -154,7 +126,7 @@ export function useLlevar() {
   /** Da de baja al cliente (borrado lógico: activo=false, mismo criterio que las bajas
    *  de mesa/mesero). Bloqueado solo si tiene una orden para llevar abierta CON platillos
    *  en cocina: las vacías (se abrió la orden y no se llegó a pedir nada) se descartan
-   *  junto con la baja — en backend eso lo hace pos_desactivar_cliente. */
+   *  junto con la baja — eso lo hace pos_desactivar_cliente. */
   async function borrarCliente(clienteId) {
     const abiertas = ordenes.filter((o) => o.clienteId === clienteId && o.estado === 'abierta')
     const vacias = abiertas.filter((o) => itemsDeOrden(o.id, pedidos, o).length === 0)
@@ -165,12 +137,6 @@ export function useLlevar() {
       quitarOrdenLocal(o.id)
       useOrderStore.getState().clearDraft(o.id)
     })
-
-    if (IS_MOCK) {
-      quitarVacias()
-      setClientes(clientes.filter((c) => c.id !== clienteId))
-      return { error: null }
-    }
 
     const { error } = await sb.rpc('pos_desactivar_cliente', { p_cliente_id: clienteId, ...firma() })
     if (error) {
@@ -188,27 +154,6 @@ export function useLlevar() {
    *  restaurante — es el número que se canta en cocina, un uuid no sirve para eso. */
   async function crearOrden(cliente) {
     const mesero = meseros.find((m) => m.id === currentMeseroId)
-
-    if (IS_MOCK) {
-      const folio = ordenes.reduce((max, o) => Math.max(max, o.folio ?? 0), 0) + 1
-      const orden = {
-        id: uid('llevar'),
-        folio,
-        clienteId: cliente.id,
-        clienteNombre: nombreCompleto(cliente),
-        clienteTelefono: cliente.telefono,
-        direccion: formatearDireccion(cliente),
-        meseroId: mesero?.id ?? null,
-        meseroNombre: mesero?.nombre ?? '—',
-        estado: 'abierta',
-        total: 0,
-        items: [],
-        createdAt: new Date().toISOString(),
-        closedAt: null,
-      }
-      agregarOrdenLocal(orden)
-      return { ordenId: orden.id, error: null }
-    }
 
     const { data, error } = await sb.rpc('pos_crear_orden_llevar', {
       p_restaurante_id: restauranteId,
@@ -229,16 +174,9 @@ export function useLlevar() {
   }
 
   /** Historial de compras del cliente: sus órdenes ya cerradas, de la más reciente a la
-   *  más vieja. En backend se consulta bajo demanda (no se carga el histórico completo
+   *  más vieja. Se consulta bajo demanda (no se carga el histórico completo
    *  del restaurante en cada tablet) y se lee de la copia congelada en la fila. */
   async function historialCliente(clienteId, limite = 10) {
-    if (IS_MOCK) {
-      const historial = ordenes
-        .filter((o) => o.clienteId === clienteId && (o.estado === 'entregada' || o.estado === 'cancelada'))
-        .sort((a, b) => new Date(b.closedAt ?? b.createdAt) - new Date(a.closedAt ?? a.createdAt))
-        .slice(0, limite)
-      return { historial, error: null }
-    }
     const { data, error } = await sb
       .from('ordenes_llevar')
       .select('*')

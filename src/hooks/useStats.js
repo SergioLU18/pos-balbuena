@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
 import { usePosStore } from '../store/appStore'
 
 /** Motor compartido de los hooks de abajo: llama una RPC `pos_stats_*` y guarda el
@@ -37,7 +36,7 @@ function useStatRPC(nombreRPC, params, activo, clave) {
  *  todavía (p. ej. mientras se arma el rango de "Personalizado"). */
 export function useResumenStats(desde, hasta) {
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const activo = !IS_MOCK && !!restauranteId && !!desde && !!hasta
+  const activo = !!restauranteId && !!desde && !!hasta
   const clave = activo ? `resumen|${restauranteId}|${desde}|${hasta}` : null
   return useStatRPC('pos_stats_resumen', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta }, activo, clave)
 }
@@ -45,7 +44,7 @@ export function useResumenStats(desde, hasta) {
 /** Top platillos del periodo, por dinero y por unidades. */
 export function usePlatillosStats(desde, hasta, limite = 8) {
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const activo = !IS_MOCK && !!restauranteId && !!desde && !!hasta
+  const activo = !!restauranteId && !!desde && !!hasta
   const clave = activo ? `platillos|${restauranteId}|${desde}|${hasta}|${limite}` : null
   return useStatRPC('pos_stats_platillos', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta, p_limite: limite }, activo, clave)
 }
@@ -53,7 +52,7 @@ export function usePlatillosStats(desde, hasta, limite = 8) {
 /** Venta enviada a cocina, tickets atendidos y ticket promedio, por mesero. */
 export function useMeserosStats(desde, hasta) {
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const activo = !IS_MOCK && !!restauranteId && !!desde && !!hasta
+  const activo = !!restauranteId && !!desde && !!hasta
   const clave = activo ? `meseros|${restauranteId}|${desde}|${hasta}` : null
   return useStatRPC('pos_stats_meseros', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta }, activo, clave)
 }
@@ -63,7 +62,7 @@ export function useMeserosStats(desde, hasta) {
  *  tres bucketean en el navegador por hora/día LOCAL (ver statsRangos.js). */
 export function useVentasSerie(desde, hasta) {
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const activo = !IS_MOCK && !!restauranteId && !!desde && !!hasta
+  const activo = !!restauranteId && !!desde && !!hasta
   const clave = activo ? `serie|${restauranteId}|${desde}|${hasta}` : null
   const { datos, cargando, error } = useStatRPC('pos_stats_ventas_serie', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta }, activo, clave)
   return { datos: datos ?? [], cargando, error }
@@ -80,7 +79,7 @@ export function useCierreDia() {
   const [estado, setEstado] = useState({ datos: null, cargando: false, error: null })
 
   function calcular(desde, hasta) {
-    if (IS_MOCK || !restauranteId) return
+    if (!restauranteId) return
     setEstado({ datos: null, cargando: true, error: null })
     sb.rpc('pos_stats_cierre_dia', { p_restaurante_id: restauranteId, p_desde: desde, p_hasta: hasta })
       .then(({ data, error }) => {
@@ -104,7 +103,7 @@ export function useCierreDia() {
  *  supabase/stats.sql: es la única identidad de cliente que el POS conoce). */
 export function useFrecuenciaClientesStats() {
   const restauranteId = usePosStore((s) => s.restauranteId)
-  const activo = !IS_MOCK && !!restauranteId
+  const activo = !!restauranteId
   const clave = activo ? `frecuencia|${restauranteId}` : null
   return useStatRPC('pos_stats_clientes_frecuencia', { p_restaurante_id: restauranteId }, activo, clave)
 }

@@ -2,75 +2,101 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMesasUnidas } from './useMesasUnidas'
 import { buildDraftItem } from './useOrderDraft'
-import { useOrderStore, usePedidosStore, usePosStore, useAvisosStore } from '../store/appStore'
-import { MENU } from '../lib/mockMenu'
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
+import { useOrderStore, usePosStore, useAvisosStore } from '../store/appStore'
+import { responderRpc, llamadasRpc } from '../test/sbFalso'
+import { MENU } from '../test/fixtures/menu'
+import { MESAS } from '../test/fixtures/mesas'
+import { MESEROS } from '../test/fixtures/meseros'
 
 const sope = MENU.find((p) => p.id === 'sope')
-const mesa = (id) => usePosStore.getState().mesas.find((m) => m.id === id)
+const firmaEsperada = { p_mesero_id: MESEROS[0].id, p_mesero_nombre: MESEROS[0].nombre }
 
 beforeEach(() => {
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
   useOrderStore.setState({ drafts: {}, cuentas: {} })
-  usePedidosStore.setState({ pedidos: [] })
   useAvisosStore.setState({ avisos: [] })
 })
 
 describe('useMesasUnidas — unir', () => {
-  it('apunta las secundarias a la principal', async () => {
+  it('manda pos_unir_mesas con la principal, las secundarias sin repetir y la firma', async () => {
     const { result } = renderHook(() => useMesasUnidas())
     let res
-    await act(async () => { res = await result.current.unirMesas('mesa-3', ['mesa-4', 'mesa-5']) })
+    await act(async () => { res = await result.current.unirMesas('mesa-3', ['mesa-4', 'mesa-5', 'mesa-4']) })
     expect(res.error).toBeNull()
-    expect(mesa('mesa-4').joined_to).toBe('mesa-3')
-    expect(mesa('mesa-5').joined_to).toBe('mesa-3')
-    expect(mesa('mesa-3').joined_to ?? null).toBeNull()
+    expect(llamadasRpc('pos_unir_mesas')).toEqual([
+      { p_principal_id: 'mesa-3', p_secundarias: ['mesa-4', 'mesa-5'], ...firmaEsperada },
+    ])
   })
 
-  it('pasa a la principal la cuenta, las comandas y el draft de la secundaria', async () => {
-    const enviado = buildDraftItem(sope, 0)
+  it('pasa a la principal el draft sin enviar de la secundaria (la cuenta y las comandas las mueve el backend)', async () => {
+    const yaEnPrincipal = buildDraftItem(sope, 0)
     const sinEnviar = buildDraftItem(sope, 1)
-    useOrderStore.setState({
-      cuentas: { 'mesa-4': { items: [enviado], createdAt: '2026-09-11T20:00:00Z' } },
-      drafts: { 'mesa-4': [sinEnviar] },
-    })
-    usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: 'mesa-4', mesaNumero: '4', items: [enviado], estado: 'pendiente' }],
-    })
+    useOrderStore.setState({ drafts: { 'mesa-3': [yaEnPrincipal], 'mesa-4': [sinEnviar] } })
 
     const { result } = renderHook(() => useMesasUnidas())
     await act(async () => { await result.current.unirMesas('mesa-3', ['mesa-4']) })
 
-    const { cuentas, drafts } = useOrderStore.getState()
-    expect(cuentas['mesa-4']).toBeUndefined()
-    expect(cuentas['mesa-3'].items).toEqual([enviado])
-    expect(drafts['mesa-3']).toEqual([sinEnviar])
-    expect(usePedidosStore.getState().pedidos[0].mesaId).toBe('mesa-3')
+    const { drafts } = useOrderStore.getState()
+    expect(drafts['mesa-3']).toEqual([yaEnPrincipal, sinEnviar])
+    expect(drafts['mesa-4']).toBeUndefined()
   })
 
-  it('no hace cadenas: una mesa ya unida no se vuelve a unir, y avisa en la campana', async () => {
-    usePosStore.setState({ mesas: MESAS.map((m) => (m.id === 'mesa-4' ? { ...m, joined_to: 'mesa-3' } : m)) })
+  it('si el backend rechaza la unión, no mueve el draft, devuelve el error y avisa en la campana', async () => {
+    // Las reglas (sin cadenas, sin mesas dadas de baja...) las valida pos_unir_mesas.
+    responderRpc('pos_unir_mesas', { error: { message: 'boom' } })
+    const sinEnviar = buildDraftItem(sope, 1)
+    useOrderStore.setState({ drafts: { 'mesa-4': [sinEnviar] } })
+
     const { result } = renderHook(() => useMesasUnidas())
     let res
     await act(async () => { res = await result.current.unirMesas('mesa-6', ['mesa-4']) })
+
+    expect(res.error).toBe('boom')
+    expect(useOrderStore.getState().drafts['mesa-4']).toEqual([sinEnviar])
+    expect(useOrderStore.getState().drafts['mesa-6']).toBeUndefined()
+    const avisos = useAvisosStore.getState().avisos
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toMatchObject({ tipo: 'error', detalle: 'boom' })
+    expect(avisos[0].titulo).toContain('Mesa 6')
+  })
+
+  it('sin secundarias no llama al backend', async () => {
+    const { result } = renderHook(() => useMesasUnidas())
+    let res
+    await act(async () => { res = await result.current.unirMesas('mesa-3', []) })
     expect(res.error).toBeTruthy()
-    expect(mesa('mesa-4').joined_to).toBe('mesa-3')
-    expect(useAvisosStore.getState().avisos).toHaveLength(1)
+    expect(llamadasRpc('pos_unir_mesas')).toHaveLength(0)
   })
 })
 
 describe('useMesasUnidas — separar', () => {
-  it('suelta la mesa y deja lo pedido en la cuenta de la principal', async () => {
-    const item = buildDraftItem(sope, 0)
-    usePosStore.setState({ mesas: MESAS.map((m) => (m.id === 'mesa-4' ? { ...m, joined_to: 'mesa-3' } : m)) })
-    useOrderStore.setState({ cuentas: { 'mesa-3': { items: [item], createdAt: '2026-09-11T20:00:00Z' } } })
+  const conLa4Unida = () => usePosStore.setState({ mesas: MESAS.map((m) => (m.id === 'mesa-4' ? { ...m, joined_to: 'mesa-3' } : m)) })
 
+  it('manda pos_separar_mesa con la secundaria y la firma', async () => {
+    conLa4Unida()
     const { result } = renderHook(() => useMesasUnidas())
-    await act(async () => { await result.current.separarMesa('mesa-4') })
+    let res
+    await act(async () => { res = await result.current.separarMesa('mesa-4') })
+    expect(res.error).toBeNull()
+    expect(llamadasRpc('pos_separar_mesa')).toEqual([{ p_mesa_id: 'mesa-4', ...firmaEsperada }])
+  })
 
-    expect(mesa('mesa-4').joined_to).toBeNull()
-    expect(useOrderStore.getState().cuentas['mesa-3'].items).toEqual([item])
-    expect(useOrderStore.getState().cuentas['mesa-4']).toBeUndefined()
+  it('una mesa que no está unida no llama al backend', async () => {
+    const { result } = renderHook(() => useMesasUnidas())
+    let res
+    await act(async () => { res = await result.current.separarMesa('mesa-4') })
+    expect(res.error).toBeNull()
+    expect(llamadasRpc('pos_separar_mesa')).toHaveLength(0)
+  })
+
+  it('si el backend falla, devuelve el error y avisa en la campana', async () => {
+    conLa4Unida()
+    responderRpc('pos_separar_mesa', { error: { message: 'boom' } })
+    const { result } = renderHook(() => useMesasUnidas())
+    let res
+    await act(async () => { res = await result.current.separarMesa('mesa-4') })
+    expect(res.error).toBe('boom')
+    const avisos = useAvisosStore.getState().avisos
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].titulo).toContain('Mesa 4')
   })
 })

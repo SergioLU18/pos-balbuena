@@ -1,7 +1,5 @@
 import { useRef, useState } from 'react'
-import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
 import { firma } from '../lib/bitacora'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import {
@@ -34,11 +32,9 @@ export function useOrdenLlevar(ordenId) {
   const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
   const clearDraft = useOrderStore((s) => s.clearDraft)
   const orden = useLlevarStore((s) => s.ordenes).find((o) => o.id === ordenId) ?? null
-  const actualizarOrdenLocal = useLlevarStore((s) => s.actualizarOrdenLocal)
   const quitarOrdenLocal = useLlevarStore((s) => s.quitarOrdenLocal)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
   const meseros = usePosStore((s) => s.meseros)
-  const agregarPedido = usePedidosStore((s) => s.agregarPedido)
   const actualizarCantidadItemPedido = usePedidosStore((s) => s.actualizarCantidadItemPedido)
   const actualizarItemPedido = usePedidosStore((s) => s.actualizarItemPedido)
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
@@ -99,43 +95,24 @@ export function useOrdenLlevar(ordenId) {
       precio_unitario: calcItemPrecio(it),
     }))
 
-    if (!IS_MOCK) {
-      enviandoRef.current = true
-      setEnviando(true)
-      sb.rpc('pos_enviar_orden_llevar', {
-        p_orden_id: ordenId,
-        p_items: payload,
-        p_mesero_id: mesero?.id ?? null,
-        p_mesero_nombre: mesero?.nombre ?? '—',
-      }).then(({ error }) => {
-        enviandoRef.current = false
-        setEnviando(false)
-        if (error) {
-          console.error('[llevar] enviarACocina falló:', error)
-          avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
-        } else {
-          clearDraft(ordenId)
-          sonarConfirmacion()
-        }
-      })
-      return
-    }
-
-    agregarPedido({
-      id: uid('pedido'),
-      tipo: 'llevar',
-      mesaId: null,
-      mesaNumero: null,
-      ordenLlevarId: ordenId,
-      clienteNombre: orden?.clienteNombre ?? null,
-      meseroId: mesero?.id ?? null,
-      meseroNombre: mesero?.nombre ?? '—',
-      items: payload,
-      enviadoAt: new Date().toISOString(),
-      estado: 'pendiente',
+    enviandoRef.current = true
+    setEnviando(true)
+    sb.rpc('pos_enviar_orden_llevar', {
+      p_orden_id: ordenId,
+      p_items: payload,
+      p_mesero_id: mesero?.id ?? null,
+      p_mesero_nombre: mesero?.nombre ?? '—',
+    }).then(({ error }) => {
+      enviandoRef.current = false
+      setEnviando(false)
+      if (error) {
+        console.error('[llevar] enviarACocina falló:', error)
+        avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
+      } else {
+        clearDraft(ordenId)
+        sonarConfirmacion()
+      }
     })
-    clearDraft(ordenId)
-    sonarConfirmacion()
   }
 
   const recargarDesdeBackend = () => cargarTodo(usePosStore.getState().restauranteId).catch(() => {})
@@ -154,8 +131,6 @@ export function useOrdenLlevar(ordenId) {
     // lo confirma. A diferencia de las mesas aquí no hay cuenta_items que ajustar — el
     // renglón del pedido ES el del ticket.
     actualizarCantidadItemPedido(pedidoId, itemId, nueva)
-    if (IS_MOCK) return
-
     sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: nueva, ...firma() })
       .then(({ error }) => {
         if (error) {
@@ -168,8 +143,6 @@ export function useOrdenLlevar(ordenId) {
 
   function quitarItemEnviado(pedidoId, itemId) {
     quitarItemPedido(pedidoId, itemId)
-    if (IS_MOCK) return
-
     sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
       .then(({ error }) => {
         if (error) {
@@ -195,8 +168,6 @@ export function useOrdenLlevar(ordenId) {
       precio_unitario: Number(item.precio_unitario) - Number(item.ajusteEmpaque ?? 0) + nuevo.ajusteEmpaque,
     }
     actualizarItemPedido(pedidoId, itemId, patch)
-    if (IS_MOCK) return
-
     sb.rpc('pos_empaque_item_llevar', {
       p_pedido_id: pedidoId,
       p_item_id: itemId,
@@ -218,18 +189,6 @@ export function useOrdenLlevar(ordenId) {
    *  cocina — mismo momento que antes hacía "Entregar y cerrar", solo que ahora
    *  registrando con qué se pagó. */
   function pagarOrden(metodoPago, detalle = {}) {
-    if (IS_MOCK) {
-      actualizarOrdenLocal(ordenId, {
-        estado: 'entregada',
-        total: sumaCuenta(enviados),
-        items: enviados,
-        metodoPago,
-        closedAt: new Date().toISOString(),
-      })
-      eliminarPedidosDeOrdenLlevar(ordenId)
-      clearDraft(ordenId)
-      return Promise.resolve({ error: null })
-    }
     return sb.rpc('pos_pagar_orden_llevar', {
       p_orden_id: ordenId,
       p_metodo_pago: metodoPago,
@@ -251,17 +210,6 @@ export function useOrdenLlevar(ordenId) {
    *  ahí que sale el historial de compras del cliente — y sus comandas salen del
    *  tablero de cocina, igual que al cerrar una mesa. */
   function cancelarOrden() {
-    if (IS_MOCK) {
-      actualizarOrdenLocal(ordenId, {
-        estado: 'cancelada',
-        total: sumaCuenta(enviados),
-        items: enviados,
-        closedAt: new Date().toISOString(),
-      })
-      eliminarPedidosDeOrdenLlevar(ordenId)
-      clearDraft(ordenId)
-      return Promise.resolve({ error: null })
-    }
     return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: 'cancelada', ...firma() })
       .then(({ error }) => {
         if (error) {
@@ -283,8 +231,6 @@ export function useOrdenLlevar(ordenId) {
     quitarOrdenLocal(ordenId)
     eliminarPedidosDeOrdenLlevar(ordenId)
     clearDraft(ordenId)
-    if (IS_MOCK) return
-
     sb.rpc('pos_descartar_orden_llevar', { p_orden_id: ordenId, ...firma() })
       .then(({ error }) => {
         if (error) {

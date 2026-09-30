@@ -1,8 +1,7 @@
 import { usePosStore } from '../store/appStore'
 
 /** Catálogo de platillos de Jardín Balbuena para el flujo de orden del mesero.
- *  La fuente de verdad es usePosStore (mock: catálogo estático; backend: Supabase,
- *  vía usePosData). Aquí se filtran los inactivos, se ordenan (categorías por
+ *  La fuente de verdad es usePosStore (lo llena usePosData desde Supabase). Aquí se filtran los inactivos, se ordenan (categorías por
  *  categoriasOrden; platillos por su `orden` dentro de la categoría) y se aplanan
  *  ingredientes/modificadores/extras a la forma que consumen los componentes de orden.
  *  El editor de menú (admin) lee los objetos completos del store, no este hook. */

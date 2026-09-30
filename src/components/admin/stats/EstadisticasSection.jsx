@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { IS_MOCK } from '../../../lib/config'
 import {
   ymdLocal, rangoDia, rangoSemana, rangoMes, rangoPersonalizado,
   rangoAnterior, rangoSemanaPasada, rangoUltimosDias, diaDelMes, diasEnMes, NOMBRES_DIA,
@@ -14,7 +13,6 @@ import { VentasHeatmap } from './VentasHeatmap'
 import { PatronesMes } from './PatronesMes'
 import { FrecuenciaClientes } from './FrecuenciaClientes'
 import { CumpleanosMes } from './CumpleanosMes'
-import { AvisoVacio } from './Section'
 
 const ETIQUETA_ANTERIOR = { dia: 'vs. ayer', semana: 'vs. semana pasada', mes: 'vs. mes pasado', personalizado: 'vs. periodo anterior' }
 
@@ -61,24 +59,18 @@ export function EstadisticasSection() {
         <PeriodoTabs periodo={periodo} onPeriodo={setPeriodo} personalizado={personalizado} onPersonalizado={setPersonalizado} />
       </div>
 
-      {IS_MOCK ? (
-        <AvisoVacio>Las estadísticas se calculan en el servidor. En modo demo no hay nada que mostrar.</AvisoVacio>
-      ) : (
-        <>
-          <ResumenCards
-            actual={resumenActual.datos} anterior={resumenAnterior.datos} semanaPasada={resumenSemanaPasada.datos}
-            etiquetaAnterior={ETIQUETA_ANTERIOR[periodo]} etiquetaSemanaPasada={etiquetaSemanaPasada}
-            cargando={resumenActual.cargando}
-          />
-          <MetodosPagoDonut resumen={resumenActual.datos} cargando={resumenActual.cargando} />
-          <TopPlatillos datos={platillos.datos} cargando={platillos.cargando} />
-          <VentaPorMesero datos={meseros.datos} cargando={meseros.cargando} />
-          <VentasHeatmap serie={heatmap.datos} cargando={heatmap.cargando} />
-          <PatronesMes serie={mesActual.datos} diaDelMes={diaDelMes(hoy)} diasEnMes={diasEnMes(hoy)} cargando={mesActual.cargando} />
-          <FrecuenciaClientes datos={frecuencia.datos} cargando={frecuencia.cargando} />
-          <CumpleanosMes />
-        </>
-      )}
+      <ResumenCards
+        actual={resumenActual.datos} anterior={resumenAnterior.datos} semanaPasada={resumenSemanaPasada.datos}
+        etiquetaAnterior={ETIQUETA_ANTERIOR[periodo]} etiquetaSemanaPasada={etiquetaSemanaPasada}
+        cargando={resumenActual.cargando}
+      />
+      <MetodosPagoDonut resumen={resumenActual.datos} cargando={resumenActual.cargando} />
+      <TopPlatillos datos={platillos.datos} cargando={platillos.cargando} />
+      <VentaPorMesero datos={meseros.datos} cargando={meseros.cargando} />
+      <VentasHeatmap serie={heatmap.datos} cargando={heatmap.cargando} />
+      <PatronesMes serie={mesActual.datos} diaDelMes={diaDelMes(hoy)} diasEnMes={diasEnMes(hoy)} cargando={mesActual.cargando} />
+      <FrecuenciaClientes datos={frecuencia.datos} cargando={frecuencia.cargando} />
+      <CumpleanosMes />
     </div>
   )
 }

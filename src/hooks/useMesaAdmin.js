@@ -1,8 +1,6 @@
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
-import { uid } from '../lib/utils'
 import { firma } from '../lib/bitacora'
-import { usePosStore, useOrderStore, usePedidosStore } from '../store/appStore'
+import { usePosStore } from '../store/appStore'
 
 /** Valida un nombre de mesa: no vacío, ≤ 24 caracteres y único entre las mesas activas
  *  del restaurante (sin distinguir mayúsculas). Devuelve el mensaje de error, o null si
@@ -22,12 +20,10 @@ export function validarNombreMesa(nombre, mesas, exceptoId = null) {
 /** Alta, renombrado, reordenamiento y baja de mesas (Ajustes → Mesas; solo el admin
  *  llega ahí). El nombre acepta letras y números y debe ser único. Una mesa con cuenta
  *  abierta no se puede borrar — hacerlo a medio servicio dejaría la cuenta y los pedidos
- *  de cocina huérfanos; en modo backend esa regla la aplica también la RPC
- *  `pos_borrar_mesa`, así que queda protegida aunque dos meseros la intenten borrar al
+ *  de cocina huérfanos; esa regla la aplica la RPC `pos_borrar_mesa`, así que queda protegida aunque dos meseros la intenten borrar al
  *  mismo tiempo desde tablets distintas. */
 export function useMesaAdmin() {
   const mesas = usePosStore((s) => s.mesas)
-  const setMesas = usePosStore((s) => s.setMesas)
   const restauranteId = usePosStore((s) => s.restauranteId)
 
   function crearMesa(numero) {
@@ -35,11 +31,6 @@ export function useMesaAdmin() {
     const err = validarNombreMesa(nombre, mesas)
     if (err) return Promise.resolve({ error: err, id: null })
 
-    if (IS_MOCK) {
-      const mesa = { id: uid('mesa'), numero: nombre, activo: true }
-      setMesas([...mesas, mesa])
-      return Promise.resolve({ error: null, id: mesa.id })
-    }
     return sb
       .rpc('pos_crear_mesa', { p_restaurante_id: restauranteId, p_numero: nombre, ...firma() })
       .then(({ data, error }) => ({ error: error?.message ?? null, id: data ?? null }))
@@ -50,18 +41,6 @@ export function useMesaAdmin() {
     const err = validarNombreMesa(nombre, mesas, mesaId)
     if (err) return Promise.resolve({ error: err })
 
-    if (IS_MOCK) {
-      const mesa = mesas.find((m) => m.id === mesaId)
-      if (!mesa) return Promise.resolve({ error: 'La mesa ya no existe.' })
-      if (mesa.numero === nombre) return Promise.resolve({ error: null })
-
-      setMesas(mesas.map((m) => (m.id === mesaId ? { ...m, numero: nombre } : m)))
-      // El nombre también vive en la copia denormalizada de la comanda
-      // (pedidos.mesaNumero), así que se propaga o la cocina seguiría cantando el viejo.
-      const { pedidos, setPedidos } = usePedidosStore.getState()
-      setPedidos(pedidos.map((p) => (p.mesaId === mesaId ? { ...p, mesaNumero: nombre } : p)))
-      return Promise.resolve({ error: null })
-    }
     return sb
       .rpc('pos_renombrar_mesa', { p_mesa_id: mesaId, p_numero: nombre, ...firma() })
       .then(({ error }) => ({ error: error?.message ?? null }))
@@ -70,34 +49,12 @@ export function useMesaAdmin() {
   /** Reordena el listado compartido de mesas. Recibe los ids en el orden deseado
    *  (los que muestra Ajustes → Mesas). Solo el admin llega aquí. */
   function reordenarMesas(idsEnOrden) {
-    if (IS_MOCK) {
-      const porId = new Map(mesas.map((m) => [m.id, m]))
-      const nuevas = [
-        ...idsEnOrden.map((id) => porId.get(id)).filter(Boolean),
-        ...mesas.filter((m) => !idsEnOrden.includes(m.id)),
-      ]
-      setMesas(nuevas)
-      return Promise.resolve({ error: null })
-    }
     return sb
       .rpc('pos_reordenar_mesas', { p_ids: idsEnOrden, ...firma() })
       .then(({ error }) => ({ error: error?.message ?? null }))
   }
 
   function borrarMesa(mesaId) {
-    if (IS_MOCK) {
-      // Lee el estado fresco (no la suscripción reactiva de este render) porque a veces
-      // se llama justo después de cerrarMesa(), en el mismo tick, antes de que React
-      // vuelva a renderizar este hook con el `cuentas` ya actualizado.
-      if (useOrderStore.getState().cuentas[mesaId]) {
-        return Promise.resolve({ error: 'No se puede borrar una mesa con cuenta abierta.' })
-      }
-      if (mesas.some((m) => (m.id === mesaId && m.joined_to) || m.joined_to === mesaId)) {
-        return Promise.resolve({ error: 'La mesa está unida con otra. Sepárala antes de borrarla.' })
-      }
-      setMesas(mesas.filter((m) => m.id !== mesaId))
-      return Promise.resolve({ error: null })
-    }
     return sb.rpc('pos_borrar_mesa', { p_mesa_id: mesaId, ...firma() }).then(({ error }) => ({ error: error?.message ?? null }))
   }
 

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { uid } from '../lib/utils'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
 import { empaqueTexto } from '../lib/empaque'
@@ -86,8 +85,8 @@ export function nombreItem(item) {
   return partes.length ? `${base} (${partes.join(' / ')})` : base
 }
 
-// Total de una cuenta ya enviada. Soporta ambas formas de renglón: los planos del
-// backend (precio_unitario · cantidad) y los ricos del modo mock (calcItemPrecio).
+// Total de una cuenta ya enviada. Soporta ambas formas de renglón: los planos
+// (precio_unitario · cantidad) y, si alguno no trae precio, los ricos (calcItemPrecio).
 export function sumaCuenta(items) {
   return (items ?? []).reduce((s, it) => {
     const precio = it.precio_unitario != null ? Number(it.precio_unitario) : calcItemPrecio(it)
@@ -102,7 +101,6 @@ export function useOrderDraft(mesaId) {
   const addDraftItem = useOrderStore((s) => s.addDraftItem)
   const updateDraftItem = useOrderStore((s) => s.updateDraftItem)
   const removeDraftItem = useOrderStore((s) => s.removeDraftItem)
-  const enviarOrden = useOrderStore((s) => s.enviarOrden)
   // Envío en vuelo (solo backend): mientras la RPC no contesta el draft sigue en pantalla,
   // y un segundo toque en "Enviar" mandaba la misma comanda dos veces a cocina. El ref
   // corta el doble toque del mismo tick, antes de que el estado alcance a apagar el botón.
@@ -112,7 +110,6 @@ export function useOrderDraft(mesaId) {
   const actualizarCantidadItemCuenta = useOrderStore((s) => s.actualizarCantidadItemCuenta)
   const quitarItemCuenta = useOrderStore((s) => s.quitarItemCuenta)
   const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
-  const agregarPedido = usePedidosStore((s) => s.agregarPedido)
   const cerrarCuenta = useOrderStore((s) => s.cerrarCuenta)
   const eliminarPedidosDeMesa = usePedidosStore((s) => s.eliminarPedidosDeMesa)
   const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
@@ -173,53 +170,35 @@ export function useOrderDraft(mesaId) {
     if (draft.length === 0 || enviandoRef.current) return
     const mesero = meseros.find((m) => m.id === currentMeseroId)
 
-    if (!IS_MOCK) {
-      // Backend: cada renglón lleva nombre + precio_unitario (para cuenta_items de tali)
-      // y además su estructura rica completa (para la comanda de cocina en pedidos.items).
-      // La RPC abre la cuenta si hace falta, agrega los renglones con las funciones de
-      // tali, recalcula el subtotal y crea el pedido — todo atómico. Realtime refresca.
-      // eslint-disable-next-line no-unused-vars -- se destructura para excluirlo del payload (es solo metadata de UI)
-      const payload = draft.map(({ modificaOriginal, ...it }) => ({
-        ...it,
-        nombre: nombreItem(it),
-        precio_unitario: calcItemPrecio(it),
-      }))
-      enviandoRef.current = true
-      setEnviando(true)
-      sb.rpc('pos_enviar_orden', {
-        p_mesa_id: mesaId,
-        p_mesero_id: mesero?.id ?? null,
-        p_mesero_nombre: mesero?.nombre ?? '—',
-        p_items: payload,
-      }).then(({ error }) => {
-        enviandoRef.current = false
-        setEnviando(false)
-        // Hasta aquí un fallo era invisible: el draft se quedaba en pantalla y el mesero
-        // no podía distinguir "no se envió" de "se envió y la pantalla no ha refrescado",
-        // así que se iba de la mesa o volvía a picar (con riesgo de orden duplicada).
-        if (error) {
-          console.error('[orden] enviarACocina falló:', error)
-          avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
-        }
-        else { clearDraft(mesaId); sonarConfirmacion() }
-      })
-      return
-    }
-
-    const mesa = mesas.find((m) => m.id === mesaId)
-    agregarPedido({
-      id: uid('pedido'),
-      mesaId,
-      mesaNumero: mesa?.numero ?? '—',
-      meseroId: mesero?.id ?? null,
-      meseroNombre: mesero?.nombre ?? '—',
-      // eslint-disable-next-line no-unused-vars -- se destructura para excluirlo del pedido (es solo metadata de UI)
-      items: draft.map(({ modificaOriginal, ...it }) => it),
-      enviadoAt: new Date().toISOString(),
-      estado: 'pendiente',
+    // Backend: cada renglón lleva nombre + precio_unitario (para cuenta_items de tali)
+    // y además su estructura rica completa (para la comanda de cocina en pedidos.items).
+    // La RPC abre la cuenta si hace falta, agrega los renglones con las funciones de
+    // tali, recalcula el subtotal y crea el pedido — todo atómico. Realtime refresca.
+    // eslint-disable-next-line no-unused-vars -- se destructura para excluirlo del payload (es solo metadata de UI)
+    const payload = draft.map(({ modificaOriginal, ...it }) => ({
+      ...it,
+      nombre: nombreItem(it),
+      precio_unitario: calcItemPrecio(it),
+    }))
+    enviandoRef.current = true
+    setEnviando(true)
+    sb.rpc('pos_enviar_orden', {
+      p_mesa_id: mesaId,
+      p_mesero_id: mesero?.id ?? null,
+      p_mesero_nombre: mesero?.nombre ?? '—',
+      p_items: payload,
+    }).then(({ error }) => {
+      enviandoRef.current = false
+      setEnviando(false)
+      // Hasta aquí un fallo era invisible: el draft se quedaba en pantalla y el mesero
+      // no podía distinguir "no se envió" de "se envió y la pantalla no ha refrescado",
+      // así que se iba de la mesa o volvía a picar (con riesgo de orden duplicada).
+      if (error) {
+        console.error('[orden] enviarACocina falló:', error)
+        avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
+      }
+      else { clearDraft(mesaId); sonarConfirmacion() }
     })
-    enviarOrden(mesaId)
-    sonarConfirmacion()
   }
 
   // El renglón de cuenta_items que corresponde a un renglón de un pedido: ambos comparten
@@ -236,42 +215,32 @@ export function useOrderDraft(mesaId) {
   const recargarDesdeBackend = () => cargarTodo(usePosStore.getState().restauranteId).catch(() => {})
 
   // Edición de un renglón ya enviado a cocina. Solo tiene efecto mientras su pedido
-  // sigue en 'pendiente' (Nuevo) — en backend lo valida el RPC del lado del servidor;
-  // en mock, actualizarCantidadItemPedido/quitarItemPedido son no-op fuera de ese estado.
+  // sigue en 'pendiente' (Nuevo) — lo valida el RPC del lado del servidor, y
+  // actualizarCantidadItemPedido/quitarItemPedido son no-op fuera de ese estado.
   // La UI (OrderTicket) ya solo muestra estos controles para pedidos 'pendiente', así
   // que en el flujo normal esa condición no llega a activarse.
   function cambiarCantidadEnviado(pedidoId, itemId, delta) {
-    if (!IS_MOCK) {
-      const pedido = pedidosMesa.find((p) => p.id === pedidoId)
-      const item = pedido?.items.find((it) => it.id === itemId)
-      if (!item) return
-      const cantidad = Math.max(1, item.cantidad + delta)
-      const aplicado = cantidad - item.cantidad
-      if (aplicado === 0) return // ya estaba en el mínimo; no hay nada que cambiar
-
-      // Optimista: reflejamos el cambio en el estado local de inmediato para que el ticket
-      // no se quede "colgado" el ~medio segundo que tarda la RPC + la recarga por realtime.
-      const ci = cuentaItemDePedidoItem(item)
-      if (ci) actualizarCantidadItemCuenta(mesaId, ci.id, ci.cantidad + aplicado)
-      actualizarCantidadItemPedido(pedidoId, itemId, cantidad)
-
-      sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad, ...firma() })
-        .then(({ error }) => {
-          if (error) {
-            console.error('[orden] cambiarCantidadEnviado falló:', error)
-            avisarError('no se pudo cambiar la cantidad', 'El pedido se dejó como estaba')
-            recargarDesdeBackend()
-          }
-        })
-      return
-    }
-
     const pedido = pedidosMesa.find((p) => p.id === pedidoId)
     const item = pedido?.items.find((it) => it.id === itemId)
-    if (!item || pedido.estado !== 'pendiente') return
+    if (!item) return
     const cantidad = Math.max(1, item.cantidad + delta)
+    const aplicado = cantidad - item.cantidad
+    if (aplicado === 0) return // ya estaba en el mínimo; no hay nada que cambiar
+
+    // Optimista: reflejamos el cambio en el estado local de inmediato para que el ticket
+    // no se quede "colgado" el ~medio segundo que tarda la RPC + la recarga por realtime.
+    const ci = cuentaItemDePedidoItem(item)
+    if (ci) actualizarCantidadItemCuenta(mesaId, ci.id, ci.cantidad + aplicado)
     actualizarCantidadItemPedido(pedidoId, itemId, cantidad)
-    actualizarCantidadItemCuenta(mesaId, itemId, cantidad)
+
+    sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: cantidad, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[orden] cambiarCantidadEnviado falló:', error)
+          avisarError('no se pudo cambiar la cantidad', 'El pedido se dejó como estaba')
+          recargarDesdeBackend()
+        }
+      })
   }
 
   // Fija una cantidad ABSOLUTA sobre un renglón ya enviado. Lo usa OrderTicket al pulsar
@@ -285,37 +254,29 @@ export function useOrderDraft(mesaId) {
   }
 
   function quitarItemEnviado(pedidoId, itemId) {
-    if (!IS_MOCK) {
-      // Optimista: quitamos el renglón del estado local en el acto (bajando o eliminando
-      // su fila de cuenta_items según la cantidad) y luego confirmamos con la RPC. Si falla,
-      // recargamos para restaurar el estado real.
-      const pedido = pedidosMesa.find((p) => p.id === pedidoId)
-      const item = pedido?.items.find((it) => it.id === itemId)
-      if (item) {
-        const ci = cuentaItemDePedidoItem(item)
-        if (ci) {
-          const restante = ci.cantidad - item.cantidad
-          if (restante > 0) actualizarCantidadItemCuenta(mesaId, ci.id, restante)
-          else quitarItemCuenta(mesaId, ci.id)
-        }
-        quitarItemPedido(pedidoId, itemId)
+    // Optimista: quitamos el renglón del estado local en el acto (bajando o eliminando
+    // su fila de cuenta_items según la cantidad) y luego confirmamos con la RPC. Si falla,
+    // recargamos para restaurar el estado real.
+    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (item) {
+      const ci = cuentaItemDePedidoItem(item)
+      if (ci) {
+        const restante = ci.cantidad - item.cantidad
+        if (restante > 0) actualizarCantidadItemCuenta(mesaId, ci.id, restante)
+        else quitarItemCuenta(mesaId, ci.id)
       }
-
-      sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
-        .then(({ error }) => {
-          if (error) {
-            console.error('[orden] quitarItemEnviado falló:', error)
-            avisarError('no se pudo quitar el platillo', 'Sigue en la comanda de cocina')
-            recargarDesdeBackend()
-          }
-        })
-      return
+      quitarItemPedido(pedidoId, itemId)
     }
 
-    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
-    if (!pedido || pedido.estado !== 'pendiente') return
-    quitarItemPedido(pedidoId, itemId)
-    quitarItemCuenta(mesaId, itemId)
+    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[orden] quitarItemEnviado falló:', error)
+          avisarError('no se pudo quitar el platillo', 'Sigue en la comanda de cocina')
+          recargarDesdeBackend()
+        }
+      })
   }
 
   // Cierre manual por el mesero (efectivo/tarjeta/ambos): la contraparte del cierre
@@ -328,33 +289,27 @@ export function useOrderDraft(mesaId) {
   // aunque la mesa se haya pagado entera con uno solo.
   function cerrarMesa(metodoPago, detalle) {
     const total = sumaCuenta(cuenta?.items ?? [])
-    if (!IS_MOCK) {
-      sb.rpc('pos_cerrar_mesa', {
-        p_mesa_id: mesaId,
-        p_metodo_pago: metodoPago,
-        p_monto_efectivo: detalle?.efectivo ?? null,
-        p_monto_tarjeta: detalle?.tarjeta ?? null,
-        p_propina_efectivo: detalle?.propinaEfectivo ?? 0,
-        p_propina_tarjeta: detalle?.propinaTarjeta ?? 0,
-        ...firma(),
+    sb.rpc('pos_cerrar_mesa', {
+      p_mesa_id: mesaId,
+      p_metodo_pago: metodoPago,
+      p_monto_efectivo: detalle?.efectivo ?? null,
+      p_monto_tarjeta: detalle?.tarjeta ?? null,
+      p_propina_efectivo: detalle?.propinaEfectivo ?? 0,
+      p_propina_tarjeta: detalle?.propinaTarjeta ?? 0,
+      ...firma(),
+    })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[orden] cerrarMesa falló:', error)
+          avisarError('no se pudo cerrar la cuenta', 'La mesa sigue abierta')
+          return
+        }
+        // Optimista, igual que el cierre automático por pago en tali: no se espera a que
+        // Realtime confirme para que la mesa se vea "Pagada" al instante.
+        cerrarCuenta(mesaId)
+        eliminarPedidosDeMesa(mesaId)
+        useMesaPagadaStore.getState().marcarPagada(mesaId, { at: new Date().toISOString(), total })
       })
-        .then(({ error }) => {
-          if (error) {
-            console.error('[orden] cerrarMesa falló:', error)
-            avisarError('no se pudo cerrar la cuenta', 'La mesa sigue abierta')
-            return
-          }
-          // Optimista, igual que el cierre automático por pago en tali: no se espera a que
-          // Realtime confirme para que la mesa se vea "Pagada" al instante.
-          cerrarCuenta(mesaId)
-          eliminarPedidosDeMesa(mesaId)
-          useMesaPagadaStore.getState().marcarPagada(mesaId, { at: new Date().toISOString(), total })
-        })
-      return
-    }
-    cerrarCuenta(mesaId)
-    eliminarPedidosDeMesa(mesaId)
-    useMesaPagadaStore.getState().marcarPagada(mesaId, { at: new Date().toISOString(), total })
   }
 
   const subtotalDraft = calcSubtotal(draft)

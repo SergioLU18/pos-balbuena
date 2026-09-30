@@ -122,8 +122,8 @@ function DraftRow({ item, onQty, onEdit, onRemove, onEmpaque }) {
 }
 
 function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove, onEmpaque }) {
-  // Un renglón ya enviado puede venir "rico" (modo mock: tier + mitades en memoria) o
-  // "plano" desde el backend de tali (nombre + precio_unitario). Se soportan ambos.
+  // Un renglón ya enviado puede venir "rico" (el de una comanda para llevar: tier +
+  // mitades) o "plano" (cuenta_items de tali: nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
   const precio = esRico ? calcItemPrecio(item) : Number(item.precio_unitario)
   const nombre = esRico ? `${item.platilloNombre} · ${item.tier.nombre}` : item.nombre

@@ -1,6 +1,5 @@
 import { usePedidosStore, usePosStore } from '../store/appStore'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
 import { cargarTodo } from './usePosData'
 
 // Nuevos/Preparando: FIFO (el más antiguo arriba) — así no se deja esperando
@@ -20,8 +19,8 @@ export function usePedidos() {
   const pedidos = usePedidosStore((s) => s.pedidos)
   const avanzarEstadoLocal = usePedidosStore((s) => s.avanzarEstado)
 
-  // Modo mock: muta el store local. Modo backend: mueve la tarjeta en el acto y persiste
-  // en Supabase, dejando que Realtime propague el cambio a las demás pantallas.
+  // Mueve la tarjeta en el acto y persiste en Supabase, dejando que Realtime propague el
+  // cambio a las demás pantallas.
   //
   // El movimiento local es lo que hace que la tarjeta responda al instante. Antes se
   // esperaba el viaje completo —update → evento de Realtime → debounce de 200 ms →
@@ -29,7 +28,6 @@ export function usePedidos() {
   // columna: tiempo de sobra para que en cocina creyeran que no había registrado y
   // volvieran a picar. Mismo patrón optimista que cambiarCantidadEnviado en useOrderDraft.
   function avanzarEstado(pedidoId, estado) {
-    if (IS_MOCK) return avanzarEstadoLocal(pedidoId, estado)
     avanzarEstadoLocal(pedidoId, estado)
     // Por RPC y no update directo: así el movimiento queda en la bitácora, y la columna
     // de tiempo de la etapa (preparando_at / listo_at / entregado_at) la estampa el

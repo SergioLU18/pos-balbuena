@@ -37,7 +37,7 @@ export default function LlevarPage() {
   const [pedidosAbierto, setPedidosAbierto] = useState(false)
 
   // El historial se pide por cliente y no viene con la búsqueda: es una consulta aparte
-  // (y bajo demanda en backend) para no arrastrar el histórico completo a cada tablet.
+  // (bajo demanda) para no arrastrar el histórico completo a cada tablet.
   // Se dispara desde el evento que trae al cliente —la búsqueda o el guardado— y no
   // desde un efecto: encontrar al cliente ES el momento en que hay historial que pedir.
   async function cargarHistorial(clienteId) {

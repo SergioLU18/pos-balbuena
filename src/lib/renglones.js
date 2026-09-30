@@ -7,9 +7,8 @@
 
 /** Cuentas de MESA: el ticket se pinta de `cuenta_items` (la tabla plana de tali) y la
  *  comanda de `pedidos.items`. Los dos comparten `nombre` —que es como cuenta_items
- *  agrupa— pero no el id: cuenta_items trae su propio id de fila. En modo mock los dos
- *  lados son el mismo objeto y sí comparten id, y no tienen `nombre`; `nombre ?? id`
- *  sirve para los dos casos. */
+ *  agrupa— pero no el id: cuenta_items trae su propio id de fila. El `?? id` cubre un
+ *  renglón que llegue sin `nombre`. */
 export const claveRenglonPorNombre = (it) => it.nombre ?? it.id
 
 /** Órdenes PARA LLEVAR: no hay cuenta_items detrás — el ticket se arma de los propios

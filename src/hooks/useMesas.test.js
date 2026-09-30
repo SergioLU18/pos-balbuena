@@ -1,33 +1,42 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { useMesas } from './useMesas'
-import { buildDraftItem } from './useOrderDraft'
-import { useOrderStore, usePedidosStore, useMeseroStore, useMesaPagadaStore, usePosStore } from '../store/appStore'
-import { MENU } from '../lib/mockMenu'
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
+import { buildDraftItem, useOrderDraft } from './useOrderDraft'
+import { useOrderStore, usePedidosStore, useMeseroStore, useMesaPagadaStore, useAvisosStore, usePosStore } from '../store/appStore'
+import { responderRpc, llamadasRpc, vaciarPromesas } from '../test/sbFalso'
+import { MENU } from '../test/fixtures/menu'
+import { MESAS } from '../test/fixtures/mesas'
+import { MESEROS } from '../test/fixtures/meseros'
 
 const sope = MENU.find((p) => p.id === 'sope')
 const I_2ING = sope.tiers.findIndex((t) => t.nombre === '2 Ingredientes') // -> 165
 const mesa1 = MESAS[0]
 
+// Renglones de cuenta_items tal como llegan de Supabase: planos, con su precio ya fijado.
+const cuentaAbierta = () => ({
+  cuentaId: 'cuenta-1',
+  items: [
+    { id: 'ci-1', nombre: 'Sope', precio_unitario: 165, cantidad: 2 },
+    { id: 'ci-2', nombre: 'Sope', precio_unitario: 40, cantidad: 1 },
+  ],
+  createdAt: new Date().toISOString(),
+})
+
 beforeEach(() => {
   useOrderStore.setState({ drafts: {}, cuentas: {} })
   usePedidosStore.setState({ pedidos: [] })
   useMesaPagadaStore.setState({ pagadas: {} })
-  useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
+  useAvisosStore.setState({ avisos: [] })
 })
 
 describe('useMesas — total de una mesa con cuenta abierta', () => {
-  it('suma el precio real de los renglones (tier + recargos), no un campo inexistente', () => {
-    useOrderStore.setState({
-      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, I_2ING)], createdAt: new Date().toISOString() } },
-    })
+  it('suma precio_unitario × cantidad de los renglones de la cuenta', () => {
+    useOrderStore.setState({ cuentas: { [mesa1.id]: cuentaAbierta() } })
     const { result } = renderHook(() => useMesas())
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
     expect(mesa.estado).toBe('abierta')
-    expect(mesa.total).toBe(165)
+    expect(mesa.total).toBe(370)
+    expect(mesa.itemCount).toBe(2)
   })
 })
 
@@ -48,6 +57,49 @@ describe('useMesas — mesa pagada', () => {
     const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
     expect(mesa.estado).toBe('abierta')
     expect(mesa.total).toBe(165)
+  })
+
+  it('al cerrar la cuenta (pos_cerrar_mesa OK) la mesa queda "pagada" con el total cobrado', async () => {
+    useOrderStore.setState({ cuentas: { [mesa1.id]: cuentaAbierta() } })
+    usePedidosStore.setState({
+      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, items: [{ ...buildDraftItem(sope, I_2ING), nombre: 'Sope', precio_unitario: 165 }], estado: 'entregado' }],
+    })
+    const { result: orden } = renderHook(() => useOrderDraft(mesa1.id))
+    const { result } = renderHook(() => useMesas())
+
+    await act(async () => {
+      orden.current.cerrarMesa('efectivo', { efectivo: 370 })
+      await vaciarPromesas()
+    })
+
+    expect(llamadasRpc('pos_cerrar_mesa')).toEqual([expect.objectContaining({
+      p_mesa_id: mesa1.id,
+      p_metodo_pago: 'efectivo',
+      p_monto_efectivo: 370,
+      p_mesero_id: MESEROS[0].id,
+      p_mesero_nombre: MESEROS[0].nombre,
+    })])
+    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+    expect(mesa.estado).toBe('pagada')
+    expect(mesa.total).toBe(370)
+    expect(usePedidosStore.getState().pedidos).toHaveLength(0)
+  })
+
+  it('si pos_cerrar_mesa falla, la mesa sigue abierta y avisa en la campana', async () => {
+    responderRpc('pos_cerrar_mesa', { error: { message: 'boom' } })
+    useOrderStore.setState({ cuentas: { [mesa1.id]: cuentaAbierta() } })
+    const { result: orden } = renderHook(() => useOrderDraft(mesa1.id))
+    const { result } = renderHook(() => useMesas())
+
+    await act(async () => {
+      orden.current.cerrarMesa('tarjeta', { tarjeta: 370 })
+      await vaciarPromesas()
+    })
+
+    const mesa = result.current.mesas.find((m) => m.id === mesa1.id)
+    expect(mesa.estado).toBe('abierta')
+    expect(mesa.total).toBe(370)
+    expect(useAvisosStore.getState().avisos).toHaveLength(1)
   })
 })
 
@@ -86,9 +138,7 @@ describe('useMesas — solo dos estados de cuenta (el detalle de cocina no se ve
   it.each(['pendiente', 'preparando', 'listo', 'entregado'])(
     'con cuenta abierta, la mesa se ve "abierta" sin importar la sub-etapa de cocina (%s)',
     (estadoPedido) => {
-      useOrderStore.setState({
-        cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, 1)], createdAt: new Date().toISOString() } },
-      })
+      useOrderStore.setState({ cuentas: { [mesa1.id]: cuentaAbierta() } })
       usePedidosStore.setState({
         pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: estadoPedido }],
       })

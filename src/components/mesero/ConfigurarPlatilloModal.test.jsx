@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConfigurarPlatilloModal } from './ConfigurarPlatilloModal'
 import { useMenu } from '../../hooks/useMenu'
-import { MENU } from '../../lib/mockMenu'
+import { MENU } from '../../test/fixtures/menu'
 import { f } from '../../lib/utils'
 
 // Render helper con los catálogos globales (como los pasa MeseroOrdenPage vía useMenu).

@@ -3,8 +3,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AdminMeserosPage from './AdminMeserosPage'
 import { usePosStore, useMeseroStore } from '../../store/appStore'
-import { MESAS } from '../../lib/mockMesas'
-import { MESEROS } from '../../lib/mockMeseros'
+import { MESAS } from '../../test/fixtures/mesas'
+import { MESEROS } from '../../test/fixtures/meseros'
 
 const [ROSA] = MESEROS
 

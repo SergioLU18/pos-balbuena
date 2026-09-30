@@ -24,7 +24,7 @@ export function clamp(val, min, max) {
   return Math.min(Math.max(val, min), max)
 }
 
-/** Simple client-side id generator for draft/mock entities */
+/** Simple client-side id generator for draft entities */
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`
 }

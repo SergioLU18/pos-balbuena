@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
-import { IS_MOCK } from '../lib/config'
 import { usePosStore } from '../store/appStore'
 import { accionesDelGrupo } from '../lib/eventos'
 
@@ -69,14 +68,14 @@ async function consultar({ restauranteId, dia, meseroId, grupo, antesDeId }) {
  *  El resultado se guarda junto con la CLAVE de los filtros que lo produjeron. Así
  *  "cargando" se deriva (la clave vigente no coincide con la del resultado) en vez de
  *  prenderse dentro del efecto, y una respuesta lenta de un filtro viejo no pisa la del
- *  filtro nuevo. En modo mock no hay servidor y la bitácora queda vacía. */
+ *  filtro nuevo. */
 export function useBitacora({ dia, meseroId = null, grupo = null }) {
   const restauranteId = usePosStore((s) => s.restauranteId)
   const [version, setVersion] = useState(0)
   const [res, setRes] = useState({ clave: null, eventos: [], hayMas: false, error: null })
   const [cargandoMas, setCargandoMas] = useState(false)
 
-  const activo = !IS_MOCK && !!restauranteId
+  const activo = !!restauranteId
   const clave = `${restauranteId}|${dia}|${meseroId ?? ''}|${grupo ?? ''}|${version}`
 
   useEffect(() => {

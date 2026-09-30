@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useBitacora, hoyLocal } from '../../hooks/useBitacora'
 import { usePosStore } from '../../store/appStore'
-import { IS_MOCK } from '../../lib/config'
 import { f, formatearDia } from '../../lib/utils'
 import { Button } from '../../components/ui/Button'
 import { DiaModal } from '../../components/admin/DiaModal'
@@ -66,7 +65,7 @@ export default function AdminBitacoraPage() {
         subtitle="Quién hizo qué y cuándo. Los registros no se pueden editar ni borrar."
         action={
           <div className="flex items-center" style={{ gap: 8 }}>
-            {!IS_MOCK && <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>}
+            <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>
             <Button variant="secondary" size="md" onClick={() => setPantallaCompleta(true)}>⤢ Pantalla completa</Button>
           </div>
         }
@@ -133,7 +132,7 @@ function BitacoraPantallaCompleta({ filtros, bitacora, onCerrar }) {
           </p>
         </div>
         <div className="flex items-center" style={{ gap: 8 }}>
-          {!IS_MOCK && <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>}
+          <Button variant="secondary" size="md" onClick={bitacora.recargar}>Actualizar</Button>
           <Button variant="primary" size="md" onClick={onCerrar}>✕ Cerrar</Button>
         </div>
       </div>
@@ -185,7 +184,6 @@ function BitacoraFiltros({ hoy, dia, setDia, meseroId, setMeseroId, grupo, setGr
 function BitacoraCuerpo({ eventos, cargando, error, hayMas, cargandoMas, cargarMas, dia, hoy, filtrado }) {
   const [abierto, setAbierto] = useState(null)
 
-  if (IS_MOCK) return <Aviso>La bitácora se guarda en el servidor. En modo demo no se registra nada.</Aviso>
   if (error) return <Aviso tono="error">No se pudo leer la bitácora: {error}</Aviso>
   if (cargando) return <Aviso>Cargando…</Aviso>
   if (!eventos.length) {

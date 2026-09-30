@@ -1,163 +1,184 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMenuAdmin } from './useMenuAdmin'
-import { useMenu } from './useMenu'
 import { usePosStore } from '../store/appStore'
-import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
+import { MENU } from '../test/fixtures/menu'
+import { MESEROS } from '../test/fixtures/meseros'
+import { RESTAURANTE_ID, responderRpc, llamadasRpc } from '../test/sbFalso'
 
-beforeEach(() => {
-  usePosStore.setState({
-    platillos: MENU.map((p) => ({ activo: true, orden: 0, ...p })),
-    ingredientes: INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x })),
-    modificadores: MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i })),
-    extras: EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x })),
-    categoriasOrden: [...new Set(MENU.map((p) => p.categoria))].map((nombre, i) => ({ id: `cat-${i}`, nombre, orden: i })),
-  })
-})
+// Firma que setup.js deja en sesión (el primer mesero).
+const FIRMA = { p_mesero_id: MESEROS[0].id, p_mesero_nombre: MESEROS[0].nombre }
+
+// El hook no toca el store: todo va por RPC y usePosData recarga por Realtime.
+// Por eso aquí se revisa qué se mandó al backend, no cómo quedó el catálogo.
 
 describe('useMenuAdmin — platillos', () => {
-  it('crea un platillo nuevo con id generado', async () => {
+  it('crea un platillo nuevo: p_id null, campos normalizados y firma', async () => {
     const { result } = renderHook(() => useMenuAdmin())
+    const antes = usePosStore.getState().platillos
+    let res
     await act(async () => {
-      await result.current.guardarPlatillo({
-        nombre: 'Gordita', categoria: 'Gorditas', base: 'Masa',
+      res = await result.current.guardarPlatillo({
+        nombre: '  Gordita ', categoria: 'Gorditas', base: 'Masa',
         tiers: [{ nombre: 'Sencillo', ingredientes: 0, precio: 90 }],
         permiteNota: true, activo: true,
       })
     })
-    const nuevo = usePosStore.getState().platillos.find((p) => p.nombre === 'Gordita')
-    expect(nuevo).toBeTruthy()
-    expect(nuevo.tiers[0].precio).toBe(90)
+    expect(res).toEqual({ error: null })
+    const [params] = llamadasRpc('pos_guardar_platillo')
+    expect(params).toEqual({
+      p_id: null,
+      p_restaurante_id: RESTAURANTE_ID,
+      p_nombre: 'Gordita',
+      p_categoria: 'Gorditas',
+      p_base: 'Masa',
+      p_tiers: [{ nombre: 'Sencillo', ingredientes: 0, precio: 90 }],
+      p_permite_mitades: false,
+      p_permite_nota: true,
+      p_activo: true,
+      p_tortillas: null,
+      p_modificadores: [],
+      p_extras: [],
+      p_orden: null,
+      p_tiempo_prep_min: 5,
+      ...FIRMA,
+    })
+    // Sin cambio local: el platillo llega después por Realtime.
+    expect(usePosStore.getState().platillos).toBe(antes)
   })
 
-  it('edita un platillo existente sin duplicarlo', async () => {
+  it('edita un platillo existente mandando su id', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const objetivo = MENU[0]
-    const antes = usePosStore.getState().platillos.length
     await act(async () => {
-      await result.current.guardarPlatillo({ ...objetivo, nombre: 'Sope Especial' })
+      await result.current.guardarPlatillo({ ...objetivo, nombre: 'Sope Especial', tiempoPrepMin: '8' })
     })
-    const platillos = usePosStore.getState().platillos
-    expect(platillos).toHaveLength(antes)
-    expect(platillos.find((p) => p.id === objetivo.id).nombre).toBe('Sope Especial')
+    const [params] = llamadasRpc('pos_guardar_platillo')
+    expect(params).toMatchObject({ p_id: objetivo.id, p_nombre: 'Sope Especial', p_tiempo_prep_min: 8 })
   })
 
-  it('borra un platillo y deja de aparecer en useMenu', async () => {
+  it('borra un platillo por RPC con firma', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const objetivo = MENU[0]
     await act(async () => {
       await result.current.borrarPlatillo(objetivo.id)
     })
-    expect(usePosStore.getState().platillos.some((p) => p.id === objetivo.id)).toBe(false)
-    const { result: menuRes } = renderHook(() => useMenu())
-    expect(menuRes.current.menu.some((p) => p.id === objetivo.id)).toBe(false)
+    expect(llamadasRpc('pos_borrar_platillo')).toEqual([{ p_id: objetivo.id, ...FIRMA }])
   })
 
-  it('un platillo inactivo no aparece en el menú del mesero', async () => {
+  it('desactivar un platillo manda p_activo false', async () => {
     const { result } = renderHook(() => useMenuAdmin())
-    const objetivo = MENU[1]
     await act(async () => {
-      await result.current.guardarPlatillo({ ...objetivo, activo: false })
+      await result.current.guardarPlatillo({ ...MENU[1], activo: false })
     })
-    const { result: menuRes } = renderHook(() => useMenu())
-    expect(menuRes.current.menu.some((p) => p.id === objetivo.id)).toBe(false)
+    expect(llamadasRpc('pos_guardar_platillo')[0].p_activo).toBe(false)
+  })
+
+  it('regresa el mensaje de error del backend', async () => {
+    responderRpc('pos_guardar_platillo', { error: { message: 'boom' } })
+    const { result } = renderHook(() => useMenuAdmin())
+    let res
+    await act(async () => {
+      res = await result.current.guardarPlatillo({ nombre: 'Gordita', tiers: [] })
+    })
+    expect(res).toEqual({ error: 'boom' })
   })
 })
 
-describe('useMenuAdmin — ingredientes y modificadores', () => {
+describe('useMenuAdmin — ingredientes, modificadores y extras', () => {
   it('crea y borra un ingrediente', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     await act(async () => {
-      await result.current.guardarIngrediente({ nombre: 'Longaniza', extra: 20, activo: true })
+      await result.current.guardarIngrediente({ nombre: 'Longaniza', extra: '20', activo: true })
     })
-    let creado = usePosStore.getState().ingredientes.find((i) => i.nombre === 'Longaniza')
-    expect(creado.extra).toBe(20)
+    expect(llamadasRpc('pos_guardar_ingrediente')).toEqual([{
+      p_id: null, p_restaurante_id: RESTAURANTE_ID, p_nombre: 'Longaniza',
+      p_extra: 20, p_activo: true, p_orden: null, ...FIRMA,
+    }])
     await act(async () => {
-      await result.current.borrarIngrediente(creado.id)
+      await result.current.borrarIngrediente('ing-0')
     })
-    expect(usePosStore.getState().ingredientes.some((i) => i.id === creado.id)).toBe(false)
+    expect(llamadasRpc('pos_borrar_ingrediente')).toEqual([{ p_id: 'ing-0', ...FIRMA }])
   })
 
-  it('asignarExtraAProductos agrega el extra a los seleccionados y lo quita del resto', async () => {
+  it('asignarExtraAProductos manda los platillos seleccionados sin nombre viejo', async () => {
     const { result } = renderHook(() => useMenuAdmin())
-    const store = usePosStore.getState()
-    const sope = store.platillos.find((p) => p.categoria === 'Sopes')
-    const refresco = store.platillos.find((p) => p.nombre === 'Refresco')
-    // Asigna "Crema" solo al Refresco (y por lo tanto lo quita del Sope, que lo tenía).
+    const refresco = usePosStore.getState().platillos.find((p) => p.nombre === 'Refresco')
     await act(async () => {
       await result.current.asignarExtraAProductos('Crema', [refresco.id])
     })
-    const platillos = usePosStore.getState().platillos
-    expect(platillos.find((p) => p.id === refresco.id).extras).toContain('Crema')
-    expect(platillos.find((p) => p.id === sope.id).extras).not.toContain('Crema')
+    expect(llamadasRpc('pos_set_extra_en_platillos')).toEqual([{
+      p_restaurante_id: RESTAURANTE_ID, p_extra: 'Crema', p_platillo_ids: [refresco.id], p_old_extra: null, ...FIRMA,
+    }])
   })
 
-  it('asignarExtraAProductos con renombre limpia el nombre viejo', async () => {
+  it('asignarExtraAProductos con renombre manda el nombre viejo (y no si es el mismo)', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const sope = usePosStore.getState().platillos.find((p) => p.categoria === 'Sopes')
     await act(async () => {
       await result.current.asignarExtraAProductos('Crema Espesa', [sope.id], 'Crema')
+      await result.current.asignarExtraAProductos('Crema', [sope.id], 'Crema')
     })
-    const actualizado = usePosStore.getState().platillos.find((p) => p.id === sope.id)
-    expect(actualizado.extras).toContain('Crema Espesa')
-    expect(actualizado.extras).not.toContain('Crema')
+    const [renombre, igual] = llamadasRpc('pos_set_extra_en_platillos')
+    expect(renombre).toMatchObject({ p_extra: 'Crema Espesa', p_old_extra: 'Crema' })
+    expect(igual.p_old_extra).toBeNull()
   })
 
-  it('un modificador inactivo no llega al flujo de orden', async () => {
+  it('desactivar un modificador manda p_activo false', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const objetivo = usePosStore.getState().modificadores[0]
     await act(async () => {
       await result.current.guardarModificador({ ...objetivo, activo: false })
     })
-    const { result: menuRes } = renderHook(() => useMenu())
-    expect(menuRes.current.modificadores).not.toContain(objetivo.nombre)
+    expect(llamadasRpc('pos_guardar_modificador')).toEqual([{
+      p_id: objetivo.id, p_restaurante_id: RESTAURANTE_ID, p_nombre: objetivo.nombre,
+      p_activo: false, p_orden: objetivo.orden, ...FIRMA,
+    }])
   })
 
-  it('crea un extra con precio y aparece en useMenu', async () => {
+  it('crea un extra con precio numérico', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     await act(async () => {
-      await result.current.guardarExtra({ nombre: 'Doble Crema', precio: 12, activo: true })
+      await result.current.guardarExtra({ nombre: 'Doble Crema', precio: '12', activo: true })
     })
-    const creado = usePosStore.getState().extras.find((e) => e.nombre === 'Doble Crema')
-    expect(creado.precio).toBe(12)
-    const { result: menuRes } = renderHook(() => useMenu())
-    expect(menuRes.current.extras.some((e) => e.nombre === 'Doble Crema' && e.precio === 12)).toBe(true)
+    expect(llamadasRpc('pos_guardar_extra')[0]).toMatchObject({
+      p_id: null, p_restaurante_id: RESTAURANTE_ID, p_nombre: 'Doble Crema', p_precio: 12, p_activo: true,
+    })
   })
 
-  it('borra un extra', async () => {
+  it('borra un extra y propaga el error del backend', async () => {
+    responderRpc('pos_borrar_extra', { error: { message: 'en uso' } })
     const { result } = renderHook(() => useMenuAdmin())
     const objetivo = usePosStore.getState().extras[0]
+    let res
     await act(async () => {
-      await result.current.borrarExtra(objetivo.id)
+      res = await result.current.borrarExtra(objetivo.id)
     })
-    expect(usePosStore.getState().extras.some((e) => e.id === objetivo.id)).toBe(false)
+    expect(llamadasRpc('pos_borrar_extra')).toEqual([{ p_id: objetivo.id, ...FIRMA }])
+    expect(res).toEqual({ error: 'en uso' })
   })
 })
 
 describe('useMenuAdmin — orden', () => {
-  it('reordenarCategorias cambia el orden de las categorías en useMenu', async () => {
+  it('reordenarCategorias manda los nombres en el orden nuevo', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     const orden = usePosStore.getState().categoriasOrden.map((c) => c.nombre)
     const nuevo = ['Postres', ...orden.filter((n) => n !== 'Postres')]
     await act(async () => {
       await result.current.reordenarCategorias(nuevo)
     })
-    const { result: menuRes } = renderHook(() => useMenu())
-    expect(menuRes.current.categorias[0]).toBe('Postres')
+    expect(llamadasRpc('pos_reordenar_categorias')).toEqual([{ p_restaurante_id: RESTAURANTE_ID, p_nombres: nuevo, ...FIRMA }])
   })
 
-  it('reordenarPlatillos asigna orden por posición dentro de la categoría', async () => {
-    const store = usePosStore.getState()
-    const sope = store.platillos.find((p) => p.categoria === 'Sopes')
-    usePosStore.setState({
-      platillos: [...store.platillos, { id: 'sope2', nombre: 'Sope 2', categoria: 'Sopes', tiers: sope.tiers, activo: true, orden: 1 }],
-    })
+  it('reordenarPlatillos, reordenarModificadores y reordenarExtras mandan los ids en orden', async () => {
     const { result } = renderHook(() => useMenuAdmin())
     await act(async () => {
-      await result.current.reordenarPlatillos(['sope2', sope.id])
+      await result.current.reordenarPlatillos(['sope2', MENU[0].id])
+      await result.current.reordenarModificadores(['mod-1', 'mod-0'])
+      await result.current.reordenarExtras(['ext-1', 'ext-0'])
     })
-    const platillos = usePosStore.getState().platillos
-    expect(platillos.find((p) => p.id === 'sope2').orden).toBe(0)
-    expect(platillos.find((p) => p.id === sope.id).orden).toBe(1)
+    expect(llamadasRpc('pos_reordenar_platillos')).toEqual([{ p_ids: ['sope2', MENU[0].id], ...FIRMA }])
+    expect(llamadasRpc('pos_reordenar_modificadores')).toEqual([{ p_ids: ['mod-1', 'mod-0'], ...FIRMA }])
+    expect(llamadasRpc('pos_reordenar_extras')).toEqual([{ p_ids: ['ext-1', 'ext-0'], ...FIRMA }])
   })
 })

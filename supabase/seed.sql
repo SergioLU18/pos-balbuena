@@ -56,7 +56,7 @@ where r.nombre = 'Jardín Balbuena'
 on conflict do nothing;
 
 -- ── Menú: platillos ─────────────────────────────────────────────────────────
--- Reconstruye el catálogo del mock (src/lib/mockMenu.js) en la tabla compartida
+-- Reconstruye el catálogo de prueba (src/test/fixtures/menu.js) en la tabla compartida
 -- `platillos`. precio = precio mínimo (para el precio plano que muestra tali);
 -- tiers/tortillas/base/flags en las columnas POS. Idempotente por (restaurante, nombre).
 insert into platillos (restaurante_id, nombre, categoria, descripcion, precio, base, tiers, tortillas, permite_mitades, permite_nota, activo, modificadores, extras, orden)

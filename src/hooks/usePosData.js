@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { sb } from '../lib/supabase'
-import { IS_MOCK, RESTAURANTE_NOMBRE } from '../lib/config'
+import { RESTAURANTE_NOMBRE } from '../lib/config'
 import {
   usePosStore,
   useOrderStore,
@@ -34,7 +34,7 @@ function mapCuentas(cuentas) {
 }
 
 // meseros de Supabase → forma de la app (es_admin snake_case → esAdmin camelCase,
-// como lo usa el mock y el gate de admin). El resto de columnas pasa igual.
+// como lo usa el gate de admin). El resto de columnas pasa igual.
 function mapMeseros(rows) {
   return (rows ?? []).map((m) => ({ ...m, esAdmin: m.es_admin ?? false }))
 }
@@ -189,7 +189,7 @@ export async function cargarTodo(rid) {
   setExtras(mapExtras(extrasRes.data))
   setCategoriasOrden(mapCategorias(categoriasRes.data))
 
-  // Si el mesero seleccionado ya no existe (ids reales ≠ ids mock), cae al primero.
+  // Si el mesero seleccionado ya no existe (o aún no hay uno), cae al primero.
   const meseroState = useMeseroStore.getState()
   if (meseros.length && !meseros.some((m) => m.id === meseroState.currentMeseroId)) {
     meseroState.setMesero(meseros[0].id)
@@ -207,11 +207,8 @@ export async function cargarTodo(rid) {
 
 // Carga inicial + suscripción en tiempo real. Se monta una sola vez en la raíz de la app
 // (App.jsx) para que la vista de mesero y la de cocina compartan estado.
-// En modo mock no hace nada: los stores ya arrancan con los datos estáticos.
 export function usePosData() {
   useEffect(() => {
-    if (IS_MOCK) return
-
     let vivo = true
     let channel = null
     let panelSync = null

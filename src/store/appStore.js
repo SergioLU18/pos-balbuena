@@ -1,25 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { IS_MOCK } from '../lib/config'
-import { MESEROS } from '../lib/mockMeseros'
-import { MESAS } from '../lib/mockMesas'
-import { MENU, INGREDIENTES, MODIFICADORES, EXTRAS } from '../lib/mockMenu'
 import { uid } from '../lib/utils'
-
-// Menú inicial para modo mock. platillos ya vienen en la forma que consume la app
-// (camelCase); solo se les marca `activo`. Ingredientes, modificadores y extras se
-// guardan como objetos con id/activo/orden — así el editor de menú (admin) los puede
-// crear/editar/borrar igual en mock que en backend. El flujo de orden los recibe
-// aplanados por useMenu (ingredientes {nombre, extra}, modificadores string[],
-// extras {nombre, precio}).
-// orden: posición del platillo dentro de su categoría (hay un platillo por categoría
-// en el mock, así que 0). El orden de categorías vive en categoriasOrden.
-const MOCK_PLATILLOS = MENU.map((p) => ({ activo: true, orden: 0, ...p }))
-const MOCK_INGREDIENTES = INGREDIENTES.map((x, i) => ({ id: `ing-${i}`, activo: true, orden: i, ...x }))
-const MOCK_MODIFICADORES = MODIFICADORES.map((nombre, i) => ({ id: `mod-${i}`, nombre, activo: true, orden: i }))
-const MOCK_EXTRAS = EXTRAS.map((x, i) => ({ id: `ext-${i}`, activo: true, orden: i, ...x }))
-// Orden de categorías = orden de primera aparición en MENU (Sopes primero).
-const MOCK_CATEGORIAS_ORDEN = [...new Set(MENU.map((p) => p.categoria))].map((nombre, i) => ({ id: `cat-${i}`, nombre, orden: i }))
 
 // Envoltura defensiva: en un navegador real localStorage siempre funciona, pero en
 // algunos entornos (Safari en modo privado, o el runtime de pruebas) puede no existir
@@ -39,7 +20,9 @@ const safeStorage = createJSONStorage(() => ({
 export const useMeseroStore = create(
   persist(
     (set) => ({
-      currentMeseroId: MESEROS[0].id,
+      // null hasta que usePosData carga los meseros: ahí cae al primero si el guardado
+      // ya no existe.
+      currentMeseroId: null,
       // adminUnlocked: el mesero admin confirmó su PIN para entrar a /admin. NO se
       // persiste a propósito — un refresh de la app vuelve a pedir el PIN. Se limpia
       // al cambiar de mesero (ver setMesero).
@@ -73,27 +56,23 @@ export const useMeseroStore = create(
   ),
 )
 
-// Catálogo de mesas y meseros. En modo mock arranca con los datos estáticos (así los
-// tests y el modo demo funcionan sin cargar nada); en modo backend `usePosData` lo
-// rellena desde Supabase y pisa cualquier valor persistido. Los componentes leen
-// siempre de aquí, sin importar el modo.
-//
-// Persistido (mesas/meseros): en modo mock, crear/borrar una mesa desde el mapa del
-// piso solo vive en este store — sin persistir, un refresh de página (o un HMR de
-// Vite) lo regresaba a las 15 mesas originales del mock, borrando el cambio.
+// Catálogo de mesas, meseros y menú. `usePosData` lo rellena desde Supabase y pisa
+// cualquier valor persistido; los componentes leen siempre de aquí. Lo persistido solo
+// sirve para pintar algo mientras llega la primera carga.
 export const usePosStore = create(
   persist(
     (set) => ({
-      mesas: IS_MOCK ? MESAS : [],
-      meseros: IS_MOCK ? MESEROS : [],
-      // Menú: en mock arranca del catálogo estático; en backend lo rellena usePosData
-      // desde Supabase (tabla compartida `platillos` + pos_ingredientes/pos_modificadores).
-      platillos: IS_MOCK ? MOCK_PLATILLOS : [],
-      ingredientes: IS_MOCK ? MOCK_INGREDIENTES : [],
-      modificadores: IS_MOCK ? MOCK_MODIFICADORES : [],
-      extras: IS_MOCK ? MOCK_EXTRAS : [],
-      categoriasOrden: IS_MOCK ? MOCK_CATEGORIAS_ORDEN : [], // orden de las categorías (nombre -> orden)
-      restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS (solo modo backend)
+      mesas: [],
+      meseros: [],
+      // Menú: tabla compartida `platillos` + pos_ingredientes/pos_modificadores/pos_extras.
+      // Ingredientes, modificadores y extras llegan como objetos con id/activo/orden (así
+      // los edita el admin); el flujo de orden los recibe aplanados por useMenu.
+      platillos: [],
+      ingredientes: [],
+      modificadores: [],
+      extras: [],
+      categoriasOrden: [], // orden de las categorías (nombre -> orden)
+      restauranteId: null, // id de la fila `restaurantes` de tali que ancla al POS
       setMesas: (mesas) => set({ mesas }),
       setMeseros: (meseros) => set({ meseros }),
       setPlatillos: (platillos) => set({ platillos }),
@@ -107,40 +86,10 @@ export const usePosStore = create(
       name: 'pos-balbuena-catalogo',
       storage: safeStorage,
       version: 6,
-      // v0 (antes del admin/menú) persistía meseros sin esAdmin y sin catálogo de menú.
-      // v2 corrigió el catálogo contra el menú real de Av. Líbano. v3 agregó las
-      // allowlists por platillo. v4 agrega el orden de categorías y `orden` en platillos.
-      // v5: Bebidas pasa a elegir SABOR como variante (Refresco con tortillas/sabores).
-      // v6: se tira el reparto viejo del salón (`mesero.mesas`).
-      // En cada salto se re-siembran meseros y menú del mock, conservando las mesas que el
-      // usuario creó. En backend no importa: usePosData pisa todo al cargar.
-      migrate: (persisted, version) => {
-        if (!IS_MOCK) return persisted
-        let next = persisted
-        if (version < 5) {
-          next = {
-            ...next,
-            meseros: MESEROS,
-            platillos: MOCK_PLATILLOS,
-            ingredientes: MOCK_INGREDIENTES,
-            modificadores: MOCK_MODIFICADORES,
-            extras: MOCK_EXTRAS,
-            categoriasOrden: MOCK_CATEGORIAS_ORDEN,
-          }
-        }
-        // v6: `mesero.mesas` era el reparto viejo del salón. Ya no hay reparto —
-        // cualquier mesero atiende cualquier mesa—, así que solo se tira del mesero.
-        if (version < 6) {
-          next = {
-            ...next,
-            meseros: (next.meseros ?? []).map((m) => {
-              const { mesas: _viejas, ...resto } = m
-              return resto
-            }),
-          }
-        }
-        return next
-      },
+      // Los saltos de versión re-sembraban el catálogo del antiguo modo demo. Hoy
+      // usePosData pisa todo al cargar, así que lo persistido de cualquier versión sirve
+      // tal cual; sin `migrate`, persist lo descartaría y avisaría en consola.
+      migrate: (persisted) => persisted,
       partialize: (s) => ({
         mesas: s.mesas, meseros: s.meseros,
         platillos: s.platillos, ingredientes: s.ingredientes,
@@ -186,8 +135,7 @@ export const useMesaPagadaStore = create((set, get) => ({
 // e `items` en la fila, y eso es lo que sostiene el historial de compras del cliente
 // aunque después se limpien los pedidos de cocina.
 //
-// Persistido igual que el resto: en modo mock es el único "backend" que hay, y en backend
-// usePosData lo pisa al cargar.
+// Persistido igual que el resto; usePosData lo pisa al cargar.
 export const useLlevarStore = create(
   persist(
     (set) => ({
@@ -210,9 +158,6 @@ export const useLlevarStore = create(
         })),
 
       agregarOrdenLocal: (orden) => set((s) => ({ ordenes: [...s.ordenes, orden] })),
-
-      actualizarOrdenLocal: (ordenId, patch) =>
-        set((s) => ({ ordenes: s.ordenes.map((o) => (o.id === ordenId ? { ...o, ...patch } : o)) })),
 
       // Una orden descartada (vacía) no se cierra: se borra, así que tampoco queda aquí.
       quitarOrdenLocal: (ordenId) => set((s) => ({ ordenes: s.ordenes.filter((o) => o.id !== ordenId) })),
@@ -247,9 +192,8 @@ const EMPTY_ITEMS = []
 // drafts: mesaId -> item[] (orden en construcción, aún no enviada a cocina)
 // cuentas: mesaId -> { items: item[], createdAt } (ya enviado a cocina)
 //
-// Persistido en localStorage: en esta fase (sin Supabase real) el mesero y la cocina
-// corren en pestañas/dispositivos distintos, así que sin esto no habría forma de que
-// un pedido enviado desde la mesa le llegara a la pantalla de cocina.
+// Persistido en localStorage: los drafts solo existen en esta tablet, así que un refresh
+// no debe tirar una orden a medio tomar. Las cuentas las pisa usePosData al cargar.
 export const useOrderStore = create(
   persist(
     (set, get) => ({
@@ -260,7 +204,7 @@ export const useOrderStore = create(
       getCuenta: (mesaId) => get().cuentas[mesaId] ?? null,
 
       // Reemplaza el mapa completo de cuentas. Lo usa usePosData al cargar/refrescar
-      // desde Supabase (en modo backend la fuente de verdad es la base, no localStorage).
+      // desde Supabase (la fuente de verdad es la base, no localStorage).
       setCuentas: (cuentas) => set({ cuentas }),
 
       addDraftItem: (mesaId, item) =>
@@ -305,48 +249,22 @@ export const useOrderStore = create(
           }
         }),
 
-      enviarOrden: (mesaId) =>
-        set((s) => {
-          const items = s.drafts[mesaId] ?? []
-          if (items.length === 0) return s
-          const existing = s.cuentas[mesaId]
-          return {
-            drafts: { ...s.drafts, [mesaId]: [] },
-            cuentas: {
-              ...s.cuentas,
-              [mesaId]: {
-                items: [...(existing?.items ?? []), ...items],
-                createdAt: existing?.createdAt ?? new Date().toISOString(),
-              },
-            },
-          }
-        }),
-
       cerrarCuenta: (mesaId) =>
         set((s) => {
           const { [mesaId]: _omit, ...rest } = s.cuentas
           return { cuentas: rest }
         }),
 
-      // Unir mesas: lo que traían las secundarias pasa a la principal. Los drafts se
-      // mueven siempre (solo existen en esta tablet); las cuentas solo en mock — en
-      // backend las mueve pos_unir_mesas y llegan por Realtime.
-      juntarEnMesa: (deIds, aId, { moverCuentas = false } = {}) =>
+      // Unir mesas: los drafts de las secundarias pasan a la principal (solo existen en
+      // esta tablet). Las cuentas las mueve pos_unir_mesas y llegan por Realtime.
+      juntarEnMesa: (deIds, aId) =>
         set((s) => {
           const drafts = { ...s.drafts }
-          const cuentas = { ...s.cuentas }
           for (const id of deIds) {
             if (drafts[id]?.length) drafts[aId] = [...(drafts[aId] ?? []), ...drafts[id]]
             delete drafts[id]
-            if (moverCuentas && cuentas[id]) {
-              cuentas[aId] = {
-                items: [...(cuentas[aId]?.items ?? []), ...cuentas[id].items],
-                createdAt: cuentas[aId]?.createdAt ?? cuentas[id].createdAt,
-              }
-              delete cuentas[id]
-            }
           }
-          return { drafts, cuentas }
+          return { drafts }
         }),
     }),
     { name: 'pos-balbuena-orders', storage: safeStorage },
@@ -373,8 +291,6 @@ export const usePedidosStore = create(
       // Reemplaza la lista completa. Lo usa usePosData al cargar/refrescar desde Supabase.
       setPedidos: (pedidos) => set({ pedidos }),
 
-      agregarPedido: (pedido) => set((s) => ({ pedidos: [...s.pedidos, pedido] })),
-
       avanzarEstado: (pedidoId, estado) =>
         set((s) => {
           const ahora = new Date().toISOString()
@@ -397,9 +313,8 @@ export const usePedidosStore = create(
         set((s) => ({ pedidos: s.pedidos.filter((p) => p.ordenLlevarId !== ordenId) })),
 
       // Solo mutan un pedido que sigue 'pendiente' (Nuevo) — mismo guard que el RPC
-      // pos_editar_item_pedido/pos_eliminar_item_pedido del modo backend. Fuera de esa
-      // condición son no-op, para que el modo mock se comporte igual que el real aunque
-      // la UI ya debería evitar llamar esto en ese caso.
+      // pos_editar_item_pedido/pos_eliminar_item_pedido. Fuera de esa condición son no-op,
+      // para que la actualización optimista no se adelante a algo que el RPC va a rechazar.
       actualizarCantidadItemPedido: (pedidoId, itemId, cantidad) =>
         set((s) => ({
           pedidos: s.pedidos.map((p) =>
@@ -431,16 +346,3 @@ export const usePedidosStore = create(
     { name: 'pos-balbuena-pedidos', storage: safeStorage },
   ),
 )
-
-// Solo en modo mock el "backend" es localStorage compartido entre pestañas: cuando otra
-// pestaña escribe, esta rehidrata para reflejar el cambio (mesero -> cocina). En modo
-// backend la sincronización la hace Supabase Realtime (usePosData), así que rehidratar
-// desde localStorage aquí solo pisaría el estado fresco con datos viejos.
-if (IS_MOCK && typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'pos-balbuena-orders') useOrderStore.persist.rehydrate()
-    if (e.key === 'pos-balbuena-pedidos') usePedidosStore.persist.rehydrate()
-    if (e.key === 'pos-balbuena-catalogo') usePosStore.persist.rehydrate()
-    if (e.key === 'pos-balbuena-llevar') useLlevarStore.persist.rehydrate()
-  })
-}

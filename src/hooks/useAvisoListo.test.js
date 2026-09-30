@@ -11,8 +11,8 @@ vi.mock('../lib/sonidos', () => ({
 import { useAvisoListo } from './useAvisoListo'
 import { sonarListo } from '../lib/sonidos'
 import { usePedidosStore, useMeseroStore, usePosStore, useAvisosStore } from '../store/appStore'
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
+import { MESAS } from '../test/fixtures/mesas'
+import { MESEROS } from '../test/fixtures/meseros'
 
 const [ROSA, BETO, LUPITA] = MESEROS
 const MESA = MESAS[4]

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { OrderTicket } from './OrderTicket'
 import { buildDraftItem } from '../../hooks/useOrderDraft'
-import { MENU } from '../../lib/mockMenu'
+import { MENU } from '../../test/fixtures/menu'
 
 const sope = MENU.find((p) => p.id === 'sope')
 

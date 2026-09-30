@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { buildDraftItem, setMitadField, calcItemPrecio, calcSubtotal, nombreItem, useOrderDraft } from './useOrderDraft'
-import { MENU } from '../lib/mockMenu'
-import { MESAS } from '../lib/mockMesas'
-import { MESEROS } from '../lib/mockMeseros'
-import { useOrderStore, usePedidosStore, useMeseroStore, usePosStore, useMesaPagadaStore } from '../store/appStore'
+import { MENU } from '../test/fixtures/menu'
+import { MESAS } from '../test/fixtures/mesas'
+import { useOrderStore, usePedidosStore, useMesaPagadaStore } from '../store/appStore'
+import { llamadasRpc, vaciarPromesas } from '../test/sbFalso'
 
 const sope = MENU.find((p) => p.id === 'sope')
 // Índice por nombre de tier (robusto al orden: el Sope tiene además "Sencillo con Chorizo").
@@ -19,8 +19,6 @@ beforeEach(() => {
   useOrderStore.setState({ drafts: {}, cuentas: {} })
   usePedidosStore.setState({ pedidos: [] })
   useMesaPagadaStore.setState({ pagadas: {} })
-  useMeseroStore.setState({ currentMeseroId: MESEROS[0].id })
-  usePosStore.setState({ mesas: MESAS, meseros: MESEROS })
 })
 
 describe('buildDraftItem', () => {
@@ -96,16 +94,18 @@ describe('extras libres (escritos por el mesero)', () => {
 })
 
 describe('useOrderDraft — cierre de mesa marca "pagada"', () => {
-  it('cerrarMesa limpia la cuenta y los pedidos, y marca la mesa como pagada con su total', () => {
+  it('cerrarMesa limpia la cuenta y los pedidos, y marca la mesa como pagada con su total', async () => {
+    // Cuenta como llega de Supabase: renglones planos de cuenta_items.
     useOrderStore.setState({
-      cuentas: { [mesa1.id]: { items: [buildDraftItem(sope, I_2ING)], createdAt: new Date().toISOString() } },
+      cuentas: { [mesa1.id]: { cuentaId: 'cuenta-1', items: [{ id: 'ci-1', nombre: 'Sope · 2 Ingredientes', precio_unitario: 165, cantidad: 1 }], createdAt: new Date().toISOString() } },
     })
     usePedidosStore.setState({
-      pedidos: [{ id: 'p1', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'entregado' }],
+      pedidos: [{ id: 'p1', tipo: 'mesa', mesaId: mesa1.id, mesaNumero: mesa1.numero, meseroNombre: 'Ana', items: [], enviadoAt: new Date().toISOString(), estado: 'entregado' }],
     })
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
-    act(() => result.current.cerrarMesa('efectivo'))
+    await act(async () => { result.current.cerrarMesa('efectivo'); await vaciarPromesas() })
 
+    expect(llamadasRpc('pos_cerrar_mesa')[0]).toMatchObject({ p_mesa_id: mesa1.id, p_metodo_pago: 'efectivo', p_monto_efectivo: null, p_monto_tarjeta: null })
     expect(useOrderStore.getState().cuentas[mesa1.id]).toBeUndefined()
     expect(usePedidosStore.getState().pedidos).toHaveLength(0)
     expect(useMesaPagadaStore.getState().pagadas[mesa1.id]).toMatchObject({ total: 165 })

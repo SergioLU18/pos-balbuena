@@ -28,7 +28,7 @@ function MeseroApp() {
 }
 
 export default function App() {
-  // Carga inicial + sincronización en tiempo real desde Supabase (no-op en modo mock).
+  // Carga inicial + sincronización en tiempo real desde Supabase.
   usePosData()
 
   return (

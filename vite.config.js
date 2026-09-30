@@ -7,8 +7,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // setup.js cambia lib/supabase por un cliente falso: ningún test toca el backend.
     setupFiles: ['./src/test/setup.js'],
-    // Los tests corren en modo mock: ejercitan los stores locales sin tocar Supabase.
-    env: { VITE_MOCK: 'true' },
   },
 })
