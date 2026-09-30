@@ -35,9 +35,22 @@ const RECORDATORIO_MS = 90_000
 // memoria no habría forma de saber "a este ya lo programé/avisé" entre una recarga y
 // otra. Al vivir fuera del componente también sobreviven a un remontaje. Mismo patrón
 // que `pagadasVistas` en usePosData.
-const avisados = new Set() // pedidoId
+//
+// `avisados` además se guarda en localStorage: sin eso, un refresh lo vaciaba y todo
+// pedido vencido dentro de RECIENTE_MS volvía a sonar y a aparecer en la campana,
+// aunque el mesero ya lo hubiera visto y limpiado.
+const AVISADOS_KEY = 'pos-balbuena-avisados'
+const avisados = new Set(leerAvisados()) // pedidoId
 const temporizadores = new Map() // pedidoId -> id de setTimeout
 const recordatorios = new Map() // pedidoId -> id de setTimeout
+
+function leerAvisados() {
+  try { return JSON.parse(window.localStorage.getItem(AVISADOS_KEY)) ?? [] } catch { return [] }
+}
+
+function guardarAvisados() {
+  try { window.localStorage.setItem(AVISADOS_KEY, JSON.stringify([...avisados])) } catch { /* no-op */ }
+}
 
 // Quién es el destinatario del pedido, tal como se lee en el aviso: la mesa, o el cliente
 // cuando es para llevar (esas comandas no tienen mesa).
@@ -85,6 +98,7 @@ function programarRecordatorio(pedidoId) {
 
 function dispararAviso(p) {
   avisados.add(p.id)
+  guardarAvisados()
   sonarListo()
   const min = minutosAviso(p)
   useAvisosStore.getState().agregarAviso({
@@ -142,7 +156,7 @@ export function useAvisoListo() {
       if (avisados.has(p.id) || temporizadores.has(p.id)) continue
       if (!p.enviadoAt || !esMio(p)) continue
       // Ya lo recogieron: no tiene caso avisar que "sigue esperando" de algo entregado.
-      if (p.estado === 'entregado') { avisados.add(p.id); continue }
+      if (p.estado === 'entregado') { avisados.add(p.id); guardarAvisados(); continue }
 
       const objetivo = new Date(p.enviadoAt).getTime() + minutosAviso(p) * 60_000
       const faltante = objetivo - ahora
@@ -150,7 +164,7 @@ export function useAvisoListo() {
         // El plazo ya venció: si venció hace poco, se avisa ahora; si es viejo (la app se
         // acaba de abrir y ya llevaba rato así), se marca como visto sin sonar de golpe.
         if (-faltante <= RECIENTE_MS) dispararAviso(p)
-        else avisados.add(p.id)
+        else { avisados.add(p.id); guardarAvisados() }
         continue
       }
 
@@ -171,7 +185,9 @@ export function useAvisoListo() {
     // Pedidos que ya no existen (mesa cobrada en tali, cuenta cerrada): se olvidan para
     // que ni los sets/mapas ni los temporizadores crezcan durante todo el turno.
     const vivos = new Set(pedidos.map((p) => p.id))
+    const antes = avisados.size
     for (const id of [...avisados]) if (!vivos.has(id)) avisados.delete(id)
+    if (avisados.size !== antes) guardarAvisados()
     for (const id of [...temporizadores.keys()]) if (!vivos.has(id)) cancelarTemporizador(id)
     for (const id of [...recordatorios.keys()]) if (!vivos.has(id)) cancelarRecordatorio(id)
   }, [pedidos, currentMeseroId, meseros])
