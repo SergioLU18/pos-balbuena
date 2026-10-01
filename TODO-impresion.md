@@ -27,8 +27,26 @@ empaquetar el POS con **Capacitor**.
 - [ ] Aviso en el POS si la tablet no tiene RawBT instalado.
 
 ## Ticket
-- [ ] Definir pre-cuenta (antes de cobrar) vs. nota de pago (ya cobrada).
-- [ ] Folio consecutivo para cuentas de mesa (hoy solo existe en para llevar: `L-{folio}`).
+Dos tickets distintos:
+- **Pre-cuenta** (botón "Imprimir cuenta", antes de cobrar): sin folio, leyenda "Pre-cuenta · No es comprobante de pago".
+- **Comprobante de pago** (al cobrar, ya se sabe el método).
+
+### Folio (solo pagos con tarjeta)
+Decidido:
+- Tarjeta (mesa o para llevar) → se asigna folio **al cobrar**, dentro de la misma operación. Se imprime con folio.
+- Efectivo (mesa o para llevar) → sin folio. Se imprime nota sin folio.
+- Pagos por tali → llevan folio "detrás de cámaras" (no se imprime). Idea: asignarlo con un trigger en la BD cuando la cuenta pasa a pagada, así cubre POS y tali con el mismo consecutivo.
+- Un solo consecutivo para mesa y para llevar. El `L-{folio}` actual de para llevar se queda como número de orden (cocina), no es el folio fiscal.
+
+Pendiente de confirmar:
+- [ ] Pago mixto (efectivo + tarjeta): ¿lleva folio?
+- [ ] Formato del folio (preguntado al contador).
+
+Tareas:
+- [ ] Consecutivo de folios en Supabase (sin huecos: solo se consume al cobrar con tarjeta).
+- [ ] Asignar folio en `pos_cerrar_mesa` y `pos_pagar_orden_llevar` cuando el método es tarjeta.
+- [ ] Asignar folio a pagos hechos en tali.
+- [ ] Mostrar el folio en la bitácora / cierre del día.
 - [ ] Datos del negocio en Supabase (tabla de configuración) en vez de fijos en el código.
 - [ ] Leyendas: "No es comprobante fiscal", "Precios con IVA incluido" (confirmar con contador), cómo pedir factura.
 - [ ] Conectar "Imprimir cuenta" (`MeseroOrdenPage`) y "Reimprimir ticket" (`PedidosModal`), hoy placeholders.
