@@ -3,6 +3,7 @@ import { f } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { chipGrid } from '../ui/chipStyles'
+import { IconParaLlevar } from '../ui/icons'
 import { TierPicker } from './TierPicker'
 import { IngredienteChecklist } from './IngredienteChecklist'
 import { ModificadorToggles } from './ModificadorToggles'
@@ -159,15 +160,15 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
                 onChange={(v) => cambiarMitad('ingredientes', v)}
               />
             )}
-            <ExtrasToggles
-              extras={extrasAplicables}
-              seleccionados={item.extras}
-              onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
-            />
             <ModificadorToggles
               modificadores={modsAplicables}
               seleccionados={mitad.modificadores}
               onChange={(v) => cambiarMitad('modificadores', v)}
+            />
+            <ExtrasToggles
+              extras={extrasAplicables}
+              seleccionados={item.extras}
+              onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
             />
           </div>
 
@@ -194,6 +195,23 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             </div>
           )}
 
+          {permiteParaLlevar && (
+            <button
+              aria-pressed={paraLlevar}
+              onClick={() => setParaLlevar((v) => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '12px 16px', borderRadius: 14, cursor: 'pointer',
+                fontFamily: "'Inter Tight', sans-serif", fontSize: 17, fontWeight: 800,
+                border: `2.5px solid ${paraLlevar ? 'var(--jb-pink)' : 'var(--jb-line)'}`,
+                background: paraLlevar ? 'var(--jb-pink-light)' : '#fff',
+                color: paraLlevar ? 'var(--jb-pink-dark)' : 'var(--jb-ink-soft)',
+              }}
+            >
+              <span className="flex items-center" style={{ gap: 8 }}>{paraLlevar ? '☑' : '☐'} <IconParaLlevar size={18} /> Para llevar</span>
+              <span>+{f(EMPAQUE_MONTO)} c/u</span>
+            </button>
+          )}
         </div>
 
         <div
@@ -213,23 +231,6 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             >
               {error}
             </p>
-          )}
-          {permiteParaLlevar && (
-            <button
-              aria-pressed={paraLlevar}
-              onClick={() => setParaLlevar((v) => !v)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                padding: '12px 16px', borderRadius: 14, cursor: 'pointer',
-                fontFamily: "'Inter Tight', sans-serif", fontSize: 17, fontWeight: 800,
-                border: `2.5px solid ${paraLlevar ? 'var(--jb-pink)' : 'var(--jb-line)'}`,
-                background: paraLlevar ? 'var(--jb-pink-light)' : '#fff',
-                color: paraLlevar ? 'var(--jb-pink-dark)' : 'var(--jb-ink-soft)',
-              }}
-            >
-              <span>{paraLlevar ? '☑' : '☐'} 🥡 Para llevar</span>
-              <span>+{f(EMPAQUE_MONTO)} c/u</span>
-            </button>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div className="flex items-center" style={{ gap: 0, border: '2.5px solid var(--jb-line)', borderRadius: 16, overflow: 'hidden', flexShrink: 0 }}>
