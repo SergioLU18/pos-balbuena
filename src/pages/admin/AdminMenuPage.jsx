@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePosStore } from '../../store/appStore'
 import { useMenuAdmin } from '../../hooks/useMenuAdmin'
 import { f, uid } from '../../lib/utils'
@@ -231,58 +231,66 @@ function PlatillosTab() {
         <Button size="md" onClick={() => setEditando({})}>+ Nuevo platillo</Button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
         {categorias.map((cat) => {
           const lista = dishesDe(cat)
-          const mostrarHeader = lista.length > 1
+          const multiple = lista.length > 1
           return (
-            <Fragment key={cat}>
-              {mostrarHeader && (
-                <h3 style={{ gridColumn: '1 / -1', margin: '10px 0 -4px', fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>{cat}</h3>
-              )}
-              {lista.map((p, idx) => {
-                const precios = preciosDe(p)
-                const inactivo = p.activo === false
-                const min = precios.length ? Math.min(...precios) : 0
-                const max = precios.length ? Math.max(...precios) : 0
-                return (
-                  <div
-                    key={p.id}
-                    ref={(el) => {
-                      if (el) nodos.current.set(p.id, el)
-                      else nodos.current.delete(p.id)
-                    }}
-                    style={{
-                      background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
-                      padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
-                      willChange: 'transform',
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
-                      <div className="flex items-center" style={{ gap: 8 }}>
-                        {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
-                        {mostrarHeader && (
-                          <MoveButtons
-                            onUp={() => moverPlatillo(cat, idx, -1)}
-                            onDown={() => moverPlatillo(cat, idx, 1)}
-                            disableUp={idx === 0}
-                            disableDown={idx === lista.length - 1}
-                          />
-                        )}
+            // Cada categoría es su propio bloque (no un gran grid compartido): así el
+            // siguiente grupo siempre arranca en fila nueva, sin importar cuántos
+            // platillos traiga el anterior. El nombre + línea separadora siempre se ven
+            // (antes se ocultaban con un solo platillo, y ese platillo se colaba
+            // visualmente en el grupo de arriba — ver "Flan de Queso Oaxaca" bajo "Bebidas").
+            <div key={cat}>
+              <div className="flex items-center" style={{ gap: 12, margin: '0 0 12px' }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: 'var(--jb-pink-dark)', whiteSpace: 'nowrap' }}>{cat}</h3>
+                <span style={{ flex: 1, height: 2, borderRadius: 2, background: 'var(--jb-line)' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+                {lista.map((p, idx) => {
+                  const precios = preciosDe(p)
+                  const inactivo = p.activo === false
+                  const min = precios.length ? Math.min(...precios) : 0
+                  const max = precios.length ? Math.max(...precios) : 0
+                  return (
+                    <div
+                      key={p.id}
+                      ref={(el) => {
+                        if (el) nodos.current.set(p.id, el)
+                        else nodos.current.delete(p.id)
+                      }}
+                      style={{
+                        background: '#fff', border: '3px solid var(--jb-line)', borderRadius: 18,
+                        padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, opacity: inactivo ? 0.55 : 1,
+                        willChange: 'transform',
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--jb-ink)' }}>{p.nombre}</span>
+                        <div className="flex items-center" style={{ gap: 8 }}>
+                          {inactivo && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--jb-gray)', padding: '3px 9px', borderRadius: 999 }}>Oculto</span>}
+                          {multiple && (
+                            <MoveButtons
+                              onUp={() => moverPlatillo(cat, idx, -1)}
+                              onDown={() => moverPlatillo(cat, idx, 1)}
+                              disableUp={idx === 0}
+                              disableDown={idx === lista.length - 1}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
+                        {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
+                      </span>
+                      <div className="flex" style={{ gap: 8, marginTop: 4 }}>
+                        <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setViendo(p)}>Ver</Button>
+                        <Button variant="ghost" size="md" style={{ color: 'var(--jb-pink-dark)' }} onClick={() => setEditando(p)}>Editar</Button>
                       </div>
                     </div>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--jb-pink-dark)' }}>
-                      {precios.length === 0 ? '—' : min === max ? f(min) : `${f(min)} – ${f(max)}`}
-                    </span>
-                    <div className="flex" style={{ gap: 8, marginTop: 4 }}>
-                      <Button variant="secondary" size="md" style={{ flex: 1 }} onClick={() => setViendo(p)}>Ver</Button>
-                      <Button variant="ghost" size="md" style={{ color: 'var(--jb-pink-dark)' }} onClick={() => setEditando(p)}>Editar</Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </Fragment>
+                  )
+                })}
+              </div>
+            </div>
           )
         })}
       </div>
