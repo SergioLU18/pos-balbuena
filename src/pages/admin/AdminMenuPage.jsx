@@ -411,6 +411,8 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
   const [extrasSel, setExtrasSel] = useState(
     platillo.extras != null ? platillo.extras : extraCatalogo.map((e) => e.nombre),
   )
+  const [usaModificadores, setUsaModificadores] = useState(platillo.usaModificadores !== false)
+  const [usaExtras, setUsaExtras] = useState(platillo.usaExtras !== false)
   const toggleName = (list, setList, nombre) =>
     setList(list.includes(nombre) ? list.filter((n) => n !== nombre) : [...list, nombre])
   const [error, setError] = useState(null)
@@ -451,6 +453,8 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
       activo,
       modificadores: modsSel,
       extras: extrasSel,
+      usaModificadores,
+      usaExtras,
       tiempoPrepMin: Math.max(1, Number(tiempoPrepMin) || 5),
     })
     setGuardando(false)
@@ -475,7 +479,7 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
         <textarea value={base} onChange={(e) => setBase(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'none' }} placeholder="Tortilla hecha a mano, frijol, crema…" />
       </Campo>
 
-      <Toggle checked={usaTortillas} onChange={setUsaTortillas} label="Usa variantes de tortilla (precio por tipo de tortilla)" />
+      <Toggle checked={usaTortillas} onChange={setUsaTortillas} label="Activar Variantes" />
 
       {usaTortillas ? (
         <TortillasEditor tortillas={tortillas} onChange={setTortillas} />
@@ -485,38 +489,46 @@ function PlatilloModal({ platillo, categoriasExistentes, onGuardar, onBorrar, on
         </Campo>
       )}
 
-      <Campo label="Modificadores que aplican (Sin…)">
-        {modCatalogo.length === 0 ? (
-          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay modificadores en el catálogo.</span>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {modCatalogo.map((m) => (
-              <Chip key={m.nombre} active={modsSel.includes(m.nombre)} onClick={() => toggleName(modsSel, setModsSel, m.nombre)}>
-                {m.nombre}
-              </Chip>
-            ))}
-          </div>
-        )}
-      </Campo>
+      <Toggle checked={usaModificadores} onChange={setUsaModificadores} label="Activar modificadores" />
 
-      <Campo label="Extras que aplican (agregados de pago)">
-        {extraCatalogo.length === 0 ? (
-          <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay extras en el catálogo.</span>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {extraCatalogo.map((e) => (
-              <Chip
-                key={e.nombre}
-                active={extrasSel.includes(e.nombre)}
-                onClick={() => toggleName(extrasSel, setExtrasSel, e.nombre)}
-                sublabel={e.precio > 0 ? `+${f(e.precio)}` : undefined}
-              >
-                {e.nombre}
-              </Chip>
-            ))}
-          </div>
-        )}
-      </Campo>
+      {usaModificadores && (
+        <Campo label="Modificadores que aplican (Sin…)">
+          {modCatalogo.length === 0 ? (
+            <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay modificadores en el catálogo.</span>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {modCatalogo.map((m) => (
+                <Chip key={m.nombre} active={modsSel.includes(m.nombre)} onClick={() => toggleName(modsSel, setModsSel, m.nombre)}>
+                  {m.nombre}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </Campo>
+      )}
+
+      <Toggle checked={usaExtras} onChange={setUsaExtras} label="Activar extras" />
+
+      {usaExtras && (
+        <Campo label="Extras que aplican (agregados de pago)">
+          {extraCatalogo.length === 0 ? (
+            <span style={{ fontSize: 13, color: 'var(--jb-gray)' }}>No hay extras en el catálogo.</span>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {extraCatalogo.map((e) => (
+                <Chip
+                  key={e.nombre}
+                  active={extrasSel.includes(e.nombre)}
+                  onClick={() => toggleName(extrasSel, setExtrasSel, e.nombre)}
+                  sublabel={e.precio > 0 ? `+${f(e.precio)}` : undefined}
+                >
+                  {e.nombre}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </Campo>
+      )}
 
       <div style={{ maxWidth: 220 }}>
         <Campo label="Tiempo de preparación (min)">
@@ -610,6 +622,8 @@ function PlatilloVistaModal({ platillo, onClose }) {
       <div className="flex" style={{ gap: 16, flexWrap: 'wrap' }}>
         <BanderaVista ok={!!platillo.permiteNota}>Permite nota</BanderaVista>
         <BanderaVista ok={platillo.activo !== false}>Disponible en el menú</BanderaVista>
+        <BanderaVista ok={platillo.usaModificadores !== false}>Modificadores activados</BanderaVista>
+        <BanderaVista ok={platillo.usaExtras !== false}>Extras activados</BanderaVista>
       </div>
 
       <div className="flex" style={{ marginTop: 6 }}>
@@ -680,7 +694,7 @@ function TortillasEditor({ tortillas, onChange }) {
           <TiersEditor tiers={t.tiers} onChange={(nt) => setTor(i, { tiers: nt })} hint={false} />
         </div>
       ))}
-      <button onClick={addTor} style={agregarBtn}>+ Agregar variante de tortilla</button>
+      <button onClick={addTor} style={agregarBtn}>+ Agregar otra variante</button>
     </div>
   )
 }

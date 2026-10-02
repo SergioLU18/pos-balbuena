@@ -87,12 +87,18 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   // lista), igual que arranca el formulario de admin al editar un platillo nuevo.
   // El campo de extra libre que trae ExtrasToggles no pasa por esta allowlist: se ofrece
   // en todos los platillos, incluidos los que no tienen ningún extra de catálogo.
-  const modsAplicables = platillo.modificadores == null
-    ? modificadores
-    : modificadores.filter((m) => platillo.modificadores.includes(m))
-  const extrasAplicables = platillo.extras == null
-    ? extras
-    : extras.filter((e) => platillo.extras.includes(e.nombre))
+  // Con el interruptor general apagado (usaModificadores/usaExtras === false), la
+  // sección entera se oculta sin importar la allowlist de arriba.
+  const modsAplicables = platillo.usaModificadores === false
+    ? []
+    : platillo.modificadores == null
+      ? modificadores
+      : modificadores.filter((m) => platillo.modificadores.includes(m))
+  const extrasAplicables = platillo.usaExtras === false
+    ? []
+    : platillo.extras == null
+      ? extras
+      : extras.filter((e) => platillo.extras.includes(e.nombre))
 
   return (
     <div
@@ -165,10 +171,12 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
             />
           </div>
 
-          <ExtraLibreForm
-            seleccionados={item.extras}
-            onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
-          />
+          {platillo.usaExtras !== false && (
+            <ExtraLibreForm
+              seleccionados={item.extras}
+              onChange={(v) => setItem((it) => ({ ...it, extras: v }))}
+            />
+          )}
 
           {platillo.permiteNota && (
             <div>

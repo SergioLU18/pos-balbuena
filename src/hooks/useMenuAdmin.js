@@ -35,6 +35,8 @@ export function useMenuAdmin() {
         p_extras: p.extras ?? [],
         p_orden: p.orden ?? null,
         p_tiempo_prep_min: Number(p.tiempoPrepMin) || 5,
+        p_usa_modificadores: p.usaModificadores !== false,
+        p_usa_extras: p.usaExtras !== false,
         ...firma(),
       })
       .then(({ error }) => ({ error: error?.message ?? null }))

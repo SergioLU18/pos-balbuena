@@ -41,6 +41,8 @@ describe('useMenuAdmin — platillos', () => {
       p_extras: [],
       p_orden: null,
       p_tiempo_prep_min: 5,
+      p_usa_modificadores: true,
+      p_usa_extras: true,
       ...FIRMA,
     })
     // Sin cambio local: el platillo llega después por Realtime.
