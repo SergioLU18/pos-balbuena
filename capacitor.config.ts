@@ -4,7 +4,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // deploy llega a las tablets sin reinstalar el APK. Solo hace falta un APK nuevo cuando
 // cambia algo nativo (el plugin de impresión, permisos, versión de Capacitor).
 // Para probar contra un build local, comenta `server` y corre `npm run build && npx cap sync`.
-const POS_URL = 'https://TODO-netlify-url.netlify.app';
+const POS_URL = 'https://pos-balbuena.netlify.app';
 
 const config: CapacitorConfig = {
   appId: 'mx.chichenit.balbuena',
