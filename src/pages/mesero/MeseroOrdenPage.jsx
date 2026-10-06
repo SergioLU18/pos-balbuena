@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
-import { usePosStore, usePedidosStore } from '../../store/appStore'
+import { usePosStore, usePedidosStore, useMeseroStore } from '../../store/appStore'
 import { useMenu } from '../../hooks/useMenu'
 import { useOrderDraft } from '../../hooks/useOrderDraft'
 import { useMesasUnidas } from '../../hooks/useMesasUnidas'
@@ -13,6 +13,12 @@ import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlati
 import { OrderTicket } from '../../components/mesero/OrderTicket'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { MetodoPagoModal } from '../../components/mesero/MetodoPagoModal'
+import { ModalShell } from '../../components/admin/AdminModal'
+import { Button } from '../../components/ui/Button'
+import { TicketPreview } from '../../components/ui/TicketPreview'
+import { imprimir } from '../../lib/impresora'
+import { preCuenta } from '../../lib/tickets'
+import { NEGOCIO } from '../../lib/negocio'
 
 export default function MeseroOrdenPage() {
   const { mesaId } = useParams()
@@ -39,11 +45,17 @@ export default function MeseroOrdenPage() {
   // confirmación antes de cerrar).
   const [eligiendoMetodoPago, setEligiendoMetodoPago] = useState(false)
   const [separando, setSeparando] = useState(null)
-  // "Imprimir cuenta" todavía no imprime nada de verdad: solo desbloquea "Cerrar mesa".
-  // Local al montaje de esta pantalla a propósito — al volver a entrar a la mesa se
-  // vuelve a pedir, en vez de confiar en que lo impreso hace rato siga vigente.
+  // "Imprimir cuenta" imprime la pre-cuenta y desbloquea "Cerrar mesa". Local al montaje
+  // de esta pantalla a propósito — al volver a entrar a la mesa se vuelve a pedir, en vez
+  // de confiar en que lo impreso hace rato siga vigente.
   const [cuentaImpresa, setCuentaImpresa] = useState(false)
   const [avisoImprimir, setAvisoImprimir] = useState(false)
+  const [imprimiendo, setImprimiendo] = useState(false)
+  // La impresión no salió (sin impresora configurada, apagada, o abierto en navegador):
+  // { motivo, bloques } para enseñar la vista previa y dejar seguir sin imprimir.
+  const [fallaImpresion, setFallaImpresion] = useState(null)
+  const currentMeseroId = useMeseroStore((s) => s.currentMeseroId)
+  const meseroNombre = usePosStore((s) => s.meseros).find((m) => m.id === currentMeseroId)?.nombre
 
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
@@ -121,11 +133,20 @@ export default function MeseroOrdenPage() {
     setEligiendoMetodoPago(true)
   }
 
-  function handleImprimirCuenta() {
-    // Sin funcionalidad real todavía (no manda nada a ninguna impresora): solo marca
-    // que ya se puede cerrar la mesa.
-    setCuentaImpresa(true)
+  async function handleImprimirCuenta() {
     setAvisoImprimir(false)
+    setFallaImpresion(null)
+    const bloques = preCuenta({ negocio: NEGOCIO, mesa: nombre, mesero: meseroNombre, items: cuenta?.items ?? [] })
+    setImprimiendo(true)
+    const r = await imprimir(bloques)
+    setImprimiendo(false)
+    if (r.ok) setCuentaImpresa(true)
+    else setFallaImpresion({ motivo: r.motivo, bloques })
+  }
+
+  function continuarSinImprimir() {
+    setFallaImpresion(null)
+    setCuentaImpresa(true)
   }
 
   function handleSeparar() {
@@ -170,13 +191,14 @@ export default function MeseroOrdenPage() {
           <>
             <button
               onClick={handleImprimirCuenta}
+              disabled={imprimiendo}
               style={{
                 fontFamily: "'Inter Tight', sans-serif", fontSize: 14, fontWeight: 700,
                 padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
                 background: '#fff', border: '2px solid var(--jb-line)', color: 'var(--jb-ink)',
               }}
             >
-              Imprimir cuenta
+              {imprimiendo ? 'Imprimiendo…' : 'Imprimir cuenta'}
             </button>
             <button
               onClick={handleCerrarMesa}
@@ -293,6 +315,25 @@ export default function MeseroOrdenPage() {
           onConfirm={handleImprimirCuenta}
           onClose={() => setAvisoImprimir(false)}
         />
+      )}
+
+      {fallaImpresion && (
+        <ModalShell
+          titulo="No se imprimió la cuenta"
+          width={520}
+          onClose={() => setFallaImpresion(null)}
+          footer={
+            <div className="flex" style={{ gap: 12 }}>
+              <Button variant="secondary" size="md" onClick={continuarSinImprimir} style={{ flex: 1 }}>
+                Continuar sin imprimir
+              </Button>
+              <Button size="md" onClick={handleImprimirCuenta} style={{ flex: 1 }}>Reintentar</Button>
+            </div>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: 'var(--jb-ink-soft)' }}>{fallaImpresion.motivo}</p>
+          <TicketPreview bloques={fallaImpresion.bloques} />
+        </ModalShell>
       )}
 
       {separando && (

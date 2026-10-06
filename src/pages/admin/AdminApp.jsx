@@ -7,6 +7,7 @@ import AdminMenuPage from './AdminMenuPage'
 import AdminMesasPage from './AdminMesasPage'
 import AdminBitacoraPage from './AdminBitacoraPage'
 import AdminClientesPage from './AdminClientesPage'
+import AdminImpresoraPage from './AdminImpresoraPage'
 
 // Panel de administración. Solo accesible para un mesero esAdmin. El gate es client-side
 // — misma postura "atribución, no seguridad" del resto del POS. Si el mesero actual no es
@@ -114,6 +115,7 @@ export default function AdminApp() {
             <TabLink to="/admin/meseros">Meseros</TabLink>
             <TabLink to="/admin/bitacora">Bitácora</TabLink>
             <TabLink to="/admin/clientes">Clientes</TabLink>
+            <TabLink to="/admin/impresora">Impresora</TabLink>
           </nav>
         </div>
         <div className="flex items-center" style={{ gap: 12, flexShrink: 0 }}>
@@ -138,6 +140,7 @@ export default function AdminApp() {
           <Route path="meseros" element={<AdminMeserosPage />} />
           <Route path="bitacora" element={<AdminBitacoraPage />} />
           <Route path="clientes" element={<AdminClientesPage />} />
+          <Route path="impresora" element={<AdminImpresoraPage />} />
           <Route path="*" element={<Navigate to="/admin/menu" replace />} />
         </Routes>
       </main>

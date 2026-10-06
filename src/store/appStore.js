@@ -166,6 +166,20 @@ export const useLlevarStore = create(
   ),
 )
 
+// A qué impresora manda esta tablet (Ajustes → Impresora). Se guarda por tablet y no en
+// Supabase: es un dato de la red local del restaurante, y así cada tablet se puede
+// probar contra la impresora sin afectar a las demás.
+export const useImpresoraStore = create(
+  persist(
+    (set) => ({
+      host: '',
+      puerto: 9100,
+      setImpresora: ({ host, puerto }) => set({ host: host.trim(), puerto: Number(puerto) || 9100 }),
+    }),
+    { name: 'pos-balbuena-impresora', storage: safeStorage },
+  ),
+)
+
 // Avisos del turno: la contraparte VISIBLE de los sonidos. El tono dice "algo pasó",
 // pero no qué ni en qué mesa, y si el mesero traía la tablet lejos puede que ni lo haya
 // oído. Aquí queda el registro para consultarlo cuando pueda. NO se persiste: es
