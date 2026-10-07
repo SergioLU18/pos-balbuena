@@ -64,8 +64,20 @@
   }
 }
 
+/* Zona segura del status bar en la app nativa. En iOS la da env() (requiere viewport-fit=cover);
+   en Android, Capacitor inyecta --safe-area-inset-* desde el plugin SystemBars. En navegador vale 0. */
+:root {
+  --jb-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+}
+
 html, body, #root {
   height: 100%;
+}
+
+/* Alto de pantalla completa. Con el zoom de tablets chicas (ver index.html) 100dvh también
+   se escala y la pantalla quedaría corta, así que se compensa dividiendo entre el zoom. */
+@utility h-pantalla {
+  height: calc(100dvh / var(--jb-zoom, 1));
 }
 
 body {

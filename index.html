@@ -3,8 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>POS Balbuena</title>
+    <script>
+      // El POS está diseñado para tablets de ~11" (iPad: 744 px o más del lado corto). En
+      // tablets más chicas (Android de 8") se ve todo grande y apretado, así que se escala la
+      // interfaz completa para que el lado corto equivalga a 744 px. Se decide por el lado
+      // corto de la pantalla, así el zoom no cambia al girar la tablet.
+      (function () {
+        var corto = Math.min(screen.width, screen.height)
+        var zoom = corto < 744 ? Math.max(0.75, corto / 744) : 1
+        document.documentElement.style.setProperty('--jb-zoom', zoom)
+        if (zoom < 1) document.documentElement.style.zoom = zoom
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -79,7 +79,7 @@ export function MeseroGate({ children }) {
 
   return (
     <div
-      className="h-dvh w-full flex flex-col items-center justify-center"
+      className="h-pantalla w-full flex flex-col items-center justify-center"
       style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif", padding: 20, overflowY: 'auto' }}
     >
       <img

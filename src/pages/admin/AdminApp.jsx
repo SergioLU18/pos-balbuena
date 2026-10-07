@@ -71,7 +71,7 @@ export default function AdminApp() {
 
     return (
       <div
-        className="h-dvh w-full flex flex-col items-center justify-center"
+        className="h-pantalla w-full flex flex-col items-center justify-center"
         style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif", padding: 20, overflowY: 'auto' }}
       >
         <div
@@ -97,13 +97,13 @@ export default function AdminApp() {
 
   return (
     <div
-      className="h-dvh w-full flex flex-col"
+      className="h-pantalla w-full flex flex-col"
       style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif" }}
     >
       <header
         className="flex items-center justify-between flex-shrink-0"
         style={{
-          padding: '12px 24px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)',
+          padding: '12px 24px', paddingTop: 'calc(12px + var(--jb-safe-top))', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)',
           flexWrap: 'wrap', rowGap: 10, columnGap: 16,
         }}
       >

@@ -10,10 +10,10 @@ export default function CocinaPage() {
   const [verEntregados, setVerEntregados] = useState(false)
 
   return (
-    <div className="h-dvh w-full flex flex-col" style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif" }}>
+    <div className="h-pantalla w-full flex flex-col" style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif" }}>
       <header
         className="flex items-center justify-between flex-shrink-0"
-        style={{ padding: '14px 28px', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)' }}
+        style={{ padding: '14px 28px', paddingTop: 'calc(14px + var(--jb-safe-top))', background: 'var(--jb-pink)', boxShadow: '0 2px 12px var(--jb-shadow)' }}
       >
         <img src="/brand/logo-jardin-balbuena.webp" alt="Jardín Balbuena" style={{ height: 58, width: 'auto' }} />
         <div className="flex items-center" style={{ gap: 14 }}>

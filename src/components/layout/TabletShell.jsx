@@ -30,13 +30,14 @@ export function TabletShell({ children }) {
 
   return (
     <div
-      className="h-dvh w-full flex flex-col"
+      className="h-pantalla w-full flex flex-col"
       style={{ background: 'var(--jb-cream)', fontFamily: "'Inter Tight', sans-serif" }}
     >
       <header
         className="flex items-center justify-between flex-shrink-0"
         style={{
           padding: vertical ? '12px 18px' : '14px 28px',
+          paddingTop: `calc(${vertical ? 12 : 14}px + var(--jb-safe-top))`,
           gap: 12,
           background: 'var(--jb-pink)',
           boxShadow: '0 2px 12px var(--jb-shadow)',
