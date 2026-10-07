@@ -13,6 +13,9 @@ const config: CapacitorConfig = {
   server: {
     url: POS_URL,
     cleartext: false,
+    // Pantalla propia (empaquetada en la app) cuando no se puede cargar el POS, en vez del
+    // error genérico del WebView. Ver public/offline.html.
+    errorPath: 'offline.html',
   },
 };
 
