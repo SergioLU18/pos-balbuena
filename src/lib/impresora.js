@@ -33,3 +33,13 @@ export async function estadoImpresora({ host, puerto }) {
   if (!puedeImprimir() || !host) return null
   return Impresora.estado({ host, puerto })
 }
+
+/** Imprime la comanda de una orden que YA llegó a cocina. Si esta tablet no puede
+ *  imprimir (navegador), no tiene impresora configurada o se apagó la opción en Ajustes,
+ *  no hace nada: la comanda en papel es un respaldo, no un paso del envío. Resuelve
+ *  `null` cuando no se intentó, o el resultado de imprimir(). */
+export async function imprimirComanda(bloques) {
+  const { host, comandaAlEnviar } = useImpresoraStore.getState()
+  if (!puedeImprimir() || !host || !comandaAlEnviar) return null
+  return imprimir(bloques)
+}

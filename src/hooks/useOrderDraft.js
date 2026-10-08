@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { uid } from '../lib/utils'
+import { uid, etiquetaMesa } from '../lib/utils'
 import { sb } from '../lib/supabase'
 import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import { describirMitades, extrasTexto } from '../lib/describirItem'
@@ -7,6 +7,9 @@ import { empaqueTexto } from '../lib/empaque'
 import { useMeseroStore, useOrderStore, usePedidosStore, usePosStore, useAvisosStore, useMesaPagadaStore } from '../store/appStore'
 import { firma } from '../lib/bitacora'
 import { cargarTodo } from './usePosData'
+import { imprimirComanda } from '../lib/impresora'
+import { comanda } from '../lib/tickets'
+import { nombreGrupo, secundariasDe } from '../lib/mesasUnidas'
 
 // Recargo de un ingrediente: se lee del catálogo vivo (store), no de una lista estática,
 // para que un cambio del admin al cargo de un ingrediente se refleje en el precio.
@@ -94,6 +97,17 @@ export function sumaCuenta(items) {
   }, 0)
 }
 
+/** Aviso (sin sonido) de que la comanda no salió en papel. Sin sonido a propósito: la
+ *  orden SÍ llegó a cocina, no es una falla del envío; solo falta el respaldo impreso. */
+export function avisarComandaNoImpresa(etiqueta, motivo, destino) {
+  useAvisosStore.getState().agregarAviso({
+    tipo: 'error',
+    titulo: `${etiqueta} · no se imprimió la comanda`,
+    detalle: `La orden sí llegó a cocina. ${motivo}`,
+    ...destino,
+  })
+}
+
 /** Hook de feature: expone el draft de una mesa y las operaciones de negocio sobre él. */
 export function useOrderDraft(mesaId) {
   const draft = useOrderStore((s) => s.drafts[mesaId] ?? EMPTY_ITEMS)
@@ -169,6 +183,14 @@ export function useOrderDraft(mesaId) {
   function enviarACocina() {
     if (draft.length === 0 || enviandoRef.current) return
     const mesero = meseros.find((m) => m.id === currentMeseroId)
+    // La comanda se arma con el draft tal como se envía (antes de que clearDraft lo
+    // borre), incluido `modificaOriginal`, que a cocina sí le sirve en papel.
+    const mesa = mesas.find((m) => m.id === mesaId)
+    const comandaBloques = comanda({
+      destino: etiquetaMesa(nombreGrupo(mesa?.numero ?? '—', secundariasDe(mesas, mesaId))),
+      mesero: mesero?.nombre,
+      items: draft,
+    })
 
     // Backend: cada renglón lleva nombre + precio_unitario (para cuenta_items de tali)
     // y además su estructura rica completa (para la comanda de cocina en pedidos.items).
@@ -197,7 +219,13 @@ export function useOrderDraft(mesaId) {
         console.error('[orden] enviarACocina falló:', error)
         avisarError('no se envió la orden', 'Sigue en pantalla sin enviar — revisa la conexión e inténtalo otra vez')
       }
-      else { clearDraft(mesaId); sonarConfirmacion() }
+      else {
+        clearDraft(mesaId)
+        sonarConfirmacion()
+        imprimirComanda(comandaBloques).then((r) => {
+          if (r && !r.ok) avisarComandaNoImpresa(`Mesa ${mesaNumero}`, r.motivo, { mesaId })
+        })
+      }
     })
   }
 

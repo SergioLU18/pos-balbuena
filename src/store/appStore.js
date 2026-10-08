@@ -174,7 +174,10 @@ export const useImpresoraStore = create(
     (set) => ({
       host: '',
       puerto: 9100,
+      // Imprimir la comanda en cuanto una orden llega a cocina (ver imprimirComanda).
+      comandaAlEnviar: true,
       setImpresora: ({ host, puerto }) => set({ host: host.trim(), puerto: Number(puerto) || 9100 }),
+      setComandaAlEnviar: (comandaAlEnviar) => set({ comandaAlEnviar }),
     }),
     { name: 'pos-balbuena-impresora', storage: safeStorage },
   ),

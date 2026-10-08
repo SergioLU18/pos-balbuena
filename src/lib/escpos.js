@@ -9,8 +9,11 @@
 // genérico.
 //
 // Bloques:
-//   { tipo: 'texto', texto, alinear?: 'izq'|'centro'|'der', negrita?, grande? }
-//   { tipo: 'columnas', izq, der, prefijo?, negrita?, grande? }  importe a la derecha
+//   { tipo: 'texto', texto, alinear?: 'izq'|'centro'|'der', negrita?, grande?, alto? }
+//   { tipo: 'columnas', izq, der, prefijo?, negrita?, grande?, alto? }  importe a la derecha
+//
+// Tamaños: `grande` es doble alto + doble ancho (caben 24 columnas); `alto` es solo doble
+// alto, así que se lee más grande sin perder ancho (siguen cabiendo las 48).
 //   { tipo: 'linea', caracter? }                                 separador de ancho completo
 //   { tipo: 'espacio', n? }                                      renglones en blanco
 
@@ -20,9 +23,9 @@ const ESC = 0x1b
 const GS = 0x1d
 const LF = 0x0a
 
-// Doble alto + doble ancho. En letra grande caben la mitad de columnas.
-const TAMANO_GRANDE = [GS, 0x21, 0x11]
-const TAMANO_NORMAL = [GS, 0x21, 0x00]
+// GS ! n: nibble alto = ancho, nibble bajo = alto. En letra grande caben la mitad de columnas.
+const TAMANO = { normal: 0x00, alto: 0x01, grande: 0x11 }
+const tamanoDe = (r) => (r.grande ? 'grande' : r.alto ? 'alto' : 'normal')
 
 /** Parte un texto en renglones de a lo más `ancho` caracteres, cortando entre palabras.
  *  Una palabra más larga que el renglón se corta a la fuerza. */
@@ -53,16 +56,17 @@ function alinear(texto, ancho, como) {
   return texto
 }
 
-/** Bloques → renglones ya acomodados: `{ texto, negrita, grande }`. */
+/** Bloques → renglones ya acomodados: `{ texto, negrita, grande, alto }`. */
 export function maquetar(bloques, columnas = COLUMNAS) {
   const out = []
   for (const b of bloques) {
     const negrita = !!b.negrita
     const grande = !!b.grande
+    const alto = !grande && !!b.alto
     const ancho = grande ? Math.floor(columnas / 2) : columnas
 
     if (b.tipo === 'texto') {
-      for (const r of partirTexto(b.texto, ancho)) out.push({ texto: alinear(r, ancho, b.alinear), negrita, grande })
+      for (const r of partirTexto(b.texto, ancho)) out.push({ texto: alinear(r, ancho, b.alinear), negrita, grande, alto })
     } else if (b.tipo === 'columnas') {
       // `prefijo` (la cantidad, p. ej.) va pegado al primer renglón y los renglones de
       // continuación de un concepto largo se sangran a su ancho, para que se lea que
@@ -72,14 +76,14 @@ export function maquetar(bloques, columnas = COLUMNAS) {
       const sangria = ' '.repeat(prefijo.length)
       const anchoIzq = Math.max(1, ancho - prefijo.length - der.length - 1)
       const [primero, ...resto] = partirTexto(b.izq, anchoIzq)
-      out.push({ texto: (prefijo + primero).padEnd(ancho - der.length) + der, negrita, grande })
+      out.push({ texto: (prefijo + primero).padEnd(ancho - der.length) + der, negrita, grande, alto })
       for (const r of resto.flatMap((r) => partirTexto(r, ancho - sangria.length))) {
-        out.push({ texto: sangria + r, negrita, grande })
+        out.push({ texto: sangria + r, negrita, grande, alto })
       }
     } else if (b.tipo === 'linea') {
-      out.push({ texto: (b.caracter ?? '-').repeat(ancho), negrita: false, grande })
+      out.push({ texto: (b.caracter ?? '-').repeat(ancho), negrita: false, grande, alto })
     } else if (b.tipo === 'espacio') {
-      for (let i = 0; i < (b.n ?? 1); i++) out.push({ texto: '', negrita: false, grande: false })
+      for (let i = 0; i < (b.n ?? 1); i++) out.push({ texto: '', negrita: false, grande: false, alto: false })
     }
   }
   return out
@@ -113,14 +117,15 @@ export function codificar(texto) {
 /** Bloques → bytes ESC/POS listos para la impresora (incluye avance y corte). */
 export function aEscPos(bloques, columnas = COLUMNAS) {
   const bytes = [ESC, 0x40, ESC, 0x74, 2]
-  let grande = false
+  let tamano = 'normal'
   let negrita = false
   for (const r of maquetar(bloques, columnas)) {
-    if (r.grande !== grande) { bytes.push(...(r.grande ? TAMANO_GRANDE : TAMANO_NORMAL)); grande = r.grande }
+    const t = tamanoDe(r)
+    if (t !== tamano) { bytes.push(GS, 0x21, TAMANO[t]); tamano = t }
     if (r.negrita !== negrita) { bytes.push(ESC, 0x45, r.negrita ? 1 : 0); negrita = r.negrita }
     bytes.push(...codificar(r.texto.trimEnd()), LF)
   }
-  if (grande) bytes.push(...TAMANO_NORMAL)
+  if (tamano !== 'normal') bytes.push(GS, 0x21, TAMANO.normal)
   if (negrita) bytes.push(ESC, 0x45, 0)
   bytes.push(ESC, 0x64, 4) // avanza para que el corte no se coma el último renglón
   bytes.push(GS, 0x56, 0x42, 0) // corte parcial

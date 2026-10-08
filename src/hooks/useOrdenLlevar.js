@@ -5,7 +5,9 @@ import { sonarConfirmacion, sonarError } from '../lib/sonidos'
 import {
   useAvisosStore, useLlevarStore, useMeseroStore, useOrderStore, usePedidosStore, usePosStore,
 } from '../store/appStore'
-import { calcItemPrecio, calcSubtotal, nombreItem, sumaCuenta } from './useOrderDraft'
+import { avisarComandaNoImpresa, calcItemPrecio, calcSubtotal, nombreItem, sumaCuenta } from './useOrderDraft'
+import { imprimirComanda } from '../lib/impresora'
+import { comanda } from '../lib/tickets'
 import { cargarTodo } from './usePosData'
 import { conEmpaque } from '../lib/empaque'
 
@@ -94,6 +96,12 @@ export function useOrdenLlevar(ordenId) {
       nombre: nombreItem(it),
       precio_unitario: calcItemPrecio(it),
     }))
+    const comandaBloques = comanda({
+      destino: orden?.clienteNombre ? `${etiqueta} · ${orden.clienteNombre}` : etiqueta,
+      mesero: mesero?.nombre,
+      items: draft,
+      llevar: true,
+    })
 
     enviandoRef.current = true
     setEnviando(true)
@@ -111,6 +119,9 @@ export function useOrdenLlevar(ordenId) {
       } else {
         clearDraft(ordenId)
         sonarConfirmacion()
+        imprimirComanda(comandaBloques).then((r) => {
+          if (r && !r.ok) avisarComandaNoImpresa(etiqueta, r.motivo, { ruta: `/mesero/llevar/orden/${ordenId}` })
+        })
       }
     })
   }

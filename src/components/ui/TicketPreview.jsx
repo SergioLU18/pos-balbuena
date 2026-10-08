@@ -2,7 +2,7 @@ import { maquetar, COLUMNAS } from '../../lib/escpos'
 
 // El ticket tal como sale en la térmica: mismos renglones que maquetar() manda a la
 // impresora, en monoespaciada y a 48 columnas. Los renglones en letra grande se pintan
-// a doble tamaño, igual que en papel.
+// a doble tamaño y los de doble alto se estiran solo a lo alto, igual que en papel.
 export function TicketPreview({ bloques }) {
   const renglones = maquetar(bloques)
   return (
@@ -26,10 +26,12 @@ export function TicketPreview({ bloques }) {
               fontWeight: r.negrita ? 800 : 400,
               fontSize: r.grande ? 24 : undefined,
               lineHeight: r.grande ? 1.2 : undefined,
-              minHeight: '1.35em',
+              minHeight: r.alto ? '2.7em' : '1.35em',
             }}
           >
-            {r.texto}
+            {r.alto
+              ? <span style={{ display: 'inline-block', transform: 'scaleY(2)', transformOrigin: 'top left' }}>{r.texto}</span>
+              : r.texto}
           </div>
         ))}
       </pre>

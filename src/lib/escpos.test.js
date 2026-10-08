@@ -54,3 +54,13 @@ describe('aEscPos', () => {
     expect(Uint8Array.from(atob(aBase64(bytes)), (c) => c.charCodeAt(0))).toEqual(bytes)
   })
 })
+
+describe('doble alto', () => {
+  it('conserva las 48 columnas y manda GS ! 0x01', () => {
+    const bloques = [{ tipo: 'linea', alto: true }]
+    expect(maquetar(bloques)[0].texto).toHaveLength(COLUMNAS)
+    const bytes = Array.from(aEscPos(bloques))
+    const i = bytes.findIndex((b, k) => b === 0x1d && bytes[k + 1] === 0x21 && bytes[k + 2] === 0x01)
+    expect(i).toBeGreaterThan(-1)
+  })
+})
