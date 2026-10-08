@@ -85,13 +85,14 @@ export function preCuenta({ negocio, mesa, mesero, items, fecha = new Date() }) 
 }
 
 /** Comanda: lo que se imprime al enviar a cocina, para que quede en papel qué se pidió.
- *  Solo informativa: sin precios ni datos fiscales. Todo va en doble alto (`alto`), que se
- *  lee más grande sin perder ancho — las 48 columnas completas, a diferencia de `grande`.
+ *  Solo informativa: sin precios ni datos fiscales. Tamaños elegidos con el restaurante
+ *  sobre papel: el platillo en fuente B grande (un poco menor que la grande normal, caben
+ *  32 columnas) y el detalle en doble alto a las 48 columnas, con aire entre renglones.
  *  `items` son los renglones ricos del draft (platilloNombre, tier, mitades, extras, nota,
  *  empaque). `llevar` = la orden completa es para llevar: ahí el desechable es lo normal y
  *  no se repite en cada renglón, igual que en las tarjetas de cocina (ItemLine). */
 export function comanda({ destino, mesero, items, fecha = new Date(), llevar = false }) {
-  const detalle = (texto, extra = {}) => ({ tipo: 'columnas', prefijo: '   ', izq: texto, der: '', alto: true, ...extra })
+  const detalle = (texto, extra = {}) => ({ tipo: 'columnas', prefijo: '   ', izq: texto, der: '', alto: true, aire: 64, ...extra })
   const hora = fechaTicket(fecha).slice(-5)
   return [
     { tipo: 'texto', texto: destino, alinear: 'centro', grande: true, negrita: true },
@@ -105,7 +106,8 @@ export function comanda({ destino, mesero, items, fecha = new Date(), llevar = f
         izq: `${it.platilloNombre} · ${it.tier.nombre}`,
         der: '',
         negrita: true,
-        alto: true,
+        grande: true,
+        fuenteB: true,
       },
       ...(it.modificaOriginal ? [detalle(`CAMBIO, reemplaza: ${it.modificaOriginal}`, { negrita: true })] : []),
       ...describirMitades(it)

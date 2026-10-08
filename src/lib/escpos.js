@@ -14,10 +14,16 @@
 //
 // Tamaños: `grande` es doble alto + doble ancho (caben 24 columnas); `alto` es solo doble
 // alto, así que se lee más grande sin perder ancho (siguen cabiendo las 48).
+// `fuenteB`: la fuente angosta de la impresora (9 puntos de ancho en vez de 12): caben
+// 64 columnas, o 32 en `grande` — un tamaño intermedio entre la normal y la grande.
+// `aire`: alto del renglón en puntos (ESC 3 n), para separar renglones de doble alto.
 //   { tipo: 'linea', caracter? }                                 separador de ancho completo
 //   { tipo: 'espacio', n? }                                      renglones en blanco
 
 export const COLUMNAS = 48
+// Ancho de carácter en puntos de cada fuente: con la B caben 4/3 de columnas.
+const ANCHO_FUENTE_A = 12
+const ANCHO_FUENTE_B = 9
 
 const ESC = 0x1b
 const GS = 0x1d
@@ -56,17 +62,18 @@ function alinear(texto, ancho, como) {
   return texto
 }
 
-/** Bloques → renglones ya acomodados: `{ texto, negrita, grande, alto }`. */
+/** Bloques → renglones ya acomodados: `{ texto, negrita, grande, alto, fuenteB, aire }`. */
 export function maquetar(bloques, columnas = COLUMNAS) {
   const out = []
   for (const b of bloques) {
-    const negrita = !!b.negrita
     const grande = !!b.grande
-    const alto = !grande && !!b.alto
-    const ancho = grande ? Math.floor(columnas / 2) : columnas
+    const fuenteB = !!b.fuenteB
+    const estilo = { negrita: !!b.negrita, grande, alto: !grande && !!b.alto, fuenteB, aire: b.aire ?? null }
+    const base = fuenteB ? Math.floor((columnas * ANCHO_FUENTE_A) / ANCHO_FUENTE_B) : columnas
+    const ancho = grande ? Math.floor(base / 2) : base
 
     if (b.tipo === 'texto') {
-      for (const r of partirTexto(b.texto, ancho)) out.push({ texto: alinear(r, ancho, b.alinear), negrita, grande, alto })
+      for (const r of partirTexto(b.texto, ancho)) out.push({ texto: alinear(r, ancho, b.alinear), ...estilo })
     } else if (b.tipo === 'columnas') {
       // `prefijo` (la cantidad, p. ej.) va pegado al primer renglón y los renglones de
       // continuación de un concepto largo se sangran a su ancho, para que se lea que
@@ -76,14 +83,14 @@ export function maquetar(bloques, columnas = COLUMNAS) {
       const sangria = ' '.repeat(prefijo.length)
       const anchoIzq = Math.max(1, ancho - prefijo.length - der.length - 1)
       const [primero, ...resto] = partirTexto(b.izq, anchoIzq)
-      out.push({ texto: (prefijo + primero).padEnd(ancho - der.length) + der, negrita, grande, alto })
+      out.push({ texto: (prefijo + primero).padEnd(ancho - der.length) + der, ...estilo })
       for (const r of resto.flatMap((r) => partirTexto(r, ancho - sangria.length))) {
-        out.push({ texto: sangria + r, negrita, grande, alto })
+        out.push({ texto: sangria + r, ...estilo })
       }
     } else if (b.tipo === 'linea') {
-      out.push({ texto: (b.caracter ?? '-').repeat(ancho), negrita: false, grande, alto })
+      out.push({ texto: (b.caracter ?? '-').repeat(ancho), ...estilo, negrita: false })
     } else if (b.tipo === 'espacio') {
-      for (let i = 0; i < (b.n ?? 1); i++) out.push({ texto: '', negrita: false, grande: false, alto: false })
+      for (let i = 0; i < (b.n ?? 1); i++) out.push({ texto: '', negrita: false, grande: false, alto: false, fuenteB: false, aire: null })
     }
   }
   return out
@@ -119,14 +126,20 @@ export function aEscPos(bloques, columnas = COLUMNAS) {
   const bytes = [ESC, 0x40, ESC, 0x74, 2]
   let tamano = 'normal'
   let negrita = false
+  let fuenteB = false
+  let aire = null
   for (const r of maquetar(bloques, columnas)) {
     const t = tamanoDe(r)
     if (t !== tamano) { bytes.push(GS, 0x21, TAMANO[t]); tamano = t }
     if (r.negrita !== negrita) { bytes.push(ESC, 0x45, r.negrita ? 1 : 0); negrita = r.negrita }
+    if (r.fuenteB !== fuenteB) { bytes.push(ESC, 0x4d, r.fuenteB ? 1 : 0); fuenteB = r.fuenteB }
+    if (r.aire !== aire) { bytes.push(...(r.aire == null ? [ESC, 0x32] : [ESC, 0x33, r.aire])); aire = r.aire }
     bytes.push(...codificar(r.texto.trimEnd()), LF)
   }
   if (tamano !== 'normal') bytes.push(GS, 0x21, TAMANO.normal)
   if (negrita) bytes.push(ESC, 0x45, 0)
+  if (fuenteB) bytes.push(ESC, 0x4d, 0)
+  if (aire != null) bytes.push(ESC, 0x32)
   bytes.push(ESC, 0x64, 4) // avanza para que el corte no se coma el último renglón
   bytes.push(GS, 0x56, 0x42, 0) // corte parcial
   return Uint8Array.from(bytes)

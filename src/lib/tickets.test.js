@@ -38,10 +38,14 @@ describe('comanda', () => {
     expect(llevar).toContain('VA EN SU TUPPER')
   })
 
-  it('usa doble alto a todo lo ancho, no letra grande, para los platillos', () => {
+  it('platillo en fuente B grande y detalle en doble alto a todo lo ancho', () => {
     const renglones = maquetar(comanda({ destino: 'Mesa 4', items: [item()] }))
     const platillo = renglones.find((r) => r.texto.startsWith('2x Sope'))
-    expect(platillo).toMatchObject({ alto: true, grande: false })
+    const detalle = renglones.find((r) => r.texto.includes('Pollo deshebrado'))
+    expect(platillo).toMatchObject({ grande: true, fuenteB: true, negrita: true })
+    expect(platillo.texto.length).toBe(32)
+    expect(detalle).toMatchObject({ alto: true, fuenteB: false })
+    expect(detalle.texto.length).toBe(48)
   })
 
   it('marca los renglones que reemplazan a uno ya enviado', () => {

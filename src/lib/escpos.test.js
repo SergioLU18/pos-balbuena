@@ -64,3 +64,18 @@ describe('doble alto', () => {
     expect(i).toBeGreaterThan(-1)
   })
 })
+
+describe('fuente B', () => {
+  it('caben 64 columnas (32 en grande) y manda ESC M 1', () => {
+    expect(maquetar([{ tipo: 'linea', fuenteB: true }])[0].texto).toHaveLength(64)
+    expect(maquetar([{ tipo: 'linea', fuenteB: true, grande: true }])[0].texto).toHaveLength(32)
+    const bytes = Array.from(aEscPos([{ tipo: 'texto', texto: 'x', fuenteB: true }]))
+    expect(bytes.some((b, k) => b === 0x1b && bytes[k + 1] === 0x4d && bytes[k + 2] === 1)).toBe(true)
+  })
+
+  it('el aire fija el alto del renglón (ESC 3 n) y se restablece al final (ESC 2)', () => {
+    const bytes = Array.from(aEscPos([{ tipo: 'texto', texto: 'x', aire: 64 }]))
+    expect(bytes.some((b, k) => b === 0x1b && bytes[k + 1] === 0x33 && bytes[k + 2] === 64)).toBe(true)
+    expect(bytes.some((b, k) => b === 0x1b && bytes[k + 1] === 0x32)).toBe(true)
+  })
+})
