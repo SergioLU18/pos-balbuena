@@ -11,6 +11,7 @@ import { MESEROS } from '../test/fixtures/meseros'
 const sope = MENU.find((p) => p.id === 'sope')
 const mesa1 = MESAS[0]
 const mesero = MESEROS[0]
+const admin = MESEROS.find((m) => m.esAdmin)
 
 beforeEach(() => {
   useOrderStore.setState({ drafts: {}, cuentas: {} })
@@ -209,12 +210,12 @@ describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya e
     const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [buildDraftItem(sope, 0)])
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
 
-    await act(async () => { result.current.quitarItemEnviado(pedidoId, item.id); await vaciarPromesas() })
+    await act(async () => { result.current.quitarItemEnviado(pedidoId, item.id, admin.id); await vaciarPromesas() })
 
     expect(usePedidosStore.getState().pedidos).toHaveLength(0)
     expect(useOrderStore.getState().cuentas[mesa1.id].items).toHaveLength(0)
     expect(llamadasRpc('pos_eliminar_item_pedido')).toEqual([{
-      p_pedido_id: pedidoId, p_item_id: item.id, p_mesero_id: mesero.id, p_mesero_nombre: mesero.nombre,
+      p_pedido_id: pedidoId, p_item_id: item.id, p_autoriza_id: admin.id, p_mesero_id: mesero.id, p_mesero_nombre: mesero.nombre,
     }])
   })
 
@@ -222,7 +223,7 @@ describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya e
     const { pedidoId, items: [item1, item2] } = sembrarOrdenEnviada(mesa1, [buildDraftItem(sope, 0), buildDraftItem(sope, 1)])
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
 
-    act(() => result.current.quitarItemEnviado(pedidoId, item1.id))
+    act(() => result.current.quitarItemEnviado(pedidoId, item1.id, admin.id))
 
     expect(usePedidosStore.getState().pedidos).toHaveLength(1)
     expect(usePedidosStore.getState().pedidos[0].items.map((it) => it.id)).toEqual([item2.id])
@@ -237,7 +238,7 @@ describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya e
     }))
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
 
-    act(() => result.current.quitarItemEnviado(pedidoId, item.id))
+    act(() => result.current.quitarItemEnviado(pedidoId, item.id, admin.id))
 
     expect(useOrderStore.getState().cuentas[mesa1.id].items[0].cantidad).toBe(2)
   })
@@ -248,17 +249,16 @@ describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya e
     const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [buildDraftItem(sope, 0)])
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
 
-    await act(async () => { result.current.quitarItemEnviado(pedidoId, item.id); await vaciarPromesas() })
+    await act(async () => { result.current.quitarItemEnviado(pedidoId, item.id, admin.id); await vaciarPromesas() })
 
     expect(useAvisosStore.getState().avisos[0]).toMatchObject({ tipo: 'error', titulo: `Mesa ${mesa1.numero} · no se pudo quitar el platillo` })
     expect(recargo()).toBe(true)
   })
 
-  it('una vez que cocina avanzó el pedido a "preparando", el pedido local no cambia y el servidor decide', async () => {
+  it('una vez que cocina avanzó el pedido a "preparando", sumar piezas no cambia nada local y el servidor decide', async () => {
     // El guard real está en el servidor: el hook manda la RPC igual, y al rechazarla
     // recarga para dejar todo como estaba.
     responderRpc('pos_editar_item_pedido', { error: { message: 'el pedido ya no está pendiente' } })
-    responderRpc('pos_eliminar_item_pedido', { error: { message: 'el pedido ya no está pendiente' } })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [buildDraftItem(sope, 0)], { estado: 'preparando' })
     const { result } = renderHook(() => useOrderDraft(mesa1.id))
@@ -266,12 +266,49 @@ describe('cambiarCantidadEnviado / quitarItemEnviado — editar un renglón ya e
     act(() => result.current.cambiarCantidadEnviado(pedidoId, item.id, 1))
     expect(usePedidosStore.getState().pedidos[0].items[0].cantidad).toBe(1)
 
-    act(() => result.current.quitarItemEnviado(pedidoId, item.id))
-    expect(usePedidosStore.getState().pedidos[0].items).toHaveLength(1)
-
     await act(async () => { await vaciarPromesas() })
     expect(llamadasRpc('pos_editar_item_pedido')).toHaveLength(1)
-    expect(llamadasRpc('pos_eliminar_item_pedido')).toHaveLength(1)
+    expect(recargo()).toBe(true)
+  })
+})
+
+describe('cancelarEnviado — cancelar comida ya enviada, con autorización de un admin', () => {
+  it('se puede aunque cocina ya lo esté preparando: quita el renglón y manda quién autorizó', async () => {
+    const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [buildDraftItem(sope, 0)], { estado: 'preparando' })
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+
+    await act(async () => { result.current.cancelarEnviado(pedidoId, item.id, 1, admin.id); await vaciarPromesas() })
+
+    expect(usePedidosStore.getState().pedidos).toHaveLength(0)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items).toHaveLength(0)
+    expect(llamadasRpc('pos_eliminar_item_pedido')).toEqual([{
+      p_pedido_id: pedidoId, p_item_id: item.id, p_autoriza_id: admin.id, p_mesero_id: mesero.id, p_mesero_nombre: mesero.nombre,
+    }])
+  })
+
+  it('cancelar solo parte de las piezas baja la cantidad en la comanda y en la cuenta', async () => {
+    const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [{ ...buildDraftItem(sope, 0), cantidad: 3 }], { estado: 'listo' })
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+
+    await act(async () => { result.current.cancelarEnviado(pedidoId, item.id, 2, admin.id); await vaciarPromesas() })
+
+    expect(usePedidosStore.getState().pedidos[0].items[0].cantidad).toBe(1)
+    expect(useOrderStore.getState().cuentas[mesa1.id].items[0].cantidad).toBe(1)
+    expect(llamadasRpc('pos_editar_item_pedido')).toEqual([{
+      p_pedido_id: pedidoId, p_item_id: item.id, p_cantidad: 1, p_autoriza_id: admin.id, p_mesero_id: mesero.id, p_mesero_nombre: mesero.nombre,
+    }])
+    expect(llamadasRpc('pos_eliminar_item_pedido')).toHaveLength(0)
+  })
+
+  it('si el servidor la rechaza (p. ej. la cuenta ya se cobró), avisa y recarga', async () => {
+    responderRpc('pos_editar_item_pedido', { error: { message: 'La cuenta ya se cobró' } })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { pedidoId, items: [item] } = sembrarOrdenEnviada(mesa1, [{ ...buildDraftItem(sope, 0), cantidad: 2 }])
+    const { result } = renderHook(() => useOrderDraft(mesa1.id))
+
+    await act(async () => { result.current.cancelarEnviado(pedidoId, item.id, 1, admin.id); await vaciarPromesas() })
+
+    expect(useAvisosStore.getState().avisos[0]).toMatchObject({ tipo: 'error', titulo: `Mesa ${mesa1.numero} · no se pudo cancelar el platillo` })
     expect(recargo()).toBe(true)
   })
 })

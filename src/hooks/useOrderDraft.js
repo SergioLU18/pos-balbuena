@@ -128,6 +128,7 @@ export function useOrderDraft(mesaId) {
   const eliminarPedidosDeMesa = usePedidosStore((s) => s.eliminarPedidosDeMesa)
   const pedidosMesa = usePedidosStore((s) => s.pedidos).filter((p) => p.mesaId === mesaId)
   const actualizarCantidadItemPedido = usePedidosStore((s) => s.actualizarCantidadItemPedido)
+  const actualizarItemPedido = usePedidosStore((s) => s.actualizarItemPedido)
   const quitarItemPedido = usePedidosStore((s) => s.quitarItemPedido)
   const mesas = usePosStore((s) => s.mesas)
   const meseros = usePosStore((s) => s.meseros)
@@ -242,11 +243,10 @@ export function useOrderDraft(mesaId) {
   // y el clic, y el guard server-side rechaza la edición).
   const recargarDesdeBackend = () => cargarTodo(usePosStore.getState().restauranteId).catch(() => {})
 
-  // Edición de un renglón ya enviado a cocina. Solo tiene efecto mientras su pedido
+  // Sumar piezas a un renglón ya enviado a cocina. Solo tiene efecto mientras su pedido
   // sigue en 'pendiente' (Nuevo) — lo valida el RPC del lado del servidor, y
-  // actualizarCantidadItemPedido/quitarItemPedido son no-op fuera de ese estado.
-  // La UI (OrderTicket) ya solo muestra estos controles para pedidos 'pendiente', así
-  // que en el flujo normal esa condición no llega a activarse.
+  // actualizarCantidadItemPedido es no-op fuera de ese estado. Bajar la cantidad ya no
+  // pasa por aquí: es cancelar, y eso lo autoriza un admin (ver cancelarEnviado).
   function cambiarCantidadEnviado(pedidoId, itemId, delta) {
     const pedido = pedidosMesa.find((p) => p.id === pedidoId)
     const item = pedido?.items.find((it) => it.id === itemId)
@@ -281,7 +281,32 @@ export function useOrderDraft(mesaId) {
     cambiarCantidadEnviado(pedidoId, itemId, nuevaCantidad - item.cantidad)
   }
 
-  function quitarItemEnviado(pedidoId, itemId) {
+  /** Cancela `cantidad` piezas de un renglón ya enviado, con la autorización de un admin
+   *  (`autorizaId`, el que tecleó su PIN en AutorizarAdminModal). Vale en cualquier
+   *  columna de cocina mientras la cuenta no se cobre — lo valida el servidor. Todas las
+   *  piezas = quitar el renglón; menos = bajarle la cantidad. */
+  function cancelarEnviado(pedidoId, itemId, cantidad, autorizaId) {
+    const pedido = pedidosMesa.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (!item || cantidad < 1) return
+    if (cantidad >= item.cantidad) { quitarItemEnviado(pedidoId, itemId, autorizaId); return }
+
+    const nueva = item.cantidad - cantidad
+    const ci = cuentaItemDePedidoItem(item)
+    if (ci) actualizarCantidadItemCuenta(mesaId, ci.id, ci.cantidad - cantidad)
+    actualizarItemPedido(pedidoId, itemId, { cantidad: nueva })
+
+    sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: nueva, p_autoriza_id: autorizaId, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[orden] cancelarEnviado falló:', error)
+          avisarError('no se pudo cancelar el platillo', 'Sigue en la cuenta como estaba')
+          recargarDesdeBackend()
+        }
+      })
+  }
+
+  function quitarItemEnviado(pedidoId, itemId, autorizaId) {
     // Optimista: quitamos el renglón del estado local en el acto (bajando o eliminando
     // su fila de cuenta_items según la cantidad) y luego confirmamos con la RPC. Si falla,
     // recargamos para restaurar el estado real.
@@ -297,7 +322,7 @@ export function useOrderDraft(mesaId) {
       quitarItemPedido(pedidoId, itemId)
     }
 
-    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
+    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_autoriza_id: autorizaId, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[orden] quitarItemEnviado falló:', error)
@@ -359,6 +384,7 @@ export function useOrderDraft(mesaId) {
     enviando,
     cambiarCantidadEnviado,
     fijarCantidadEnviado,
+    cancelarEnviado,
     quitarItemEnviado,
     cerrarMesa,
   }

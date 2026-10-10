@@ -3,6 +3,7 @@ import { f } from '../../lib/utils'
 import { describirMitades, extrasTexto } from '../../lib/describirItem'
 import { Button } from '../ui/Button'
 import { ConfirmModal } from '../ui/ConfirmModal'
+import { AutorizarAdminModal } from '../layout/AutorizarAdminModal'
 import { calcItemPrecio } from '../../hooks/useOrderDraft'
 import { useVertical } from '../../hooks/useVertical'
 import { claveRenglonPorNombre } from '../../lib/renglones'
@@ -68,11 +69,18 @@ function EmpaqueToggle({ item, onChange }) {
   )
 }
 
-function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove }) {
+function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove, decDeshabilitado = false, quitarLabel = 'Quitar' }) {
   return (
     <div className="flex items-center justify-between" style={{ marginTop: 8, gap: 8 }}>
       <div className="flex items-center" style={{ gap: 0, border: '2px solid var(--jb-line)', borderRadius: 10, overflow: 'hidden' }}>
-        <button onClick={onDec} style={{ width: 34, height: 34, border: 'none', background: 'var(--jb-cream)', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>−</button>
+        <button
+          onClick={onDec}
+          disabled={decDeshabilitado}
+          aria-label="Menos"
+          style={{ width: 34, height: 34, border: 'none', background: 'var(--jb-cream)', fontSize: 16, fontWeight: 800, cursor: decDeshabilitado ? 'default' : 'pointer', opacity: decDeshabilitado ? 0.35 : 1 }}
+        >
+          −
+        </button>
         <span style={{ width: 30, textAlign: 'center', fontSize: 14, fontWeight: 800 }}>{cantidad}</span>
         <button onClick={onInc} style={{ width: 34, height: 34, border: 'none', background: 'var(--jb-cream)', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>+</button>
       </div>
@@ -82,10 +90,76 @@ function CantidadControles({ cantidad, onDec, onInc, onEdit, onRemove }) {
             Editar
           </button>
         )}
-        <button onClick={onRemove} style={{ background: 'none', border: 'none', color: '#C24A4A', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          Quitar
-        </button>
+        <BotonQuitar onClick={onRemove}>{quitarLabel}</BotonQuitar>
       </div>
+    </div>
+  )
+}
+
+function BotonQuitar({ onClick, children }) {
+  return (
+    <button onClick={onClick} style={{ background: 'none', border: 'none', color: '#C24A4A', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+      {children}
+    </button>
+  )
+}
+
+// Qué tan avanzado va lo que se va a cancelar, para que el admin sepa qué autoriza.
+const AVISO_CANCELAR = {
+  pendiente: 'Ya está enviado a cocina, así que también desaparecerá de su tablero.',
+  preparando: 'Cocina ya lo está preparando.',
+  listo: 'Cocina ya lo tiene listo.',
+  entregado: 'Ya se entregó.',
+}
+
+// Cancelar comida ya enviada: primero cuántas piezas (si el renglón trae más de una),
+// después la autorización de un admin. Ningún mesero cancela solo, ni siquiera lo que
+// cocina aún no empieza (ver pos_admin_autoriza).
+function CancelarEnviadoModal({ nombre, maximo, estado, onConfirm, onClose }) {
+  const [cantidad, setCantidad] = useState(maximo)
+  const [autorizando, setAutorizando] = useState(false)
+
+  if (autorizando) {
+    return (
+      <AutorizarAdminModal
+        titulo={`Cancelar ${cantidad}× ${nombre}`}
+        onAutorizado={(admin) => onConfirm(cantidad, admin)}
+        onClose={onClose}
+      />
+    )
+  }
+
+  return (
+    <ConfirmModal
+      titulo="¿Cancelar platillo?"
+      mensaje={`"${nombre}". ${AVISO_CANCELAR[estado] ?? ''} Se descuenta de la cuenta y lo tiene que autorizar un administrador.`}
+      confirmarLabel="Pedir autorización"
+      cancelarLabel="Conservar"
+      danger
+      onConfirm={() => setAutorizando(true)}
+      onClose={onClose}
+    >
+      {maximo > 1 && (
+        <div className="flex items-center justify-between" style={{ gap: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--jb-ink)' }}>¿Cuántos cancelar? (de {maximo})</span>
+          <CantidadControlesSimple
+            cantidad={cantidad}
+            onDec={() => setCantidad((c) => Math.max(1, c - 1))}
+            onInc={() => setCantidad((c) => Math.min(maximo, c + 1))}
+          />
+        </div>
+      )}
+    </ConfirmModal>
+  )
+}
+
+function CantidadControlesSimple({ cantidad, onDec, onInc }) {
+  const boton = { width: 40, height: 40, border: 'none', background: 'var(--jb-cream)', fontSize: 18, fontWeight: 800, cursor: 'pointer' }
+  return (
+    <div className="flex items-center" style={{ border: '2px solid var(--jb-line)', borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+      <button onClick={onDec} aria-label="Cancelar menos" style={boton}>−</button>
+      <span style={{ width: 34, textAlign: 'center', fontSize: 16, fontWeight: 800 }}>{cantidad}</span>
+      <button onClick={onInc} aria-label="Cancelar más" style={boton}>+</button>
     </div>
   )
 }
@@ -121,7 +195,7 @@ function DraftRow({ item, onQty, onEdit, onRemove, onEmpaque }) {
   )
 }
 
-function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onRemove, onEmpaque }) {
+function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, onStage, onRevert, onEdit, onCancelar, onEmpaque }) {
   // Un renglón ya enviado puede venir "rico" (el de una comanda para llevar: tier +
   // mitades) o "plano" (cuenta_items de tali: nombre + precio_unitario). Se soportan ambos.
   const esRico = item.tier != null && item.mitades != null
@@ -135,18 +209,24 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
   const itemRico = pedido?.items?.find((it) => it.id === pedidoItemId)
   const puedeEditar = editable && itemRico?.tier != null && !!puedeEditarPlatillo?.(itemRico.platilloId)
   const estadoLabel = pedido ? ESTADO_LABEL[pedido.estado] : null
-  const [confirmando, setConfirmando] = useState(false)
+  // Cancelar (todo o parte) se puede en cualquier columna de cocina mientras exista su
+  // comanda — al cobrar la cuenta las comandas se borran —, siempre con un admin.
+  const [cancelando, setCancelando] = useState(false)
+  // "Editar" un renglón enviado lo retira de la comanda y lo regresa al draft, o sea que
+  // también cancela lo que cocina ya tenía: pide la misma autorización antes de abrirse.
+  const [autorizandoEdicion, setAutorizandoEdicion] = useState(false)
 
   // Los −/+ NO mandan nada a cocina: solo ajustan una cantidad en preview (`staged`) que
   // se confirma al pulsar "Enviar a cocina". Mientras `staged` difiera de lo ya enviado,
   // el renglón muestra un aviso de "cambio sin enviar" y un botón para descartarlo.
+  // El − no baja de lo ya enviado: menos que eso es cancelar, y va por "Cancelar".
   const enviada = item.cantidad
   const cantidad = editable && staged != null ? staged : enviada
   const editado = editable && staged != null && staged !== enviada
 
-  function confirmarQuitar() {
-    onRemove(pedido.id, pedidoItemId)
-    setConfirmando(false)
+  function confirmarCancelar(piezas, admin) {
+    onCancelar(pedido.id, pedidoItemId, piezas, admin.id)
+    setCancelando(false)
   }
 
   return (
@@ -169,14 +249,20 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
         item={item}
         onChange={onEmpaque && pedido ? (e) => onEmpaque(pedido.id, pedidoItemId, e) : undefined}
       />
-      {editable && (
+      {editable ? (
         <CantidadControles
           cantidad={cantidad}
-          onDec={() => onStage(pedidoItemId, cantidad - 1)}
+          decDeshabilitado={cantidad <= enviada}
+          onDec={() => onStage(pedidoItemId, Math.max(enviada, cantidad - 1))}
           onInc={() => onStage(pedidoItemId, cantidad + 1)}
-          onEdit={puedeEditar ? () => onEdit(pedido, pedidoItemId, itemRico) : undefined}
-          onRemove={() => setConfirmando(true)}
+          onEdit={puedeEditar ? () => setAutorizandoEdicion(true) : undefined}
+          onRemove={() => setCancelando(true)}
+          quitarLabel="Cancelar"
         />
+      ) : pedido && itemRico && (
+        <div className="flex justify-end" style={{ marginTop: 6 }}>
+          <BotonQuitar onClick={() => setCancelando(true)}>Cancelar</BotonQuitar>
+        </div>
       )}
       {editado && (
         <button
@@ -187,15 +273,23 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
         </button>
       )}
 
-      {confirmando && (
-        <ConfirmModal
-          titulo="¿Quitar platillo?"
-          mensaje={`Se quitará "${nombre}" de la comanda. Ya está enviado a cocina, así que también desaparecerá de su tablero.`}
-          confirmarLabel="Sí, quitar"
-          cancelarLabel="Conservar"
-          danger
-          onConfirm={confirmarQuitar}
-          onClose={() => setConfirmando(false)}
+      {cancelando && (
+        <CancelarEnviadoModal
+          nombre={nombre}
+          // Las piezas de ESTA comanda: la fila de la cuenta puede juntar varias comandas
+          // del mismo platillo, pero se cancela sobre el renglón de una.
+          maximo={itemRico?.cantidad ?? enviada}
+          estado={pedido.estado}
+          onConfirm={confirmarCancelar}
+          onClose={() => setCancelando(false)}
+        />
+      )}
+
+      {autorizandoEdicion && (
+        <AutorizarAdminModal
+          titulo={`Editar ${nombre}`}
+          onAutorizado={(admin) => { setAutorizandoEdicion(false); onEdit(pedido, pedidoItemId, itemRico, admin.id) }}
+          onClose={() => setAutorizandoEdicion(false)}
         />
       )}
     </div>
@@ -206,7 +300,7 @@ function EnviadoRow({ item, pedido, pedidoItemId, staged, puedeEditarPlatillo, o
 // lo originó — de eso dependen los −/+, el "Editar" y el "Quitar" de un renglón ya
 // enviado. El default es el de las cuentas de mesa; la orden para llevar pasa el suyo
 // (ver src/lib/renglones.js).
-export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onRemoveEnviado, onEmpaque, onEmpaqueEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
+export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCuenta, puedeEditarPlatillo, onQty, onRemove, onEditarDraft, onEditarEnviado, onFijarEnviado, onCancelarEnviado, onEmpaque, onEmpaqueEnviado, onEnviar, enviando = false, clave = claveRenglonPorNombre, titulo = 'Comanda' }) {
   const vertical = useVertical()
 
   // Mapa clave -> { pedido de origen, id del renglón DENTRO de ese pedido }, para saber
@@ -219,7 +313,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
       const k = clave(it)
       const prev = origenPorClave.get(k)
       if (!prev || (p.estado === 'pendiente' && prev.pedido.estado !== 'pendiente')) {
-        origenPorClave.set(k, { pedido: p, itemId: it.id })
+        origenPorClave.set(k, { pedido: p, itemId: it.id, cantidad: it.cantidad })
       }
     }
   }
@@ -229,8 +323,8 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
   const [edits, setEdits] = useState({})
   const stageQty = (pedidoItemId, next) => setEdits((e) => ({ ...e, [pedidoItemId]: Math.max(1, next) }))
   const revertQty = (pedidoItemId) => setEdits((e) => { const { [pedidoItemId]: _omit, ...rest } = e; return rest })
-  // Al quitar un renglón se descarta también cualquier ajuste pendiente suyo.
-  const quitarEnviado = (pedidoId, pedidoItemId) => { revertQty(pedidoItemId); onRemoveEnviado(pedidoId, pedidoItemId) }
+  // Al cancelar un renglón se descarta también cualquier ajuste pendiente suyo.
+  const cancelarEnviado = (pedidoId, pedidoItemId, piezas, autorizaId) => { revertQty(pedidoItemId); onCancelarEnviado(pedidoId, pedidoItemId, piezas, autorizaId) }
 
   // Ajustes pendientes reales (staged distinto de lo enviado) + su efecto en el total,
   // para habilitar el botón y mostrar el total ya con los cambios reflejados.
@@ -241,7 +335,11 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
     if (!origen) continue
     const staged = edits[origen.itemId]
     if (staged == null || staged === item.cantidad) continue
-    editsPendientes.push({ pedidoId: origen.pedido.id, itemId: origen.itemId, cantidad: staged })
+    // `staged` es sobre la fila de la cuenta, que junta las piezas de TODAS las comandas
+    // con ese platillo; la RPC fija la cantidad del renglón de UNA comanda. Por eso se
+    // manda lo que ese renglón ya tenía más lo que se sumó, no `staged` tal cual (con
+    // 2 en una comanda y 1 en otra, un + fijaba la segunda en 4 y sumaba 3 piezas).
+    editsPendientes.push({ pedidoId: origen.pedido.id, itemId: origen.itemId, cantidad: origen.cantidad + (staged - item.cantidad) })
     const precio = item.precio_unitario != null ? Number(item.precio_unitario) : calcItemPrecio(item)
     editDelta += precio * (staged - item.cantidad)
   }
@@ -280,7 +378,7 @@ export function OrderTicket({ draft, cuenta, pedidos, subtotalDraft, subtotalCue
               onStage={stageQty}
               onRevert={revertQty}
               onEdit={onEditarEnviado}
-              onRemove={quitarEnviado}
+              onCancelar={cancelarEnviado}
               onEmpaque={onEmpaqueEnviado}
             />
           )

@@ -60,7 +60,7 @@ export default function MeseroOrdenPage() {
   const {
     draft, cuenta, subtotalDraft, subtotalCuenta,
     agregarItemConstruido, reemplazarItem, cambiarCantidad, quitarItem, enviarACocina, enviando,
-    fijarCantidadEnviado, quitarItemEnviado, cerrarMesa,
+    fijarCantidadEnviado, cancelarEnviado, quitarItemEnviado, cerrarMesa,
   } = useOrderDraft(mesaId)
 
   const platillosCategoria = menu.filter((p) => p.categoria === categoriaActiva)
@@ -88,9 +88,9 @@ export default function MeseroOrdenPage() {
     if (platillo) setEditando({ tipo: 'draft', platillo, item })
   }
 
-  function editarRenglonEnviado(pedido, pedidoItemId, itemRico) {
+  function editarRenglonEnviado(pedido, pedidoItemId, itemRico, autorizaId) {
     const platillo = menu.find((p) => p.id === itemRico.platilloId)
-    if (platillo) setEditando({ tipo: 'enviado', platillo, item: itemRico, pedidoId: pedido.id, pedidoItemId })
+    if (platillo) setEditando({ tipo: 'enviado', platillo, item: itemRico, pedidoId: pedido.id, pedidoItemId, autorizaId })
   }
 
   // Guardar cambios: un renglón del draft se reemplaza en su lugar; uno ya enviado a
@@ -102,7 +102,7 @@ export default function MeseroOrdenPage() {
     if (editando.tipo === 'draft') {
       reemplazarItem(editando.item.id, nuevoItem)
     } else {
-      quitarItemEnviado(editando.pedidoId, editando.pedidoItemId)
+      quitarItemEnviado(editando.pedidoId, editando.pedidoItemId, editando.autorizaId)
       agregarItemConstruido({
         ...nuevoItem,
         id: uid('item'),
@@ -267,7 +267,7 @@ export default function MeseroOrdenPage() {
           onEditarDraft={editarRenglonDraft}
           onEditarEnviado={editarRenglonEnviado}
           onFijarEnviado={fijarCantidadEnviado}
-          onRemoveEnviado={quitarItemEnviado}
+          onCancelarEnviado={cancelarEnviado}
           onEnviar={handleEnviarACocina}
           enviando={enviando}
         />

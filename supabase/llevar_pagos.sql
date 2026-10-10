@@ -6,7 +6,8 @@
 -- entregar siguen siendo el MISMO momento y el mismo botón que ya hacía
 -- pos_cerrar_orden_llevar(estado='entregada') en llevar.sql — lo único que cambia es
 -- que ahora también se registra CON QUÉ se pagó. Cancelar (la otra rama de
--- pos_cerrar_orden_llevar) no cambia.
+-- pos_cerrar_orden_llevar) solo suma que, si ya hay comida en cocina, lo autorice un
+-- admin (p_autoriza_id; ver pos_admin_autoriza en schema.sql).
 --
 -- Corre DESPUÉS de llevar.sql y llevar_descartar.sql. Idempotente: se puede volver a
 -- correr, sin importar si ya se corrió una versión anterior de este mismo archivo
@@ -19,25 +20,39 @@ alter table ordenes_llevar add column if not exists metodo_pago text;
 -- p_estado, p_mesero_id, p_mesero_nombre) por si esta base ya tenía la versión de 3
 -- parámetros de una corrida anterior de este archivo — esa versión ya no calza con lo
 -- que manda el frontend (que vuelve a pasar p_estado='cancelada' explícito).
+--
+-- p_autoriza_id: cancelar una orden que ya mandó comida a cocina es cancelar esa
+-- comida, y eso lo autoriza siempre un admin (ver pos_admin_autoriza en schema.sql).
+-- La versión de 4 parámetros se tira para no dejar un overload ambiguo.
 drop function if exists pos_cerrar_orden_llevar(uuid, uuid, text);
 drop function if exists pos_cerrar_orden_llevar(uuid, text);
+drop function if exists pos_cerrar_orden_llevar(uuid, text, uuid, text);
 create or replace function pos_cerrar_orden_llevar(
   p_orden_id      uuid,
   p_estado        text default 'entregada',
   p_mesero_id     uuid default null,
-  p_mesero_nombre text default null
+  p_mesero_nombre text default null,
+  p_autoriza_id   uuid default null
 ) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_items jsonb;
-  v_total numeric;
-  v_orden ordenes_llevar%rowtype;
+  v_items    jsonb;
+  v_total    numeric;
+  v_orden    ordenes_llevar%rowtype;
+  v_autoriza text;
 begin
   if p_estado not in ('entregada','cancelada') then
     raise exception 'Estado de cierre inválido: %', p_estado;
+  end if;
+
+  if p_estado = 'cancelada' and exists (select 1 from pedidos where orden_llevar_id = p_orden_id) then
+    v_autoriza := pos_admin_autoriza(
+      (select restaurante_id from ordenes_llevar where id = p_orden_id),
+      p_autoriza_id
+    );
   end if;
 
   select coalesce(jsonb_agg(renglon), '[]'::jsonb) into v_items
@@ -59,16 +74,18 @@ begin
     v_orden.restaurante_id, p_mesero_id, p_mesero_nombre,
     'llevar.cerrar', 'orden_llevar', p_orden_id, 'L-' || v_orden.folio,
     jsonb_build_object(
-      'estado',  p_estado,
-      'total',   v_total,
-      'cliente', v_orden.cliente_nombre,
-      'items',   v_items
+      'estado',      p_estado,
+      'total',       v_total,
+      'cliente',     v_orden.cliente_nombre,
+      'autorizo_id', case when v_autoriza is not null then p_autoriza_id end,
+      'autorizo',    v_autoriza,
+      'items',       v_items
     )
   );
 end;
 $$;
 
-grant execute on function pos_cerrar_orden_llevar(uuid, text, uuid, text) to anon, authenticated;
+grant execute on function pos_cerrar_orden_llevar(uuid, text, uuid, text, uuid) to anon, authenticated;
 
 -- Ya no se usa (el paso de "recoger" se fusionó de vuelta con "pagar"): se limpia solo si
 -- esta base la llegó a tener.

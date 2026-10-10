@@ -222,24 +222,85 @@ end;
 $$;
 
 -- ============================================================================
--- RPC: editar cantidad de un renglón ya enviado. Solo permitido mientras el
--- pedido sigue en 'pendiente' (cocina aún no lo ha visto/empezado) — la
--- validación es server-side (no solo ocultar el botón en el cliente), igual
--- que el resto de las funciones de este archivo. Sincroniza pedidos.items
--- (jsonb, para cocina) y la fila correspondiente de cuenta_items (para el
+-- Cancelar comida que ya se mandó a cocina lo autoriza SIEMPRE un administrador
+-- (meseros.es_admin): el mesero no puede solo, ni siquiera si cocina aún no la empieza.
+-- A cambio se puede en cualquier columna de cocina (Nuevo, Preparando, Listo,
+-- Entregado) mientras la cuenta no se haya cobrado. "Cancelar" es quitar el renglón
+-- (pos_eliminar_item_pedido) o bajarle la cantidad (pos_editar_item_pedido).
+--
+-- Quién autoriza viaja como p_autoriza_id: el admin tecleó su PIN en la tablet del
+-- mesero (AutorizarAdminModal). Igual que el actor, es autodeclarado — no hay auth —,
+-- pero el servidor sí comprueba que sea un admin activo de ESE restaurante, y su nombre
+-- queda en la bitácora junto al del mesero.
+-- ============================================================================
+-- plpgsql y no sql a propósito: es_admin lo agrega admin_menu.sql, que corre DESPUÉS
+-- de este archivo, y plpgsql no revisa las columnas hasta la primera llamada.
+create or replace function pos_admin_autoriza(
+  p_restaurante_id uuid,
+  p_autoriza_id    uuid
+) returns text
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_nombre text;
+begin
+  select nombre into v_nombre
+  from meseros
+  where id = p_autoriza_id
+    and es_admin
+    and activo
+    and restaurante_id is not distinct from p_restaurante_id;
+
+  if v_nombre is null then
+    raise exception 'Cancelar comida ya enviada a cocina necesita la autorización de un administrador.';
+  end if;
+  return v_nombre;
+end;
+$$;
+
+-- Una mesa cobrada por tali deja su cuenta en activa=false, pero sus pedidos siguen
+-- vivos hasta que el POS los limpia (ver 'tali-panel-sync' en usePosData). Sin esto,
+-- en ese hueco se podía cambiar la comida de una cuenta ya pagada. Para llevar no hace
+-- falta: cobrar la orden borra sus pedidos en la misma transacción.
+create or replace function pos_cuenta_sin_cobrar(p_cuenta_id uuid)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if p_cuenta_id is not null and not exists (select 1 from cuentas where id = p_cuenta_id and activa) then
+    raise exception 'La cuenta ya se cobró: ya no se puede cambiar.';
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- RPC: cambiar la cantidad de un renglón ya enviado.
+--   · Subirla: solo mientras el pedido sigue en 'pendiente' (cocina aún no lo empieza),
+--     sin autorización — es pedir más, no cancelar.
+--   · Bajarla: es cancelar parte del renglón → admin, en cualquier columna de cocina.
+-- La validación es server-side (no solo ocultar el botón en el cliente). Sincroniza
+-- pedidos.items (jsonb, para cocina) y la fila correspondiente de cuenta_items (para el
 -- total de tali), ubicada por (cuenta_id, nombre) — la misma clave que usa
 -- add_or_update_cuenta_item para crearla en pos_enviar_orden.
 -- ============================================================================
 -- El actor viaja como parámetro porque no hay auth (ver bitacora.sql). Va con default
--- null para no romper una llamada vieja, y la firma anterior se tira explícitamente:
+-- null para no romper una llamada vieja, y las firmas anteriores se tiran explícitamente:
 -- dejar las dos vivas le deja a PostgREST un overload ambiguo que resolver.
 drop function if exists pos_editar_item_pedido(uuid, text, integer);
+drop function if exists pos_editar_item_pedido(uuid, text, integer, uuid, text);
 create or replace function pos_editar_item_pedido(
   p_pedido_id     uuid,
   p_item_id       text,
   p_cantidad      integer,
   p_mesero_id     uuid default null,
-  p_mesero_nombre text default null
+  p_mesero_nombre text default null,
+  p_autoriza_id   uuid default null
 ) returns void
 language plpgsql
 security definer
@@ -250,6 +311,7 @@ declare
   v_idx         int;
   v_item        jsonb;
   v_delta       integer;
+  v_autoriza    text;
 begin
   if p_cantidad is null or p_cantidad < 1 then
     raise exception 'La cantidad debe ser al menos 1.';
@@ -258,9 +320,6 @@ begin
   select * into v_pedido from pedidos where id = p_pedido_id for update;
   if not found then
     raise exception 'Pedido % no existe.', p_pedido_id;
-  end if;
-  if v_pedido.estado <> 'pendiente' then
-    raise exception 'El pedido ya no está en Nuevo (estado actual: %) — no se puede editar.', v_pedido.estado;
   end if;
 
   select ord - 1, value into v_idx, v_item
@@ -271,7 +330,15 @@ begin
     raise exception 'Renglón % no existe en el pedido.', p_item_id;
   end if;
 
+  perform pos_cuenta_sin_cobrar(v_pedido.cuenta_id);
+
   v_delta := p_cantidad - (v_item->>'cantidad')::integer;
+
+  if v_delta < 0 then
+    v_autoriza := pos_admin_autoriza(v_pedido.restaurante_id, p_autoriza_id);
+  elsif v_pedido.estado <> 'pendiente' then
+    raise exception 'El pedido ya no está en Nuevo (estado actual: %) — no se le pueden sumar piezas.', v_pedido.estado;
+  end if;
 
   update pedidos
   set items = jsonb_set(items, array[v_idx::text, 'cantidad'], to_jsonb(p_cantidad))
@@ -296,30 +363,36 @@ begin
     'item.editar', 'pedido', p_pedido_id,
     coalesce(v_pedido.mesa_numero, v_pedido.cliente_nombre),
     jsonb_build_object(
-      'platillo',  v_item->>'nombre',
-      'de',        (v_item->>'cantidad')::integer,
-      'a',         p_cantidad,
-      'delta',     v_delta,
-      'tipo',      v_pedido.tipo,
-      'cuenta_id', v_pedido.cuenta_id,
-      'item',      v_item
+      'platillo',      v_item->>'nombre',
+      'de',            (v_item->>'cantidad')::integer,
+      'a',             p_cantidad,
+      'delta',         v_delta,
+      'tipo',          v_pedido.tipo,
+      'cuenta_id',     v_pedido.cuenta_id,
+      'estado_cocina', v_pedido.estado,
+      'autorizo_id',   case when v_autoriza is not null then p_autoriza_id end,
+      'autorizo',      v_autoriza,
+      'item',          v_item
     )
   );
 end;
 $$;
 
 -- ============================================================================
--- RPC: eliminar un renglón ya enviado. Mismo guard de estado = 'pendiente'
--- que pos_editar_item_pedido. Si el renglón eliminado era el último del
--- pedido, se borra el pedido completo (una comanda sin platillos no debe
--- seguir apareciendo en el tablero de cocina).
+-- RPC: cancelar (eliminar) un renglón ya enviado. Siempre con autorización de un
+-- admin, en cualquier columna de cocina, mientras la cuenta no se haya cobrado (ver
+-- arriba). Si el renglón eliminado era el último del pedido, se borra el pedido
+-- completo (una comanda sin platillos no debe seguir apareciendo en el tablero de
+-- cocina).
 -- ============================================================================
 drop function if exists pos_eliminar_item_pedido(uuid, text);
+drop function if exists pos_eliminar_item_pedido(uuid, text, uuid, text);
 create or replace function pos_eliminar_item_pedido(
   p_pedido_id     uuid,
   p_item_id       text,
   p_mesero_id     uuid default null,
-  p_mesero_nombre text default null
+  p_mesero_nombre text default null,
+  p_autoriza_id   uuid default null
 ) returns void
 language plpgsql
 security definer
@@ -329,14 +402,15 @@ declare
   v_pedido      pedidos%rowtype;
   v_item        jsonb;
   v_items_nuevo jsonb;
+  v_autoriza    text;
 begin
   select * into v_pedido from pedidos where id = p_pedido_id for update;
   if not found then
     raise exception 'Pedido % no existe.', p_pedido_id;
   end if;
-  if v_pedido.estado <> 'pendiente' then
-    raise exception 'El pedido ya no está en Nuevo (estado actual: %) — no se puede eliminar.', v_pedido.estado;
-  end if;
+
+  perform pos_cuenta_sin_cobrar(v_pedido.cuenta_id);
+  v_autoriza := pos_admin_autoriza(v_pedido.restaurante_id, p_autoriza_id);
 
   select value into v_item
   from jsonb_array_elements(v_pedido.items) as value
@@ -373,6 +447,8 @@ begin
   -- Al detalle va el renglón COMPLETO, no solo su nombre: quien reclama pregunta por
   -- el platillo tal como se pidió (con sus mitades, sus ingredientes y su nota), y
   -- para cuando alguien lea esta línea la fila de pedidos ya no va a existir.
+  -- `estado_cocina` dice qué tan avanzado iba: no es lo mismo cancelar algo que cocina
+  -- ni había empezado que algo que ya estaba servido.
   perform pos_log(
     v_pedido.restaurante_id, p_mesero_id, p_mesero_nombre,
     'item.eliminar', 'pedido', p_pedido_id,
@@ -384,6 +460,9 @@ begin
       'tipo',          v_pedido.tipo,
       'cuenta_id',     v_pedido.cuenta_id,
       'comanda_vacia', jsonb_array_length(v_items_nuevo) = 0,
+      'estado_cocina', v_pedido.estado,
+      'autorizo_id',   p_autoriza_id,
+      'autorizo',      v_autoriza,
       'item',          v_item
     )
   );
@@ -1128,8 +1207,8 @@ drop policy if exists "pos pedidos lectura" on pedidos;
 create policy "pos pedidos lectura" on pedidos for select to anon, authenticated using (true);
 
 grant execute on function pos_enviar_orden(uuid, text, jsonb, uuid)                 to anon, authenticated;
-grant execute on function pos_editar_item_pedido(uuid, text, integer, uuid, text)   to anon, authenticated;
-grant execute on function pos_eliminar_item_pedido(uuid, text, uuid, text)          to anon, authenticated;
+grant execute on function pos_editar_item_pedido(uuid, text, integer, uuid, text, uuid) to anon, authenticated;
+grant execute on function pos_eliminar_item_pedido(uuid, text, uuid, text, uuid)    to anon, authenticated;
 grant execute on function pos_cerrar_mesa(uuid, text, uuid, text)                   to anon, authenticated;
 grant execute on function pos_unir_mesas(uuid, uuid[], uuid, text)                  to anon, authenticated;
 grant execute on function pos_separar_mesa(uuid, uuid, text)                        to anon, authenticated;

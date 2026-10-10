@@ -9,6 +9,7 @@ import { PlatilloCard } from '../../components/mesero/PlatilloCard'
 import { ConfigurarPlatilloModal } from '../../components/mesero/ConfigurarPlatilloModal'
 import { PagarLlevarModal } from '../../components/mesero/PagarLlevarModal'
 import { OrderTicket } from '../../components/mesero/OrderTicket'
+import { AutorizarAdminModal } from '../../components/layout/AutorizarAdminModal'
 import { claveRenglonPorId } from '../../lib/renglones'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 
@@ -25,11 +26,12 @@ export default function LlevarOrdenPage() {
   const [platilloEnConfig, setPlatilloEnConfig] = useState(null)
   const [cerrando, setCerrando] = useState(null) // 'cancelada' | 'descartar' | null
   const [pagando, setPagando] = useState(false)
+  const [autorizandoCancelacion, setAutorizandoCancelacion] = useState(false)
 
   const {
     orden, draft, pedidos, enviados, subtotalDraft, subtotalEnviado,
     agregarItemConstruido, cambiarEmpaque, cambiarEmpaqueEnviado, cambiarCantidad, quitarItem, enviarACocina, enviando,
-    fijarCantidadEnviado, quitarItemEnviado, pagarOrden, cancelarOrden, descartarOrden,
+    fijarCantidadEnviado, cancelarEnviado, pagarOrden, cancelarOrden, descartarOrden,
   } = useOrdenLlevar(ordenId)
 
   // Nada enviado a cocina todavía. Una orden así no se cancela ni se deja abierta: se
@@ -61,11 +63,18 @@ export default function LlevarOrdenPage() {
     descartar()
   }
 
-  async function confirmarCierre() {
+  // Cancelar una orden con comida ya en cocina es cancelar esa comida: después de
+  // confirmar, la autoriza un admin con su PIN (ver AutorizarAdminModal).
+  function confirmarCierre() {
     const accion = cerrando
     setCerrando(null)
     if (accion === 'descartar') { descartar(); return }
-    const { error } = await cancelarOrden()
+    setAutorizandoCancelacion(true)
+  }
+
+  async function cancelarAutorizada(admin) {
+    setAutorizandoCancelacion(false)
+    const { error } = await cancelarOrden(admin.id)
     if (!error) navigate('/mesero/llevar')
   }
 
@@ -94,8 +103,8 @@ export default function LlevarOrdenPage() {
   const dialogo = {
     cancelada: {
       titulo: '¿Cancelar la orden?',
-      mensaje: `${quien} se marcará como cancelada${cocinando ? ' y sus comandas saldrán del tablero de cocina, aunque todavía se estén preparando' : ''}.`,
-      confirmar: 'Sí, cancelar',
+      mensaje: `${quien} se marcará como cancelada${cocinando ? ' y sus comandas saldrán del tablero de cocina, aunque todavía se estén preparando' : ''}. Ya tiene comida enviada, así que lo tiene que autorizar un administrador.`,
+      confirmar: 'Pedir autorización',
     },
     descartar: {
       titulo: '¿Descartar la orden?',
@@ -197,7 +206,7 @@ export default function LlevarOrdenPage() {
           onQty={cambiarCantidad}
           onRemove={quitarItem}
           onFijarEnviado={fijarCantidadEnviado}
-          onRemoveEnviado={quitarItemEnviado}
+          onCancelarEnviado={cancelarEnviado}
           onEmpaque={cambiarEmpaque}
           onEmpaqueEnviado={cambiarEmpaqueEnviado}
           onEnviar={enviarACocina}
@@ -233,6 +242,14 @@ export default function LlevarOrdenPage() {
           danger
           onConfirm={confirmarCierre}
           onClose={() => setCerrando(null)}
+        />
+      )}
+
+      {autorizandoCancelacion && (
+        <AutorizarAdminModal
+          titulo={`Cancelar L-${orden.folio}`}
+          onAutorizado={cancelarAutorizada}
+          onClose={() => setAutorizandoCancelacion(false)}
         />
       )}
     </div>

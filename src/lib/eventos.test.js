@@ -15,6 +15,12 @@ describe('describir', () => {
     expect(describir(ev('item.editar', { platillo: 'Sope', de: 2, a: 3 }))).toBe('Cambió Sope de 2 a 3')
   })
 
+  it('en una cancelación dice qué admin la autorizó', () => {
+    expect(describir(ev('item.eliminar', { platillo: 'Sope', cantidad: 1, autorizo: 'Mayra' }))).toBe('Quitó 1× Sope ya enviado (autorizó Mayra)')
+    expect(describir(ev('item.editar', { platillo: 'Sope', de: 3, a: 1, autorizo: 'Mayra' }))).toBe('Cambió Sope de 3 a 1 (autorizó Mayra)')
+    expect(describir(ev('llevar.cerrar', { estado: 'cancelada', autorizo: 'Mayra' }))).toBe('Canceló la orden para llevar (autorizó Mayra)')
+  })
+
   it('usa los nombres de columna del tablero de cocina', () => {
     expect(describir(ev('cocina.estado', { de: 'pendiente', a: 'preparando' }))).toBe('Movió la comanda de Nuevo a Preparando')
   })

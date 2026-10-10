@@ -157,10 +157,10 @@ describe('useOrdenLlevar — editar un renglón ya enviado', () => {
     usePedidosStore.setState({ pedidos: [comandaEnviada()] })
     const { result } = renderHook(() => useOrdenLlevar(ORDEN_ID))
     const itemId = result.current.enviados[0].id
-    await act(async () => { result.current.quitarItemEnviado('p-1', itemId); await vaciarPromesas() })
+    await act(async () => { result.current.quitarItemEnviado('p-1', itemId, 'mesero-1'); await vaciarPromesas() })
 
     expect(usePedidosStore.getState().pedidos).toHaveLength(0) // comanda vacía, fuera
-    expect(llamadasRpc('pos_eliminar_item_pedido')).toEqual([{ p_pedido_id: 'p-1', p_item_id: itemId, ...FIRMA }])
+    expect(llamadasRpc('pos_eliminar_item_pedido')).toEqual([{ p_pedido_id: 'p-1', p_item_id: itemId, p_autoriza_id: 'mesero-1', ...FIRMA }])
   })
 })
 
@@ -197,10 +197,10 @@ describe('useOrdenLlevar — cancelar la orden', () => {
     usePedidosStore.setState({ pedidos: [comandaEnviada()] })
     const { result } = renderHook(() => useOrdenLlevar(ORDEN_ID))
     let r
-    await act(async () => { r = await result.current.cancelarOrden() })
+    await act(async () => { r = await result.current.cancelarOrden('mesero-1') })
 
     expect(r).toEqual({ error: null })
-    expect(llamadasRpc('pos_cerrar_orden_llevar')).toEqual([{ p_orden_id: ORDEN_ID, p_estado: 'cancelada', ...FIRMA }])
+    expect(llamadasRpc('pos_cerrar_orden_llevar')).toEqual([{ p_orden_id: ORDEN_ID, p_estado: 'cancelada', p_autoriza_id: 'mesero-1', ...FIRMA }])
     expect(result.current.draft).toHaveLength(0)
   })
 })

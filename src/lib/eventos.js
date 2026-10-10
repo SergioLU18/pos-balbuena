@@ -126,13 +126,17 @@ function cambiosMesero(d) {
   return partes.length ? cap(partes.join(', ')) : 'Editó al mesero'
 }
 
+// Cancelar comida ya enviada a cocina lo autoriza un admin (ver pos_admin_autoriza):
+// quien aparece como actor es el mesero de la tablet, así que el admin va en la frase.
+const autorizo = (d) => (d.autorizo ? ` (autorizó ${d.autorizo})` : '')
+
 /** Qué pasó, en una frase. */
 export function describir(ev) {
   const d = ev.detalle ?? {}
   switch (ev.accion) {
     case 'orden.enviar': return `Mandó ${plural(piezas(d.items), 'platillo', 'platillos')} a cocina`
-    case 'item.editar': return `Cambió ${d.platillo} de ${d.de} a ${d.a}`
-    case 'item.eliminar': return `Quitó ${d.cantidad}× ${d.platillo} ya enviado`
+    case 'item.editar': return `Cambió ${d.platillo} de ${d.de} a ${d.a}${autorizo(d)}`
+    case 'item.eliminar': return `Quitó ${d.cantidad}× ${d.platillo} ya enviado${autorizo(d)}`
     case 'item.empaque': return d.a === 'tupper'
       ? `Cambió ${d.platillo} a su tupper`
       : `Cambió ${d.platillo} a desechable`
@@ -157,7 +161,7 @@ export function describir(ev) {
 
     case 'llevar.crear': return 'Abrió la orden para llevar'
     case 'llevar.pagar': return `Cobró y entregó la orden para llevar${d.metodo_pago ? ` (${METODO_PAGO[d.metodo_pago] ?? d.metodo_pago})` : ''}`
-    case 'llevar.cerrar': return d.estado === 'cancelada' ? 'Canceló la orden para llevar' : 'Entregó la orden para llevar'
+    case 'llevar.cerrar': return d.estado === 'cancelada' ? `Canceló la orden para llevar${autorizo(d)}` : 'Entregó la orden para llevar'
     case 'llevar.descartar': return 'Descartó la orden para llevar (sin platillos)'
     case 'cliente.guardar': return d.alta ? 'Dio de alta al cliente' : 'Editó los datos del cliente'
     case 'cliente.baja': return 'Dio de baja al cliente'

@@ -353,10 +353,12 @@ export const usePedidosStore = create(
           ),
         })),
 
+      // Sin candado de 'pendiente': quitar un renglón ya enviado es cancelarlo, y eso un
+      // admin lo autoriza en cualquier columna de cocina (ver pos_eliminar_item_pedido).
       quitarItemPedido: (pedidoId, itemId) =>
         set((s) => ({
           pedidos: s.pedidos
-            .map((p) => (p.id === pedidoId && p.estado === 'pendiente' ? { ...p, items: p.items.filter((it) => it.id !== itemId) } : p))
+            .map((p) => (p.id === pedidoId ? { ...p, items: p.items.filter((it) => it.id !== itemId) } : p))
             .filter((p) => p.id !== pedidoId || p.items.length > 0),
         })),
     }),

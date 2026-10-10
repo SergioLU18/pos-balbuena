@@ -152,9 +152,30 @@ export function useOrdenLlevar(ordenId) {
       })
   }
 
-  function quitarItemEnviado(pedidoId, itemId) {
+  /** Cancela `cantidad` piezas de un renglón ya enviado con la autorización de un admin
+   *  (`autorizaId`), en cualquier columna de cocina — igual que en las mesas (ver
+   *  cancelarEnviado en useOrderDraft). Todas las piezas = quitar el renglón. */
+  function cancelarEnviado(pedidoId, itemId, cantidad, autorizaId) {
+    const pedido = pedidos.find((p) => p.id === pedidoId)
+    const item = pedido?.items.find((it) => it.id === itemId)
+    if (!item || cantidad < 1) return
+    if (cantidad >= item.cantidad) { quitarItemEnviado(pedidoId, itemId, autorizaId); return }
+
+    const nueva = item.cantidad - cantidad
+    actualizarItemPedido(pedidoId, itemId, { cantidad: nueva })
+    sb.rpc('pos_editar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_cantidad: nueva, p_autoriza_id: autorizaId, ...firma() })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[llevar] cancelarEnviado falló:', error)
+          avisarError('no se pudo cancelar el platillo', 'Sigue en la orden como estaba')
+          recargarDesdeBackend()
+        }
+      })
+  }
+
+  function quitarItemEnviado(pedidoId, itemId, autorizaId) {
     quitarItemPedido(pedidoId, itemId)
-    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, ...firma() })
+    sb.rpc('pos_eliminar_item_pedido', { p_pedido_id: pedidoId, p_item_id: itemId, p_autoriza_id: autorizaId, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[llevar] quitarItemEnviado falló:', error)
@@ -220,8 +241,10 @@ export function useOrdenLlevar(ordenId) {
   /** Cancela la orden. El total y los renglones quedan congelados en la fila — es de
    *  ahí que sale el historial de compras del cliente — y sus comandas salen del
    *  tablero de cocina, igual que al cerrar una mesa. */
-  function cancelarOrden() {
-    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: 'cancelada', ...firma() })
+  // Una orden que ya mandó comida a cocina solo la cancela un admin (`autorizaId`);
+  // la que no mandó nada no llega aquí: se descarta (ver descartarOrden).
+  function cancelarOrden(autorizaId) {
+    return sb.rpc('pos_cerrar_orden_llevar', { p_orden_id: ordenId, p_estado: 'cancelada', p_autoriza_id: autorizaId, ...firma() })
       .then(({ error }) => {
         if (error) {
           console.error('[llevar] cancelarOrden falló:', error)
@@ -266,6 +289,7 @@ export function useOrdenLlevar(ordenId) {
     enviarACocina,
     enviando,
     fijarCantidadEnviado,
+    cancelarEnviado,
     quitarItemEnviado,
     pagarOrden,
     cancelarOrden,

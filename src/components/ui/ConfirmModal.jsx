@@ -13,6 +13,8 @@ export function ConfirmModal({
   danger = false,
   onConfirm,
   onClose,
+  // Contenido extra entre el mensaje y los botones (p. ej. un selector de cantidad).
+  children,
 }) {
   return (
     <div
@@ -34,6 +36,7 @@ export function ConfirmModal({
         {mensaje && (
           <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: 'var(--jb-ink-soft)' }}>{mensaje}</p>
         )}
+        {children}
         <div className="flex" style={{ gap: 12, marginTop: 8 }}>
           <Button variant="secondary" size="md" onClick={onClose} style={{ flex: 1 }}>
             {cancelarLabel}
