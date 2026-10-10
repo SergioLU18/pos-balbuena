@@ -28,6 +28,9 @@ function rehidratarItem(platillo, prev) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars -- se destructura para excluir el id de la comparación
+const huella = ({ id, ...resto }, paraLlevar) => JSON.stringify([resto, paraLlevar])
+
 // `permiteParaLlevar`: solo en una MESA, donde un platillo suelto puede pedirse para
 // llevar (+$5 del desechable). En una orden para llevar no se ofrece: ahí todo lleva
 // empaque y el tupper se elige en el ticket (ver useOrdenLlevar).
@@ -38,6 +41,9 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
   const [paraLlevar, setParaLlevar] = useState(itemInicial?.empaque != null)
   const [item, setItem] = useState(() => (editando ? rehidratarItem(platillo, itemInicial) : buildDraftItem(platillo, 0)))
   const [error, setError] = useState(null)
+  // Foto de cómo abrió el modal, para saber si el mesero ya movió algo. Sin el id: cambiar
+  // de tier o de tortilla reconstruye el renglón con un id nuevo aunque nada más cambie.
+  const [inicial] = useState(() => huella(item, paraLlevar))
 
   function cambiarTier(tierIndex) {
     setError(null)
@@ -96,7 +102,9 @@ export function ConfigurarPlatilloModal({ platillo, ingredientes, modificadores,
 
   return (
     <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      // Un toque fuera solo cierra si no se ha elegido nada: en la tablet es fácil rozar el
+      // fondo a media captura y se perdían ingredientes, extras y nota. Con cambios, solo ✕.
+      onClick={(e) => { if (e.target === e.currentTarget && huella(item, paraLlevar) === inicial) onClose() }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(51,34,42,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20,
